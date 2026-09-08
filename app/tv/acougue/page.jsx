@@ -1,4 +1,5 @@
-import HtmlTemplate from "../../_components/HtmlTemplate";
+import Script from "next/script";
+import HtmlTemplate from "../../components/shared/HtmlTemplate";
 
 export const metadata = {
   title: "TV de atendimento",
@@ -9,7 +10,7 @@ export default function ButcherDisplayPage() {
   return (
     <>
       <HtmlTemplate fileName="tv-acougue.html" />
-      <script src="/tv-acougue.js?v=20260821.1" />
+      <Script src="/tv-acougue.js?v=20260824.2" strategy="afterInteractive" />
     </>
   );
 }

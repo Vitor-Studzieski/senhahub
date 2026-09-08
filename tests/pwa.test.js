@@ -14,7 +14,7 @@ const {
   safeNotificationPath,
   validatePushSubscription,
   validateVapidConfiguration
-} = require("../server/push-notification-service");
+} = require("../server/notifications/push-notification-service");
 const pwaUtils = require("../public/pwa-utils");
 
 const ROOT = path.resolve(__dirname, "..");

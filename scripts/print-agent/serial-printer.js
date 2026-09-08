@@ -14,7 +14,8 @@ class SerialPrinter {
     this.statusTimeoutMs = positiveInteger(options.statusTimeoutMs, 1500);
   }
 
-  async print(buffer) {
+  async print(buffer, { signal } = {}) {
+    let beforeSend = true;
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
       throw new Error("Conteudo de impressao vazio.");
     }
@@ -29,14 +30,38 @@ class SerialPrinter {
       autoOpen: false
     });
 
+    let rejectAbort;
+    let aborted = false;
+    const abortPromise = new Promise((_, reject) => { rejectAbort = reject; });
+    const abort = (reason = new Error('Impressao interrompida')) => {
+      if (aborted) return;
+      aborted = true;
+      rejectAbort(reason);
+      // destroy also cancels an in-progress open/write. Calling it for a
+      // closed port is safe on serialport and prevents a 30s open from
+      // surviving a cancelled job.
+      try { port.destroy(reason); } catch {}
+    };
+    const onError = () => {}; // Keep late serial errors from crashing the process.
+    port.on('error', onError);
+    const onAbort = () => abort();
+    signal?.addEventListener('abort', onAbort, { once:true });
+    const timeout=setTimeout(() => abort(new Error('Tempo limite da impressao excedido.')),30000);
+    const guarded = operation => Promise.race([operation, abortPromise]);
     try {
-      await openPort(port);
-      if (this.statusCheck) await assertPrinterReady(port, this.statusTimeoutMs);
-      await writePort(port, buffer);
-      await drainPort(port);
-      await delay(Math.max(500, Math.ceil((buffer.length * 10 * 1000) / this.baudRate)));
-      if (this.statusCheck) await assertPrinterReady(port, this.statusTimeoutMs);
+      if(signal?.aborted) abort();
+      await guarded(openPort(port));
+      if (this.statusCheck) await guarded(assertPrinterReady(port, this.statusTimeoutMs));
+      if(signal?.aborted) abort();
+      beforeSend = false;
+      await guarded(writePort(port, buffer));
+      await guarded(drainPort(port));
+      await guarded(delay(Math.max(500, Math.ceil((buffer.length * 10 * 1000) / this.baudRate))));
+      if (this.statusCheck) await guarded(assertPrinterReady(port, this.statusTimeoutMs));
+    } catch(error) {
+      error.beforeSend=beforeSend;throw error;
     } finally {
+      clearTimeout(timeout);signal?.removeEventListener("abort",onAbort);
       await closePort(port);
     }
   }

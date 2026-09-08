@@ -285,7 +285,6 @@ O estado operacional continua sendo lido do banco local. Eventos são o contrato
 - senhas de usuários;
 - cookies e tokens de sessão;
 - chaves de serviço;
-- conteúdo completo de carrinho, se não for necessário para indicadores;
 - localização precisa do cliente;
 - dados pessoais que não sejam necessários para o relatório;
 - payloads de autenticação ou MFA.

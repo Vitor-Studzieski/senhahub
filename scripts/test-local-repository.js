@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { close } = require("../server/local-postgres");
-const { getQueueSnapshot } = require("../server/local-repository");
+const { close } = require("../server/data/local-postgres");
+const { getQueueSnapshot } = require("../server/data/local-repository");
 
 const ROOT = path.resolve(__dirname, "..");
 

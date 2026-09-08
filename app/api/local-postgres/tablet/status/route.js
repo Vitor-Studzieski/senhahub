@@ -1,5 +1,5 @@
-import { authenticateLocalRequest } from "../../../../../server/local-http-auth.js";
-import { getQueueSnapshot } from "../../../../../server/local-repository.js";
+import { authenticateLocalRequest } from "../../../../../server/auth/local-http-auth.js";
+import { getQueueSnapshot } from "../../../../../server/data/local-repository.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +15,13 @@ export async function GET(request) {
 
   try {
     const snapshot = await getQueueSnapshot();
+    const allowedSectorIds = new Set(session.user.sectorIds || []);
+    const visibleSectors = (snapshot.sectors || []).filter((sector) => (
+      sector.status === "open" && allowedSectorIds.has(sector.id)
+    ));
+    if (visibleSectors.length !== 1) {
+      return Response.json({ error: "Esta conta precisa estar vinculada a um único setor aberto." }, { status: 403 });
+    }
     const queueBySector = new Map();
     for (const ticket of snapshot.tickets || []) {
       queueBySector.set(ticket.sector_id, (queueBySector.get(ticket.sector_id) || 0) + 1);
@@ -23,7 +30,18 @@ export async function GET(request) {
     return Response.json({
       source: "postgres-local",
       user: session.user,
-      sectors: (snapshot.sectors || []).map((sector) => ({
+      sector: {
+        id: visibleSectors[0].id,
+        name: visibleSectors[0].name,
+        prefix: visibleSectors[0].prefix,
+        counterLabel: visibleSectors[0].counter_label,
+        serviceLabel: visibleSectors[0].service_label,
+        queueSize: queueBySector.get(visibleSectors[0].id) || 0,
+        averageServiceSeconds: Number(visibleSectors[0].average_service_seconds || 60),
+        capacity: Number(visibleSectors[0].capacity || 1),
+        status: visibleSectors[0].status
+      },
+      sectors: visibleSectors.map((sector) => ({
         id: sector.id,
         name: sector.name,
         prefix: sector.prefix,

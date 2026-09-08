@@ -15,14 +15,13 @@
         <div class="tv-header-meta">
           <div class="tv-header-live">
             <div class="tv-weather" id="tvWeather" data-state="loading" aria-live="polite">
-              <span class="tv-weather-icon" id="tvWeatherIcon" aria-hidden="true">☁</span>
               <div><strong id="tvWeatherTemperature">--°C</strong><small id="tvWeatherCondition">Consultando clima</small></div>
             </div>
             <div class="tv-clock"><span aria-hidden="true">◷</span><time id="tvClock">--:--</time></div>
           </div>
           <div class="tv-header-details">
             <div class="tv-date" id="tvDate">--</div>
-            <div class="tv-connection" id="tvConnection" data-state="loading"><span></span><b>Conectando</b></div>
+            <div class="tv-connection" id="tvConnection" data-state="online"><span></span><b>Online</b></div>
           </div>
         </div>
       </header>
@@ -66,8 +65,7 @@
             <b class="tv-media-badge">PLAYLIST</b>
           </div>
           <div class="tv-video-stage" id="tvVideoStage" data-state="empty">
-            <video id="tvPlaylistVideo" playsinline muted preload="metadata" aria-label="Vídeo da playlist da loja"></video>
-            <iframe id="tvInstagramFrame" title="Conteúdo do Instagram da loja" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" hidden></iframe>
+            <video id="tvPlaylistVideo" playsinline muted autoplay preload="metadata" aria-label="Vídeo da playlist da loja"></video>
             <div class="tv-video-placeholder" id="tvVideoPlaceholder">
               <span class="tv-video-placeholder-icon" aria-hidden="true">▶</span>
               <strong>Nenhum vídeo disponível</strong>

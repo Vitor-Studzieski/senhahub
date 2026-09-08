@@ -1,7 +1,7 @@
 import Script from "next/script";
-import HtmlTemplate from "../../_components/HtmlTemplate";
+import HtmlTemplate from "../../components/shared/HtmlTemplate";
 
-const TRACKING_ASSET_VERSION = "2026.08.18.3";
+const TRACKING_ASSET_VERSION = "2026.09.04.2";
 
 export const metadata = {
   title: "Acompanhar senha",

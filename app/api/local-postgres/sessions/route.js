@@ -1,5 +1,5 @@
-import { authenticateLocalRequest, hasValidCsrf } from "../../../../server/local-http-auth.js";
-import { upsertLocalDevice } from "../../../../server/local-repository.js";
+import { authenticateLocalRequest, hasValidCsrf } from "../../../../server/auth/local-http-auth.js";
+import { upsertLocalDevice } from "../../../../server/data/local-repository.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

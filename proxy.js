@@ -8,7 +8,6 @@ const pageRoles = {
   "/admin/setores": ["manager", "admin"],
   "/admin/totens": ["manager", "admin"],
   "/admin/usuarios": ["manager", "admin"],
-  "/iccf": ["manager", "admin"],
   "/tablet": ["tablet", "attendant"],
   "/tv/acougue": ["tv"]
 };
@@ -21,7 +20,6 @@ const legacyPageRedirects = {
   "/admin-setores.html": "/admin/setores",
   "/admin-totens.html": "/admin/totens",
   "/admin-usuarios.html": "/admin/usuarios",
-  "/iccf.html": "/iccf",
   "/totem.html": "/totem",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
@@ -63,7 +61,6 @@ function rolesForPath(pathname) {
   if (pageRoles[pathname]) return pageRoles[pathname];
   if (pathname === "/attendant" || pathname.startsWith("/attendant/")) return ["attendant", "manager", "admin"];
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return ["manager", "admin"];
-  if (pathname === "/iccf" || pathname.startsWith("/iccf/")) return ["manager", "admin"];
   if (pathname === "/tv/acougue") return ["tv"];
   if (pathname === "/") return pageRoles["/"];
   return null;
@@ -105,9 +102,10 @@ async function hasValidKioskSession(request) {
 
 async function loadCurrentUser(request) {
   const sessionToken = request.cookies.get("senhahub_auth")?.value || "";
+  const cookieHeader = request.cookies.toString() || request.headers.get("cookie") || "";
   try {
     const response = await fetch(new URL("/api/auth/me", request.url), {
-      headers: { cookie: request.headers.get("cookie") || "" },
+      headers: cookieHeader ? { cookie: cookieHeader } : {},
       cache: "no-store"
     });
     if (response.ok) {
@@ -196,7 +194,6 @@ export const config = {
     "/",
     "/attendant/:path*",
     "/admin/:path*",
-    "/iccf/:path*",
     "/tablet/:path*",
     "/tv/acougue",
     "/totem",
@@ -209,7 +206,6 @@ export const config = {
     "/admin-setores.html",
     "/admin-totens.html",
     "/admin-usuarios.html",
-    "/iccf.html",
     "/totem.html",
     "/install.html",
     "/acompanhar.html"

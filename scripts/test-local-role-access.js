@@ -1,8 +1,8 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { close } = require("../server/local-postgres");
-const { loginLocalUser } = require("../server/local-auth");
+const { close } = require("../server/data/local-postgres");
+const { loginLocalUser } = require("../server/auth/local-auth");
 
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 loadEnvFile(path.resolve(process.cwd(), ".env"));

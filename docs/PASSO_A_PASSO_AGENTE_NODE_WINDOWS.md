@@ -1,5 +1,7 @@
 # Passo a passo: agente Node.js de impressão no Windows
 
+> A operação atual do agente é o protocolo v2. Consulte primeiro [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md); as referências a token v1, polling ou heartbeat neste documento são históricas e servem apenas para a transição de destinos ainda não ativados.
+
 Projeto: SenhaHub Supermercado Pompeia
 Componente: agente Node.js + Bematech MP-4200 TH  
 Objetivo: instalar, testar, operar e diagnosticar a impressão de senhas físicas
@@ -33,7 +35,7 @@ O agente não cria a senha e não decide a fila. Essas responsabilidades ficam n
 | `scripts/print-agent.js` | Loop principal, consumo da fila e processamento do trabalho. |
 | `scripts/print-agent/runtime.js` | Carrega `.env.print-agent`, configura logs e journal. |
 | `scripts/print-agent/serial-printer.js` | Abre a porta serial e envia ESC/POS. |
-| `server/escpos-receipt.js` | Monta o conteúdo binário do recibo. |
+| `server/kiosk/escpos-receipt.js` | Monta o conteúdo binário do recibo. |
 | `.env.print-agent.example` | Modelo de configuração do agente. |
 | `windows/print-agent/install.ps1` | Instala a tarefa automática do Windows. |
 | `windows/print-agent/uninstall.ps1` | Remove a tarefa automática. |
@@ -190,6 +192,8 @@ PRINT_SERIAL_RTSCTS=0
 PRINT_STATUS_CHECK_ENABLED=0
 PRINT_STATUS_TIMEOUT_MS=1500
 PRINT_POLL_INTERVAL_MS=2000
+PRINT_FALLBACK_POLL_INTERVAL_MS=30000
+PRINT_HEARTBEAT_INTERVAL_MS=60000
 PRINT_RETRY_MAX_MS=60000
 PRINT_AGENT_STATE_DIR=./data/print-agent
 ```
@@ -202,6 +206,8 @@ Regras importantes:
 - O token deve ter pelo menos 32 caracteres.
 - `KIOSK_ID` deve corresponder ao cadastro do banco.
 - `KIOSK_PRINTER_PORT` deve ser a porta real encontrada no Windows.
+- `PRINT_POLL_INTERVAL_MS` é usado durante a implantação ou quando o Realtime estiver desabilitado.
+- Com o Realtime ativo, o fallback consulta a fila a cada 30 segundos e o heartbeat atualiza o totem a cada 60 segundos.
 - Nunca envie `.env.print-agent` para o Git ou para o navegador.
 
 O agente não precisa receber a `SUPABASE_SERVICE_ROLE_KEY`, senha de banco ou senha de usuário. Ele precisa somente da URL da API, do token exclusivo e da configuração da impressora.
@@ -531,7 +537,7 @@ O agente precisa apenas de URL da API, token exclusivo, ID do totem e configura�
 2. leia `scripts/print-agent.js` para entender o loop;
 3. leia `scripts/print-agent/runtime.js` para entender configuração e journal;
 4. leia `scripts/print-agent/serial-printer.js` para entender a COM3;
-5. leia `server/escpos-receipt.js` para entender os bytes do cupom;
+5. leia `server/kiosk/escpos-receipt.js` para entender os bytes do cupom;
 6. leia a migration `20260729154028_print_kiosk_jobs.sql` para entender a fila;
 7. execute `npm run print:agent:ports`;
 8. execute `npm run print:agent:test`;
@@ -544,8 +550,9 @@ O agente precisa apenas de URL da API, token exclusivo, ID do totem e configura�
 - [Código principal do agente](../scripts/print-agent.js)
 - [Runtime do agente](../scripts/print-agent/runtime.js)
 - [Comunicação serial](../scripts/print-agent/serial-printer.js)
-- [Recibo ESC/POS](../server/escpos-receipt.js)
-- [Serviço de sessão do totem](../server/print-kiosk-service.js)
-- [Runtime Supabase](../server/supabase-runtime.js)
+- [Recibo ESC/POS](../server/kiosk/escpos-receipt.js)
+- [Serviço de sessão do totem](../server/kiosk/print-kiosk-service.js)
+- [Runtime Supabase](../server/integrations/supabase-runtime.js)
 - [Migration da fila](../supabase/migrations/20260729154028_print_kiosk_jobs.sql)
 - [Instalador Windows](../windows/print-agent/install.ps1)
+# Agente Node no Windows

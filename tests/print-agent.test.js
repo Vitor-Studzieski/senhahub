@@ -5,9 +5,15 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { buildTicketReceipt } = require("../server/escpos-receipt");
-const { loadKioskConfiguration, printJobDto } = require("../server/print-kiosk-service");
-const { assertPrintableJob, processJob, receiptPayload } = require("../scripts/print-agent");
+const { buildTicketReceipt } = require("../server/kiosk/escpos-receipt");
+const {
+  loadKioskConfiguration,
+  loadTabletPrinterConfiguration,
+  printJobDto,
+  verifyPrintAgentRequest
+} = require("../server/kiosk/print-kiosk-service");
+const { assertPrintableJob, receiptPayload } = require("../scripts/print-agent");
+const { PrintRealtimeSignal } = require("../scripts/print-agent/realtime");
 const { SerialPrinter, queryStatus } = require("../scripts/print-agent/serial-printer");
 const {
   PrintedJobJournal,
@@ -77,7 +83,7 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.doesNotMatch(html, /Acompanhe sua posição pelo celular/);
   assert.doesNotMatch(html, /Escaneie o QR Code para acompanhar sua fila/);
   assert.match(html, /id="backToTypeFromSectorsButton"/);
-  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.08\.21\.4"/);
+  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.08\.1"/);
   assert.match(page, /`\/totem\.js\?v=\$\{TOTEM_ASSET_VERSION\}`/);
   assert.match(html, /id="issueTicketsButton"/);
   assert.match(html, /id="resultTickets"/);
@@ -146,12 +152,79 @@ test("carrega configuracao local sem sobrescrever variaveis do processo", () => 
   }
 });
 
+test("configura Realtime e reconciliacao rara sem heartbeat HTTP", () => {
+  const config = readAgentConfiguration({
+    NODE_ENV: "test",
+    PRINT_API_URL: "https://senhahub.vercel.app",
+    PRINT_AGENT_TOKEN: "abcdefghijklmnopqrstuvwxyz1234567890",
+    KIOSK_ID: "totem-pompeia-01",
+    SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_ANON_KEY: "public-key",
+    PRINT_REALTIME_ENABLED: "1"
+  });
+
+  assert.equal(config.realtimeEnabled, true);
+  assert.equal(config.realtimeTopic, "senhahub:print:totem-pompeia-01");
+  assert.equal(config.reconciliationMs, 600000);
+  assert.equal(config.pollIntervalMs, undefined);
+  assert.equal(config.heartbeatIntervalMs, undefined);
+});
+
+test("permite HTTP somente no loopback para o agente local", () => {
+  const config = readAgentConfiguration({ NODE_ENV: "development", PRINT_API_URL: "http://localhost:3000" });
+  assert.equal(config.apiUrl, "http://localhost:3000");
+  assert.throws(() => readAgentConfiguration({ NODE_ENV: "development", PRINT_API_URL: "http://10.0.0.5:3000" }), /HTTPS/);
+});
+
+test("mantem Realtime habilitado para descoberta protegida sem expor a chave no agente", () => {
+  const config = readAgentConfiguration({
+    NODE_ENV: "test",
+    PRINT_API_URL: "https://senhahub.vercel.app",
+    PRINT_AGENT_TOKEN: "abcdefghijklmnopqrstuvwxyz1234567890",
+    KIOSK_ID: "totem-pompeia-01"
+  });
+
+  assert.equal(config.realtimeEnabled, true);
+  assert.equal(new PrintRealtimeSignal({
+    url: config.supabaseUrl,
+    key: config.supabaseKey,
+    topic: config.realtimeTopic
+  }).enabled, false);
+});
+
 test("mantem o totem Pompeia na Loja 2 mesmo com configuracao antiga", () => {
   const configuration = loadKioskConfiguration({
     KIOSK_ID: "totem-pompeia-01",
     KIOSK_STORE_CODE: "loja-1"
   });
   assert.equal(configuration.storeCode, "loja-2");
+});
+
+test("configura a impressora Bluetooth do tablet somente para o Acougue da Loja 2", () => {
+  const configuration = loadTabletPrinterConfiguration({});
+  assert.equal(configuration.id, "tablet-pompeia-01");
+  assert.equal(configuration.mode, "sector");
+  assert.equal(configuration.sectorId, "acougue-loja-2");
+  assert.equal(configuration.storeCode, "loja-2");
+  assert.equal(configuration.printerName, "POS-5890A-L");
+  assert.equal(configuration.printerPort, "BLUETOOTH");
+  assert.equal(configuration.paperWidthMm, 58);
+});
+
+test("aceita tokens separados para o totem e a impressora Bluetooth do tablet", () => {
+  const tabletToken = "tablet-token-abcdefghijklmnopqrstuvwxyz-1234567890";
+  const result = verifyPrintAgentRequest(
+    new Headers({
+      "x-print-agent-token": tabletToken,
+      "x-print-agent-kiosk-id": "tablet-pompeia-01"
+    }),
+    {
+      KIOSK_ID: "totem-pompeia-01",
+      PRINT_AGENT_TOKEN: "totem-token-abcdefghijklmnopqrstuvwxyz-1234567890",
+      PRINT_AGENT_KIOSKS_JSON: JSON.stringify({ "tablet-pompeia-01": tabletToken })
+    }
+  );
+  assert.deepEqual(result, { ok: true, kioskId: "tablet-pompeia-01" });
 });
 
 test("usa a porta configurada pelo agente ao criar a impressora", () => {
@@ -179,46 +252,6 @@ test("consulta status ESC/POS pela porta serial", async () => {
     setImmediate(() => port.emit("data", Buffer.from([0x12])));
   };
   assert.equal(await queryStatus(port, 2, 100), 0x12);
-});
-
-test("registra falha na API quando a impressora rejeita o trabalho", async () => {
-  const calls = [];
-  const job = sampleJob();
-  const printer = { print: async () => { throw new Error("COM3 indisponivel"); } };
-  const journal = { has: () => false, add: () => assert.fail("nao deve registrar") };
-  const logger = { info: () => {}, error: () => {} };
-  const finish = async (_config, jobId, success, error) => calls.push({ jobId, success, error });
-
-  await assert.rejects(
-    processJob(job, {}, printer, journal, logger, undefined, finish),
-    /COM3 indisponivel/
-  );
-  assert.deepEqual(calls, [{ jobId: job.id, success: false, error: "COM3 indisponivel" }]);
-});
-
-test("nao marca impressao como falha se apenas a confirmacao da API cair", async () => {
-  const calls = [];
-  let printed = false;
-  let journaled = false;
-  const job = sampleJob();
-  const printer = { print: async () => { printed = true; } };
-  const journal = {
-    has: () => false,
-    add: () => { journaled = true; }
-  };
-  const logger = { info: () => {}, error: () => {} };
-  const finish = async (_config, jobId, success) => {
-    calls.push({ jobId, success });
-    throw new Error("internet indisponivel");
-  };
-
-  await assert.rejects(
-    processJob(job, {}, printer, journal, logger, undefined, finish),
-    /internet indisponivel/
-  );
-  assert.equal(printed, true);
-  assert.equal(journaled, true);
-  assert.deepEqual(calls, [{ jobId: job.id, success: true }]);
 });
 
 test("usa a data de criacao quando um trabalho antigo nao possui horario valido", () => {

@@ -1,6 +1,6 @@
-import { getCookie } from "../../../../../server/local-http-auth.js";
-import { getLocalPrintJob, localKioskSecret } from "../../../../../server/local-kiosk.js";
-import { verifyKioskSession } from "../../../../../server/print-kiosk-service.js";
+import { getCookie } from "../../../../../server/auth/local-http-auth.js";
+import { getLocalPrintJob, localKioskSecret } from "../../../../../server/kiosk/local-kiosk.js";
+import { verifyKioskSession } from "../../../../../server/kiosk/print-kiosk-service.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

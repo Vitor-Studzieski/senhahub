@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { close, query, withTransaction } = require("../server/local-postgres");
-const { insertTicketInTransaction } = require("../server/local-repository");
+const { close, query, withTransaction } = require("../server/data/local-postgres");
+const { insertTicketInTransaction } = require("../server/data/local-repository");
 
 const ROOT = path.resolve(__dirname, "..");
 

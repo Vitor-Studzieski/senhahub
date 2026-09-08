@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { checkConnection, close, query } = require("../server/local-postgres");
-const { validateProductionEnvironment } = require("../server/production-readiness");
+const { checkConnection, close, query } = require("../server/data/local-postgres");
+const { validateProductionEnvironment } = require("../server/platform/production-readiness");
 
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 loadEnvFile(path.resolve(process.cwd(), ".env"));
@@ -9,7 +9,6 @@ loadEnvFile(path.resolve(process.cwd(), ".env"));
 const REQUIRED_TABLES = [
   "public.app_sessions",
   "public.calls",
-  "public.cart_items",
   "public.cron_executions",
   "public.devices",
   "public.events",
@@ -26,7 +25,6 @@ const REQUIRED_TABLES = [
   "public.sectors",
   "public.security_rate_limits",
   "public.services",
-  "public.shopping_signals",
   "public.ticket_counters",
   "public.tickets",
   "public.web_push_subscriptions",

@@ -1,5 +1,5 @@
-import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/local-http-auth.js";
-import { consumeLocalPushRateLimit, subscribeLocalPush, verifyLocalPushOrigin } from "../../../../../server/local-push.js";
+import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/auth/local-http-auth.js";
+import { consumeLocalPushRateLimit, subscribeLocalPush, verifyLocalPushOrigin } from "../../../../../server/notifications/local-push.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

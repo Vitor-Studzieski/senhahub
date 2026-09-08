@@ -1,8 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { close, query } = require("../server/local-postgres");
-const { hashSessionToken } = require("../server/local-auth");
+const { close, query } = require("../server/data/local-postgres");
+const { hashSessionToken } = require("../server/auth/local-auth");
 
 const ROOT = path.resolve(__dirname, "..");
 loadEnvFile(path.join(ROOT, ".env.local"));
@@ -18,7 +18,6 @@ async function main() {
   let userId = null;
   let originalRole = null;
   let createdUserId = null;
-  let cartItemId = null;
   try {
     const profile = await query("SELECT id, role FROM public.profiles WHERE lower(email) = lower($1)", [email]);
     if (!profile.rowCount) throw new Error("Usuário de teste não encontrado.");
@@ -43,7 +42,6 @@ async function main() {
     const headers = { cookie: `${authPair}; ${csrfPair}`, "x-csrf-token": csrfToken, "content-type": "application/json" };
 
     const metrics = await getJson(`${baseUrl}/api/metrics?date=2026-08-19`, headers);
-    const insights = await getJson(`${baseUrl}/api/offer-insights?days=30`, headers);
     const users = await getJson(`${baseUrl}/api/users`, headers);
     const history = await getJson(`${baseUrl}/api/history`, headers);
     const events = await fetch(`${baseUrl}/api/events?scope=staff`, { headers });
@@ -77,25 +75,6 @@ async function main() {
     if (createUser.status !== 201 || !createUserBody.user?.id) throw new Error(createUserBody.error || "Criação de usuário falhou.");
     createdUserId = createUserBody.user.id;
 
-    const addCart = await fetch(`${baseUrl}/api/cart/items`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ productId: `legacy-${crypto.randomUUID()}`, productName: "Produto de smoke test", sectorName: sector.name, price: "R$ 1,00" })
-    });
-    const addCartBody = await addCart.json();
-    if (addCart.status !== 201 || !addCartBody.item?.id) throw new Error(addCartBody.error || "Inclusão no carrinho falhou.");
-    cartItemId = addCartBody.item.id;
-
-    const patchCart = await fetch(`${baseUrl}/api/cart/items/${encodeURIComponent(cartItemId)}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ quantity: 2 })
-    });
-    if (!patchCart.ok || (await patchCart.json()).item?.quantity !== 2) throw new Error("Atualização do carrinho falhou.");
-    const deleteCart = await fetch(`${baseUrl}/api/cart/items/${encodeURIComponent(cartItemId)}`, { method: "DELETE", headers });
-    if (!deleteCart.ok) throw new Error("Remoção do carrinho falhou.");
-    cartItemId = null;
-
     const forgot = await fetch(`${baseUrl}/api/auth/forgot-password`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -118,21 +97,17 @@ async function main() {
 
     console.log(JSON.stringify({
       metricsHttp: metrics.status,
-      insightsHttp: insights.status,
       usersHttp: users.status,
       historyHttp: history.status,
       eventsHttp: events.status,
       sectorHttp: sectorResponse.status,
       createUserHttp: createUser.status,
-      cartPatchHttp: patchCart.status,
-      cartDeleteHttp: deleteCart.status,
       forgotPasswordHttp: forgot.status,
       changePasswordInvalidHttp: changePassword.status,
       resetPasswordInvalidHttp: resetPassword.status,
       routesMigrated: true
     }, null, 2));
   } finally {
-    if (cartItemId) await query("DELETE FROM public.cart_items WHERE id = $1", [cartItemId]);
     if (createdUserId) {
       await query("DELETE FROM public.profiles WHERE id = $1", [createdUserId]);
       await query("DELETE FROM auth.users WHERE id = $1", [createdUserId]);

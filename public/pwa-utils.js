@@ -1,7 +1,12 @@
 (function exposeSenhaHubPwaUtils(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) root.SenhaHubPwaUtils = api;
+  if (root) {
+    root.SenhaHubPwaUtils = api;
+    if (root.document?.dispatchEvent && typeof root.Event === "function") {
+      root.dispatchEvent(new root.Event("senhahub:pwa-utils-ready"));
+    }
+  }
 })(typeof self !== "undefined" ? self : globalThis, function createSenhaHubPwaUtils() {
   const ALLOWED_NOTIFICATION_VIEWS = new Set(["status", "account"]);
 

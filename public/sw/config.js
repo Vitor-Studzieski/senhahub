@@ -1,9 +1,9 @@
 self.SENHAHUB_SW_CONFIG = Object.freeze({
-  version: "2026.08.20.3",
+  version: "2026.09.04.1",
   cachePrefix: "senhahub",
-  precacheName: "senhahub-precache-2026.08.20.3",
-  staticCacheName: "senhahub-static-2026.08.20.3",
-  visualCacheName: "senhahub-visual-2026.08.20.3",
+  precacheName: "senhahub-precache-2026.09.04.1",
+  staticCacheName: "senhahub-static-2026.09.04.1",
+  visualCacheName: "senhahub-visual-2026.09.04.1",
   maxStaticEntries: 80,
   maxVisualEntries: 60,
   navigationTimeoutMs: 6000,

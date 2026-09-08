@@ -17,9 +17,16 @@ async function initAdmin() {
   document.querySelector("#userForm")?.addEventListener("submit", createUser);
   document.querySelector("#userRole")?.addEventListener("change", updateUserRoleFields);
   updateUserRoleFields();
+  document.querySelector("#refreshPrintReview")?.addEventListener("click", loadPrintReview);
+  if(document.querySelector("#printReviewList")) await loadPrintReview();
   document.querySelector("#sectorFilter")?.addEventListener("change", renderQueueTable);
   document.querySelector("#statusFilter")?.addEventListener("change", renderQueueTable);
-  document.querySelector("#refreshDashboardButton")?.addEventListener("click", refreshDashboard);
+  document.querySelector("#refreshDashboardButton")?.addEventListener("click", () => {
+    refreshDashboard().catch((error) => {
+      const alerts = document.querySelector("#dashboardAlerts");
+      if (alerts) alerts.innerHTML = `<div class="manager-alert manager-alert-attention"><span class="manager-alert-mark">!</span><div><strong>Não foi possível atualizar o painel</strong><p>${escapeHtml(error.message || "Erro de comunicação")}</p></div></div>`;
+    });
+  });
   const metricsDateInput = document.querySelector("#metricsDate");
   if (metricsDateInput) {
     metricsDateInput.value = businessToday();
@@ -124,6 +131,7 @@ function renderAdmin() {
               </select>
             </label>
             <button class="manager-button" type="submit">Salvar setor</button>
+            <p class="manager-form-feedback" data-sector-feedback role="status" aria-live="polite"></p>
           </form>
         </details>
       </article>
@@ -429,32 +437,85 @@ function updateUserRoleFields() {
 async function saveSector(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const feedback = form.querySelector("[data-sector-feedback]");
+  if (form.dataset.submitting === "true") return;
+  form.dataset.submitting = "true";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Salvando…";
+  }
+  if (feedback) {
+    feedback.className = "manager-form-feedback";
+    feedback.textContent = "Salvando configuração…";
+  }
   const data = Object.fromEntries(new FormData(form).entries());
   data.queueSize = Number(data.queueSize);
   data.averageServiceSeconds = Math.max(1, (Number(data.averageServiceMinutes || 0) * 60) + Number(data.averageServiceRestSeconds || 0));
   delete data.averageServiceMinutes;
   delete data.averageServiceRestSeconds;
   data.capacity = Number(data.capacity);
-  await api(`/api/sectors/${form.dataset.sectorForm}`, {
-    method: "PUT",
-    body: data
-  });
-  const requests = [loadAdminState()];
-  if (needsAdminMetrics()) requests.push(loadMetrics());
-  await Promise.all(requests);
+  try {
+    await api(`/api/sectors/${form.dataset.sectorForm}`, {
+      method: "PUT",
+      body: data
+    });
+    const requests = [loadAdminState()];
+    if (needsAdminMetrics()) requests.push(loadMetrics());
+    await Promise.all(requests);
+    if (feedback) {
+      feedback.className = "manager-form-feedback success";
+      feedback.textContent = "Setor atualizado com sucesso.";
+    }
+  } catch (error) {
+    if (feedback) {
+      feedback.className = "manager-form-feedback error";
+      feedback.textContent = error.message || "Não foi possível salvar o setor.";
+    }
+  } finally {
+    form.dataset.submitting = "false";
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Salvar setor";
+    }
+  }
 }
 
 async function createUser(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const feedback = form.querySelector("[data-user-feedback]");
+  if (form.dataset.submitting === "true") return;
+  form.dataset.submitting = "true";
+  if (button) button.disabled = true;
+  if (feedback) {
+    feedback.className = "manager-form-feedback";
+    feedback.textContent = "Criando usuário…";
+  }
   const data = Object.fromEntries(new FormData(form).entries());
   data.sectorIds = new FormData(form).getAll("sectorIds");
-  await api("/api/users", {
-    method: "POST",
-    body: data
-  });
-  form.reset();
-  await loadUsers();
+  try {
+    await api("/api/users", {
+      method: "POST",
+      body: data
+    });
+    form.reset();
+    updateUserRoleFields();
+    await loadUsers();
+    if (feedback) {
+      feedback.className = "manager-form-feedback success";
+      feedback.textContent = "Usuário criado com sucesso.";
+    }
+  } catch (error) {
+    if (feedback) {
+      feedback.className = "manager-form-feedback error";
+      feedback.textContent = error?.message || "Não foi possível criar o usuário.";
+    }
+  } finally {
+    form.dataset.submitting = "false";
+    if (button) button.disabled = false;
+  }
 }
 
 function statusLabel(status) {
@@ -502,7 +563,7 @@ function initials(value) {
 async function api(path, options = {}) {
   const method = options.method || "GET";
   const mutation = method !== "GET";
-  if (mutation) window.senhaHubPwa?.markCriticalOperation(true);
+  if (mutation) notifyPwa("markCriticalOperation", true);
   try {
     const response = await fetch(path, {
       method,
@@ -513,14 +574,22 @@ async function api(path, options = {}) {
       body: options.body ? JSON.stringify(options.body) : undefined
     });
     const payload = await parseApiPayload(response);
-    window.senhaHubPwa?.reportNetworkSuccess();
+    notifyPwa("reportNetworkSuccess");
     if (!response.ok || payload.error) throw new Error(payload.error || "Falha na API.");
     return payload;
   } catch (error) {
-    window.senhaHubPwa?.reportNetworkFailure();
+    notifyPwa("reportNetworkFailure");
     throw error;
   } finally {
-    if (mutation) window.senhaHubPwa?.markCriticalOperation(false);
+    if (mutation) notifyPwa("markCriticalOperation", false);
+  }
+}
+
+function notifyPwa(method, ...args) {
+  try {
+    window.senhaHubPwa?.[method]?.(...args);
+  } catch {
+    // PWA telemetry is optional and must not change the result of an API call.
   }
 }
 
@@ -586,4 +655,35 @@ async function logout() {
   await window.senhaHubPwa?.prepareLogout();
   await api("/api/auth/logout", { method: "POST" });
   location.href = "/login";
+}
+
+
+async function loadPrintReview() {
+  const container=document.querySelector('#printReviewList');
+  if(!container)return;
+  try {
+    const metrics=await api('/api/observability');
+    const rows=metrics.printing?.reviewJobs || [];
+    container.innerHTML=rows.length ? rows.map(job=>`
+      <form class="manager-alert manager-alert-attention" data-print-review="${escapeHtml(job.id)}">
+        <div><strong>Resultado incerto — ${escapeHtml(job.kiosk_id)}</strong>
+          <p>${escapeHtml(job.last_error || 'Confira a impressora antes de continuar.')}</p>
+          <label>Decisão <select name="action"><option value="confirm_printed">O cupom foi impresso</option><option value="resolve_failed">Encerrar sem reimprimir</option><option value="reprint">Autorizar uma reimpressão</option></select></label>
+          <label>Motivo <input name="reason" required minlength="5" maxlength="500"></label>
+          <label><input name="writerStopped" type="checkbox" required> Parei o agente anterior e conferi o papel.</label>
+          <button class="manager-button" type="submit" ${currentUser?.role==='admin'?'':'disabled'}>Registrar decisão</button>
+          <p data-print-feedback></p>
+        </div>
+      </form>`).join('') : '<p>Nenhuma impressão com resultado incerto.</p>';
+    for(const form of container.querySelectorAll('[data-print-review]'))form.addEventListener('submit',async event=>{
+      event.preventDefault();const button=form.querySelector('button');button.disabled=true;
+      // Preserve request identity across a lost acknowledgement while this form is displayed.
+      form.dataset.requestId ||= crypto.randomUUID();
+      try {
+        const fields=new FormData(form);
+        await api('/api/print/v2/resolve',{method:'POST',body:{jobId:form.dataset.printReview,requestId:form.dataset.requestId,action:fields.get('action'),reason:fields.get('reason'),writerStopped:fields.get('writerStopped')==='on'}});
+        await loadPrintReview();
+      }catch(error){form.querySelector('[data-print-feedback]').textContent=error.message;button.disabled=false;}
+    });
+  }catch(error){container.textContent='Consulta das impressões indisponível: '+error.message;}
 }

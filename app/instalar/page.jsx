@@ -1,5 +1,5 @@
 import Script from "next/script";
-import HtmlTemplate from "../_components/HtmlTemplate";
+import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export const metadata = {
   title: "Instalar aplicativo",

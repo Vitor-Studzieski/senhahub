@@ -1,12 +1,12 @@
 import Script from "next/script";
-import HtmlTemplate from "../_components/HtmlTemplate";
+import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export const metadata = {
   title: "Totem de senhas",
   description: "Emissao de senhas fisicas do SenhaHub."
 };
 
-const TOTEM_ASSET_VERSION = "2026.08.21.4";
+const TOTEM_ASSET_VERSION = "2026.09.08.1";
 
 export default function TotemPage() {
   return (

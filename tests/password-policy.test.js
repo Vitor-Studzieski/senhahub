@@ -5,7 +5,7 @@ const {
   evaluatePasswordPolicy,
   isCommonPassword,
   isStrongPassword
-} = require("../server/password-policy");
+} = require("../server/auth/password-policy");
 
 const safePassword = "Azul!Mercado2026";
 

@@ -22,7 +22,6 @@ Este é o único documento para acompanhar tarefas do projeto. Use `[ ]` para pe
 
 - [x] Renomeação completa de Fila Zero para SenhaHub no código, telas, assets, documentação, testes e configurações.
 - [x] Remoção do sufixo `mauve` do domínio público da Vercel.
-- [x] Ajustes visuais da Dashboard ICCF, incluindo campos, bordas, linhas delimitadoras e hierarquia visual.
 - [x] Ajustes visuais do Totem, incluindo cards, alinhamento dos textos, frases de espera, setas, cores e QR Code.
 - [x] PWA instalável, Service Worker, cache offline e infraestrutura de Web Push implementados.
 - [x] Reset diário das filas e registro de métricas por dia implementados.
@@ -42,7 +41,7 @@ Este é o único documento para acompanhar tarefas do projeto. Use `[ ]` para pe
 ## Migração para PostgreSQL local — software concluído
 
 - [x] Adaptador local PostgreSQL com pool, transações e health check `/api/ready`.
-- [x] Rotas locais de autenticação, sessões, CSRF, fila, carrinho, atendimento, totem, impressão e Web Push.
+- [x] Rotas locais de autenticação, sessões, CSRF, fila, atendimento, totem, impressão e Web Push.
 - [x] Aliases da aplicação configuráveis para substituir os caminhos operacionais sem alterar as telas.
 - [x] Autorização por perfil/setor, cadastro público bloqueado por padrão em produção e revogação de sessões.
 - [x] Manutenção automática local: sessões expiradas, reset diário de filas, ausência no atendimento e standby.
@@ -84,7 +83,6 @@ Objetivo: construir e validar uma arquitetura híbrida para o SenhaHub, conectan
 ## P1 — Produto e experiência
 
 - [x] Criar template de TV de atendimento, com senhas reais em tempo real, clima local, playlist de vídeos configurável e credenciais com acesso restrito à página `/tv/acougue`, sem produtos ou ofertas simuladas.
-- [x] Ajustar a nova estrutura visual da Dashboard ICCF, incluindo campos, linhas delimitadoras e hierarquia dos indicadores.
 - [x] Ajustar a padronização visual do Totem, incluindo alinhamento, posicionamento, cores, setas e QR Code.
 - [x] Remodelar o fluxo do Totem: atendimento normal ou preferencial vem primeiro; categorias preferenciais e setores vêm depois; a seleção de um ou mais setores leva diretamente à emissão, sem retornar ao tipo de senha.
 - [ ] Trocar as logos do atendimento preferencial no Totem pelas versões corretas, mantendo a identificação visual clara e consistente.
@@ -100,7 +98,6 @@ Objetivo: construir e validar uma arquitetura híbrida para o SenhaHub, conectan
 - [ ] Completar CRUD granular de setores e permissões.
 - [ ] Definir o comportamento ao fechar um setor com fila ativa.
 - [ ] Validar a regra operacional de atendimento preferencial e registrar auditoria da classificação.
-- [ ] Expandir o ICCF com filtros, período selecionável e exportação.
 - [ ] Reativar MFA/TOTP nativo do Supabase para perfis administrativos, com cadastro inicial por QR Code, desafio temporário, limite de tentativas e sessão liberada somente após a verificação. A implementação atual está temporariamente desativada para simplificar o acesso.
 - [ ] Validar MFA/TOTP no Supabase e em produção com cada conta administrativa, incluindo recuperação segura do acesso.
 

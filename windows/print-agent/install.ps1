@@ -42,6 +42,11 @@ try {
 # O token fica legivel somente para SYSTEM e administradores locais.
 & icacls $ConfigPath /inheritance:r /grant:r "*S-1-5-18:(R)" "*S-1-5-32-544:(R)" | Out-Null
 
+$StatePath = Join-Path $ProjectPath "data\print-agent"
+New-Item -ItemType Directory -Force -Path $StatePath | Out-Null
+# Inherited ACL covers the durable SQLite session, journal, WAL and SHM files.
+& icacls $StatePath /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" /T | Out-Null
+
 $Arguments = "`"$AgentPath`""
 $Action = New-ScheduledTaskAction `
   -Execute $NodePath `

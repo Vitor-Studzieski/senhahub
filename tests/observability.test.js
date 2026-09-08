@@ -6,7 +6,7 @@ const {
   createRequestId,
   durationMs,
   summarizePrintAttempts
-} = require("../server/observability");
+} = require("../server/platform/observability");
 
 test("preserva um request ID válido e rejeita cabeçalhos inseguros", () => {
   assert.equal(createRequestId({ "x-request-id": "req-123_abc" }), "req-123_abc");

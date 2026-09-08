@@ -1,6 +1,6 @@
-import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/local-http-auth.js";
-import { getLocalKioskStatus, pairLocalKiosk } from "../../../../../server/local-kiosk.js";
-import { kioskCookies } from "../../../../../server/print-kiosk-service.js";
+import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/auth/local-http-auth.js";
+import { getLocalKioskStatus, pairLocalKiosk } from "../../../../../server/kiosk/local-kiosk.js";
+import { kioskCookies } from "../../../../../server/kiosk/print-kiosk-service.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

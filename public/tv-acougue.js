@@ -5,39 +5,36 @@
   const WAITING_STATUSES = new Set(["aguardando", "proximo", "espera_inteligente", "standby"]);
   const WEATHER_CONFIG = {
     city: "Pompéia, SP",
-    latitude: -22.10883,
-    longitude: -50.17208,
-    timezone: "America/Sao_Paulo"
   };
   const WEATHER_CODES = {
-    0: { label: "Céu limpo", icon: "☀" },
-    1: { label: "Predominantemente limpo", icon: "◐" },
-    2: { label: "Parcialmente nublado", icon: "◑" },
-    3: { label: "Nublado", icon: "☁" },
-    45: { label: "Neblina", icon: "≋" },
-    48: { label: "Neblina congelante", icon: "≋" },
-    51: { label: "Garoa leve", icon: "☂" },
-    53: { label: "Garoa", icon: "☂" },
-    55: { label: "Garoa forte", icon: "☂" },
-    56: { label: "Garoa congelante", icon: "❄" },
-    57: { label: "Garoa congelante forte", icon: "❄" },
-    61: { label: "Chuva leve", icon: "☂" },
-    63: { label: "Chuva", icon: "☂" },
-    65: { label: "Chuva forte", icon: "☂" },
-    66: { label: "Chuva congelante", icon: "❄" },
-    67: { label: "Chuva congelante forte", icon: "❄" },
-    71: { label: "Neve leve", icon: "❄" },
-    73: { label: "Neve", icon: "❄" },
-    75: { label: "Neve forte", icon: "❄" },
-    77: { label: "Granizo", icon: "❄" },
-    80: { label: "Pancadas de chuva", icon: "☂" },
-    81: { label: "Pancadas de chuva", icon: "☂" },
-    82: { label: "Pancadas fortes", icon: "☂" },
-    85: { label: "Pancadas de neve", icon: "❄" },
-    86: { label: "Pancadas de neve fortes", icon: "❄" },
-    95: { label: "Trovoada", icon: "⚡" },
-    96: { label: "Trovoada com granizo", icon: "⚡" },
-    99: { label: "Trovoada forte", icon: "⚡" }
+    0: { label: "Céu limpo" },
+    1: { label: "Predominantemente limpo" },
+    2: { label: "Parcialmente nublado" },
+    3: { label: "Nublado" },
+    45: { label: "Neblina" },
+    48: { label: "Neblina congelante" },
+    51: { label: "Garoa leve" },
+    53: { label: "Garoa" },
+    55: { label: "Garoa forte" },
+    56: { label: "Garoa congelante" },
+    57: { label: "Garoa congelante forte" },
+    61: { label: "Chuva leve" },
+    63: { label: "Chuva" },
+    65: { label: "Chuva forte" },
+    66: { label: "Chuva congelante" },
+    67: { label: "Chuva congelante forte" },
+    71: { label: "Neve leve" },
+    73: { label: "Neve" },
+    75: { label: "Neve forte" },
+    77: { label: "Granizo" },
+    80: { label: "Pancadas de chuva" },
+    81: { label: "Pancadas de chuva" },
+    82: { label: "Pancadas fortes" },
+    85: { label: "Pancadas de neve" },
+    86: { label: "Pancadas de neve fortes" },
+    95: { label: "Trovoada" },
+    96: { label: "Trovoada com granizo" },
+    99: { label: "Trovoada forte" }
   };
   const state = {
     lastCall: "",
@@ -56,10 +53,8 @@
     clock: document.querySelector("#tvClock"),
     date: document.querySelector("#tvDate"),
     weather: document.querySelector("#tvWeather"),
-    weatherIcon: document.querySelector("#tvWeatherIcon"),
     weatherTemperature: document.querySelector("#tvWeatherTemperature"),
     weatherCondition: document.querySelector("#tvWeatherCondition"),
-    connection: document.querySelector("#tvConnection"),
     queueTitle: document.querySelector("#tvQueueTitle"),
     queueSubtitle: document.querySelector("#tvQueueSubtitle"),
     waitingSubtitle: document.querySelector("#tvWaitingSubtitle"),
@@ -73,7 +68,6 @@
     feedback: document.querySelector("#tvFeedback"),
     videoStage: document.querySelector("#tvVideoStage"),
     video: document.querySelector("#tvPlaylistVideo"),
-    instagramFrame: document.querySelector("#tvInstagramFrame"),
     videoPlaceholder: document.querySelector("#tvVideoPlaceholder"),
     videoLabel: document.querySelector("#tvVideoLabel"),
     videoCounter: document.querySelector("#tvVideoCounter"),
@@ -90,28 +84,23 @@
     elements.video.addEventListener("error", handleVideoError);
     elements.video.addEventListener("loadeddata", handleVideoReady);
   }
-  if (elements.instagramFrame) elements.instagramFrame.addEventListener("load", handleInstagramReady);
   window.setInterval(updateClock, 1000);
   loadState();
   state.timer = window.setInterval(loadState, POLL_INTERVAL_MS);
   state.weatherTimer = window.setInterval(loadWeather, WEATHER_REFRESH_MS);
   state.playlistTimer = window.setInterval(loadPlaylist, PLAYLIST_REFRESH_MS);
   window.addEventListener("online", loadState);
-  window.addEventListener("offline", () => setConnection("offline", "Sem conexão"));
 
   async function loadState() {
     if (state.requestInFlight) return;
     state.requestInFlight = true;
-    setConnection("loading", "Atualizando");
     try {
       const payload = await api("/api/display/state");
       const sector = payload.sectors?.[0];
       if (!sector) throw new Error("A fila deste atendimento ainda não está disponível.");
       renderQueue(sector);
-      setConnection("online", "Online");
       if (elements.feedback) elements.feedback.textContent = "";
     } catch (error) {
-      setConnection("offline", "Falha na fila");
       if (elements.feedback) elements.feedback.textContent = error.message || "Não foi possível atualizar a fila.";
     } finally {
       state.requestInFlight = false;
@@ -164,15 +153,11 @@
   }
 
   async function loadWeather() {
-    const query = new URLSearchParams({
-      latitude: String(WEATHER_CONFIG.latitude),
-      longitude: String(WEATHER_CONFIG.longitude),
-      current: "temperature_2m,weather_code",
-      temperature_unit: "celsius",
-      timezone: WEATHER_CONFIG.timezone
-    });
     try {
-      const response = await fetch(`https://api.open-meteo.com/v1/forecast?${query}`, { cache: "no-store" });
+      const response = await fetch("/api/weather", {
+        cache: "no-store",
+        headers: { accept: "application/json" }
+      });
       const payload = await response.json().catch(() => ({}));
       const current = payload.current;
       if (!response.ok || !current || !Number.isFinite(Number(current.temperature_2m))) throw new Error("Clima indisponível");
@@ -183,9 +168,8 @@
   }
 
   function renderWeather(current, fallback) {
-    const description = WEATHER_CODES[Number(current?.weather_code)] || { label: "Condição não informada", icon: "☁" };
+    const description = WEATHER_CODES[Number(current?.weather_code)] || { label: "Condição não informada" };
     if (elements.weather) elements.weather.dataset.state = fallback ? "offline" : "online";
-    if (elements.weatherIcon) elements.weatherIcon.textContent = current ? description.icon : "—";
     if (elements.weatherTemperature) elements.weatherTemperature.textContent = current ? `${Math.round(Number(current.temperature_2m))}°C` : "--°C";
     if (elements.weatherCondition) elements.weatherCondition.textContent = current ? `${description.label} · ${WEATHER_CONFIG.city}` : "Clima indisponível";
   }
@@ -201,13 +185,14 @@
           id: String(item.id || `video-${index + 1}`),
           title: String(item.title || `Vídeo ${index + 1}`).trim(),
           src: item.src.trim(),
+          videoUrl: typeof item.videoUrl === "string" ? item.videoUrl.trim() : "",
           type: item.type === "instagram" || isInstagramUrl(item.src) ? "instagram" : "video",
           orientation: item.orientation === "portrait" ? "portrait" : "landscape",
           order: Number.isFinite(Number(item.order)) ? Number(item.order) : index,
           durationSeconds: Math.max(15, Number(item.durationSeconds) || 30)
         }))
         .sort((left, right) => left.order - right.order);
-      const signature = playlist.map((item) => `${item.id}|${item.src}|${item.type}|${item.orientation}|${item.order}|${item.title}|${item.durationSeconds}`).join("||");
+      const signature = playlist.map((item) => `${item.id}|${item.src}|${item.videoUrl}|${item.type}|${item.orientation}|${item.order}|${item.title}|${item.durationSeconds}`).join("||");
       if (signature === state.playlistSignature) return;
       state.playlistSignature = signature;
       state.playlist = playlist;
@@ -261,25 +246,28 @@
     document.querySelectorAll(".tv-playlist-item").forEach((row) => row.classList.toggle("is-active", row.dataset.videoId === item.id));
     const isInstagram = item.type === "instagram";
     if (elements.video) {
-      elements.video.hidden = isInstagram;
+      elements.video.hidden = false;
       elements.video.pause();
       elements.video.removeAttribute("src");
       elements.video.load();
     }
-    if (elements.instagramFrame) {
-      elements.instagramFrame.hidden = !isInstagram;
-      elements.instagramFrame.src = isInstagram ? instagramEmbedUrl(item.src) : "about:blank";
-    }
     if (isInstagram) {
-      state.mediaAdvanceTimer = window.setTimeout(playNextVideo, item.durationSeconds * 1000);
+      resolveVideoSource(item)
+        .then((source) => {
+          if (state.playlist[state.currentVideoIndex] !== item || !elements.video) return;
+          elements.video.src = source;
+          elements.video.load();
+          startVideoPlayback(item);
+          state.mediaAdvanceTimer = window.setTimeout(playNextVideo, item.durationSeconds * 1000);
+        })
+        .catch(handleVideoError);
       return;
     }
     if (!elements.video) return;
     elements.video.hidden = false;
     elements.video.src = item.src;
     elements.video.load();
-    const playRequest = elements.video.play();
-    if (playRequest?.catch) playRequest.catch(handleVideoError);
+    startVideoPlayback(item);
   }
 
   function findNextVideoIndex() {
@@ -300,11 +288,17 @@
   }
 
   function handleVideoReady() {
-    if (state.playlist[state.currentVideoIndex]?.type === "video" && elements.videoStage) elements.videoStage.dataset.state = "playing";
+    if (state.playlist[state.currentVideoIndex] && elements.videoStage) elements.videoStage.dataset.state = "playing";
   }
 
-  function handleInstagramReady() {
-    if (state.playlist[state.currentVideoIndex]?.type === "instagram" && elements.videoStage) elements.videoStage.dataset.state = "playing";
+  function startVideoPlayback(item) {
+    if (!elements.video) return;
+    const playRequest = elements.video.play();
+    if (playRequest?.catch) {
+      playRequest.catch(() => {
+        if (state.playlist[state.currentVideoIndex] === item && elements.videoStage) elements.videoStage.dataset.state = "playing";
+      });
+    }
   }
 
   function showEmptyPlaylist(status) {
@@ -315,10 +309,6 @@
       elements.video.pause();
       elements.video.removeAttribute("src");
       elements.video.load();
-    }
-    if (elements.instagramFrame) {
-      elements.instagramFrame.hidden = true;
-      elements.instagramFrame.src = "about:blank";
     }
     if (elements.videoPlaceholder) elements.videoPlaceholder.hidden = false;
     if (elements.playlistStatus) elements.playlistStatus.textContent = status;
@@ -338,16 +328,9 @@
     return /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\//i.test(String(value || "").trim());
   }
 
-  function instagramEmbedUrl(value) {
-    const source = String(value || "").trim().replace(/\/+$/, "");
-    return `${source}/embed/`;
-  }
-
-  function setConnection(status, label) {
-    if (!elements.connection) return;
-    elements.connection.dataset.state = status;
-    const text = elements.connection.querySelector("b");
-    if (text) text.textContent = label;
+  async function resolveVideoSource(item) {
+    if (item.videoUrl) return item.videoUrl;
+    return `/api/instagram/video?url=${encodeURIComponent(item.src)}`;
   }
 
   async function api(url) {

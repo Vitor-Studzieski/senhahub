@@ -1,5 +1,5 @@
-import { getCustomerState, getLocalStaffState } from "../../../../server/local-repository.js";
-import { requireLocalUser } from "../../../../server/local-route-helpers.js";
+import { getCustomerState, getLocalStaffState } from "../../../../server/data/local-repository.js";
+import { requireLocalUser } from "../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

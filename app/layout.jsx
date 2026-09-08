@@ -6,7 +6,7 @@ export const metadata = {
     template: "%s | SenhaHub"
   },
   applicationName: "SenhaHub",
-  description: "Fila virtual, acompanhamento de atendimento e lista de compras do Supermercado Pompeia.",
+  description: "Fila virtual e acompanhamento de atendimento do Supermercado Pompeia.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -45,13 +45,13 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-        <link rel="stylesheet" href="/styles.css?v=20260821.3" />
-        <link rel="stylesheet" href="/pwa.css" />
+        <link rel="stylesheet" href="/styles.css?v=20260905.2" />
+        <link rel="stylesheet" href="/pwa.css?v=20260905.1" />
       </head>
       <body>
         {children}
-        <Script src="/pwa-utils.js?v=20260820.3" strategy="afterInteractive" />
-        <Script src="/pwa.js?v=20260820.3" strategy="afterInteractive" />
+        <Script src="/pwa-utils.js?v=20260904.4" strategy="afterInteractive" />
+        <Script src="/pwa.js?v=20260905.3" strategy="afterInteractive" />
       </body>
     </html>
   );

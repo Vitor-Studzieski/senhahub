@@ -1,4 +1,4 @@
-import HtmlTemplate from "../_components/HtmlTemplate";
+import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export default function LoginPage() {
   return (

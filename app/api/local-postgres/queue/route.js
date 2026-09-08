@@ -1,4 +1,4 @@
-import { getQueueSnapshot } from "../../../../server/local-repository.js";
+import { getQueueSnapshot } from "../../../../server/data/local-repository.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -30,6 +30,38 @@
     { id: "doador_de_sangue", label: "Doadores de sangue", image: "/assets/tablet-priority/doador-de-sangue.png" },
     { id: "fibromialgia", label: "Fibromialgia", image: "/assets/tablet-priority/fibromialgia.png" }
   ];
+  const totemStorage = (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  })();
+
+  function readTotemStorage(key, fallback = null) {
+    try {
+      return totemStorage?.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeTotemStorage(key, value) {
+    try {
+      totemStorage?.setItem(key, value);
+    } catch {
+      // Idempotency persistence is best effort.
+    }
+  }
+
+  function removeTotemStorage(key) {
+    try {
+      totemStorage?.removeItem(key);
+    } catch {
+      // Idempotency persistence is best effort.
+    }
+  }
+
   const state = {
     status: null,
     mode: "central",
@@ -342,13 +374,17 @@
     elements.issueTicketsButton.disabled = true;
     elements.issueTicketsButton.textContent = "Emitindo...";
     try {
-      const body = {
+      let body = {
         idempotencyKey: createIdempotencyKey(),
         priority: state.serviceType === "preferencial",
         priorityReason: state.priorityReason
       };
       if (sectors.length === 1) body.sectorId = sectors[0].id;
       else body.sectorIds = sectors.map((sector) => sector.id);
+      const operationKey = 'senhahub:issuance:totem:' + (state.status?.kiosk?.id || 'default');
+      const pending = readTotemStorage(operationKey);
+      if (pending) body = JSON.parse(pending);
+      else writeTotemStorage(operationKey, JSON.stringify(body));
       const result = await api("/api/kiosk/tickets", {
         method: "POST",
         body,
@@ -358,6 +394,7 @@
       const tickets = result.tickets || (result.ticket ? [result.ticket] : []);
       const printJobs = result.printJob?.id ? [result.printJob] : [];
       if (!tickets.length) throw new Error("Não foi possível emitir as senhas agora.");
+      removeTotemStorage(operationKey);
       showResult({ tickets, printJobs });
       if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id));
     } catch (error) {
@@ -397,13 +434,13 @@
         const result = await api(`/api/kiosk/print-jobs/${encodeURIComponent(jobId)}`);
         return { jobId, status: result.job.status, error: result.job.lastError };
       } catch (error) {
-        return { jobId, status: "failed", error: error.message };
+        return { jobId, status: "unavailable", error: error.message };
       }
     }));
     if (elements.result.hidden) return;
     results.forEach((result) => state.printJobStatuses.set(result.jobId, result.status));
     setPrintStateFromJobs(results);
-    if (results.some((result) => ["pending", "printing"].includes(result.status))) {
+    if (results.some((result) => ["pending", "leased", "printing", "retry_wait", "unavailable"].includes(result.status))) {
       state.pollingTimer = setTimeout(() => pollPrintJobs(jobIds), 1200);
     }
   }
@@ -411,21 +448,20 @@
   function setPrintStateFromJobs(latestResults = []) {
     const statuses = [...state.printJobStatuses.values()];
     const hasFailure = state.printFailures.length > 0 || statuses.includes("failed");
-    const status = hasFailure
-      ? "failed"
-      : statuses.includes("printing")
-        ? "printing"
-        : statuses.includes("pending") || !statuses.length
-          ? "pending"
-          : "printed";
+    const status = ['needs_review', 'failed', 'retry_wait', 'printing', 'leased', 'pending', 'unavailable'].find(value => statuses.includes(value)) || (hasFailure ? 'failed' : statuses.length ? 'printed' : 'pending');
     const count = state.issuedTicketCount || 1;
     const subject = count === 1 ? "sua senha" : `${count} senhas`;
     const labels = {
-      pending: `${subject} aguardando a impressora`,
+      pending: `Senha emitida; ${subject} aguardando a impressora`,
+      leased: 'Trabalho reservado pela impressora.',
+      retry_wait: 'Falha antes do envio. Nova tentativa agendada.',
+      needs_review: 'Resultado da impressão incerto. Solicite ajuda; não emita novamente.',
+      unavailable: 'Senha emitida. Não foi possível consultar a impressão.',
       printing: `Imprimindo ${subject}`,
       printed: `${subject[0].toUpperCase()}${subject.slice(1)} impressas. Retire o papel.`,
       failed: state.printFailures[0]?.message || latestResults.find((result) => result.status === "failed")?.error || "Falha na impressão. Solicite ajuda."
     };
+    if (["needs_review", "failed"].includes(status)) clearTimeout(state.resultTimer);
     elements.printState.dataset.state = status;
     elements.printState.querySelector("p").textContent = labels[status];
   }

@@ -29,10 +29,8 @@
     "type": "Single page app em formato mobile",
     "bottom_tabs": [
       "Início",
-      "Ofertas",
       "Senhas",
-      "Clube",
-      "Mais"
+      "Conta"
     ]
   },
   "functional_behaviors": [
@@ -41,7 +39,6 @@
     "A identificação usa customerId e deviceId persistidos no navegador e registrados no backend.",
     "Ao atualizar a página, o cliente recupera senhas ativas da mesma sessão.",
     "O cliente pode abrir a mesma sessão em outro dispositivo usando o mesmo customerId na URL.",
-    "A página Ofertas só exibe contexto da senha quando existe fila ativa.",
     "O painel do atendente chama a próxima senha elegível, inicia atendimento e finaliza pedido.",
     "O painel administrativo configura setores, balcões, fila base, tempo médio, capacidade e status.",
     "A emissão digital de senha é direta e não exige QR Code nem geolocalização nesta fase.",
@@ -51,7 +48,6 @@
     "Ao finalizar o pedido atual, somente a próxima senha protegida é chamada.",
     "As telas recebem atualização em tempo real via SSE.",
     "Quando uma senha é chamada, o cliente recebe modal e notificação do navegador quando permitido.",
-    "A lista de ofertas é persistida no backend como carrinho do cliente.",
     "O painel administrativo exibe métricas de atendimento, abandono, espera inteligente e satisfação."
   ],
   "access_control": {
@@ -84,7 +80,6 @@
     "calls",
     "services",
     "ratings",
-    "cart_items",
     "events"
   ],
   "api_routes": [
@@ -104,10 +99,7 @@
     "POST /api/tickets/:id/finish",
     "POST /api/sectors/:id/call-next",
     "PUT /api/sectors/:id",
-    "POST /api/ratings",
-    "GET /api/cart",
-    "POST /api/cart/items",
-    "DELETE /api/cart/items/:id"
+    "POST /api/ratings"
   ],
   "ticket_orchestration": {
     "feature_name": "Orquestração Inteligente de Senhas",
@@ -155,7 +147,7 @@
       "description": "Rota Next.js da tela de login operacional."
     },
     {
-      "path": "app/_components/HtmlTemplate.jsx",
+      "path": "app/components/shared/HtmlTemplate.jsx",
       "description": "Componente de transição que reaproveita os templates HTML dentro das rotas Next."
     },
     {

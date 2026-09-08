@@ -1,5 +1,5 @@
-import { updateLocalSector } from "../../../../../server/local-legacy.js";
-import { requireCsrf, readJson, requireLocalUser } from "../../../../../server/local-route-helpers.js";
+import { updateLocalSector } from "../../../../../server/data/local-legacy.js";
+import { requireCsrf, readJson, requireLocalUser } from "../../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

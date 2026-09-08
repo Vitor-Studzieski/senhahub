@@ -1,5 +1,5 @@
-import { consumeLocalRateLimit, registerLocalUser } from "../../../../../server/local-auth.js";
-import { clientIp } from "../../../../../server/local-http-auth.js";
+import { consumeLocalRateLimit, registerLocalUser } from "../../../../../server/auth/local-auth.js";
+import { clientIp } from "../../../../../server/auth/local-http-auth.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

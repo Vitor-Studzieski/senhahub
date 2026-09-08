@@ -1,9 +1,15 @@
 (function initializeSenhaHubPwa() {
-  const utils = window.SenhaHubPwaUtils;
-  if (!utils) {
-    console.error("pwa_utils_unavailable");
-    return;
-  }
+  let started = false;
+
+  function start() {
+    const utils = window.SenhaHubPwaUtils;
+    if (!utils) return;
+
+  // Safari can expose storage with a zero-byte quota, or throw while reading
+  // the storage property itself. Keep it optional because it is only used for
+  // PWA telemetry and must never block an authenticated request.
+  const localStorageRef = getStorage("localStorage");
+  const sessionStorageRef = getStorage("sessionStorage");
 
   const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
   const UPDATE_INTERVAL_MS = 60 * 60 * 1000;
@@ -12,7 +18,7 @@
     registration: null,
     criticalOperations: 0,
     updateApplying: false,
-    lastNetworkSuccessAt: Number(localStorage.getItem("senhaHubLastNetworkSuccessAt") || 0),
+    lastNetworkSuccessAt: Number(readStorage(localStorageRef, "senhaHubLastNetworkSuccessAt") || 0),
     pushStatus: null,
     pushStatusPromise: null,
     currentSubscription: null
@@ -213,9 +219,9 @@
 
   function handleControllerChange() {
     if (!state.updateApplying) return;
-    const lastReload = Number(sessionStorage.getItem("senhaHubPwaUpdateReloadAt") || 0);
+    const lastReload = Number(readStorage(sessionStorageRef, "senhaHubPwaUpdateReloadAt") || 0);
     if (Date.now() - lastReload < 10000) return;
-    sessionStorage.setItem("senhaHubPwaUpdateReloadAt", String(Date.now()));
+    writeStorage(sessionStorageRef, "senhaHubPwaUpdateReloadAt", String(Date.now()));
     location.reload();
   }
 
@@ -250,19 +256,19 @@
   }
 
   function dismissInstallation() {
-    localStorage.setItem("senhaHubInstallDismissedAt", String(Date.now()));
+    writeStorage(localStorageRef, "senhaHubInstallDismissedAt", String(Date.now()));
     recordPwaEvent("install_dismissed");
     document.querySelector("#pwaInstallPrompt").hidden = true;
   }
 
   function installationDismissed() {
-    const timestamp = Number(localStorage.getItem("senhaHubInstallDismissedAt") || 0);
+    const timestamp = Number(readStorage(localStorageRef, "senhaHubInstallDismissedAt") || 0);
     return timestamp > 0 && Date.now() - timestamp < INSTALL_DISMISS_MS;
   }
 
   function handleAppInstalled() {
     state.deferredInstallPrompt = null;
-    localStorage.removeItem("senhaHubInstallDismissedAt");
+    removeStorage(localStorageRef, "senhaHubInstallDismissedAt");
     recordPwaEvent("install_completed");
     const prompt = document.querySelector("#pwaInstallPrompt");
     if (prompt) prompt.hidden = true;
@@ -275,8 +281,8 @@
     if (!text || !button) return;
     const installed = utils.isStandaloneDisplay();
     text.textContent = installed
-      ? "O SenhaHub está aberto como aplicativo neste dispositivo."
-      : "Use o aplicativo pela tela inicial para acessar sua fila com mais rapidez.";
+      ? "Instalado neste dispositivo."
+      : "Acesse sua fila pela tela inicial.";
     button.hidden = installed;
   }
 
@@ -317,7 +323,7 @@
 
   function reportNetworkSuccess(timestamp = Date.now()) {
     state.lastNetworkSuccessAt = Number(timestamp) || Date.now();
-    localStorage.setItem("senhaHubLastNetworkSuccessAt", String(state.lastNetworkSuccessAt));
+    writeStorage(localStorageRef, "senhaHubLastNetworkSuccessAt", String(state.lastNetworkSuccessAt));
     if (navigator.onLine) setConnectionState("online");
   }
 
@@ -405,7 +411,7 @@
     }
 
     if (!status.configured) {
-      setPushState("Alertas aguardando configuração", "As chaves de envio ainda não foram configuradas no servidor.", "error");
+      setPushState("Alertas indisponíveis neste servidor", "O envio de notificações ainda não está habilitado. Você pode continuar usando o SenhaHub normalmente.", "info");
       return;
     }
     if (Notification.permission === "denied") {
@@ -435,7 +441,7 @@
       return;
     }
     if (!state.pushStatus?.configured || !state.pushStatus.publicKey) {
-      setPushState("Alertas aguardando configuração", "As chaves de envio ainda não foram configuradas no servidor.", "error");
+      setPushState("Alertas indisponíveis neste servidor", "O envio de notificações ainda não está habilitado. Você pode continuar usando o SenhaHub normalmente.", "info");
       return;
     }
 
@@ -674,19 +680,77 @@
 
   function recordPwaEvent(type) {
     try {
-      const current = JSON.parse(localStorage.getItem("senhaHubPwaEvents") || "[]");
+      const current = JSON.parse(readStorage(localStorageRef, "senhaHubPwaEvents", "[]"));
       const entries = Array.isArray(current) ? current.slice(-19) : [];
       entries.push({ type: String(type).slice(0, 80), at: new Date().toISOString() });
-      localStorage.setItem("senhaHubPwaEvents", JSON.stringify(entries));
+      writeStorage(localStorageRef, "senhaHubPwaEvents", JSON.stringify(entries));
     } catch {
       // Installation telemetry is best effort and contains no personal data.
     }
   }
 
-  function formatClock(timestamp) {
-    return new Intl.DateTimeFormat("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(new Date(timestamp));
+  // Storage is auxiliary telemetry/state. Some Safari private contexts expose
+  // localStorage/sessionStorage with a zero-byte quota; never let that break
+  // an authenticated operation that has already completed on the server.
+  function readStorage(storage, key, fallback = "") {
+    try {
+      return storage?.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function getStorage(name) {
+    try {
+      return window[name] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStorage(storage, key, value) {
+    try {
+      storage?.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function removeStorage(storage, key) {
+    try {
+      storage?.removeItem(key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+    function formatClock(timestamp) {
+      return new Intl.DateTimeFormat("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(timestamp));
+    }
+  }
+
+  function boot() {
+    if (started || !window.SenhaHubPwaUtils) return;
+    started = true;
+    start();
+  }
+
+  window.addEventListener("senhahub:pwa-utils-ready", boot, { once: true });
+  boot();
+
+  if (!started) {
+    let attempts = 0;
+    const retry = () => {
+      if (started || attempts >= 100) return;
+      attempts += 1;
+      boot();
+      if (!started) window.setTimeout(retry, 50);
+    };
+    retry();
   }
 })();

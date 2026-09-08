@@ -16,7 +16,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (self.SenhaHubCache.isNetworkOnly(request, url)) {
-    event.respondWith(fetch(request));
+    event.respondWith(fetch(request).catch(() => Response.error()));
     return;
   }
 

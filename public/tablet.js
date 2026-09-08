@@ -11,6 +11,38 @@ const PRIORITY_CATEGORIES = [
   { id: "fibromialgia", label: "Fibromialgia", image: "/assets/tablet-priority/fibromialgia.png" }
 ];
 
+const tabletStorage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+})();
+
+function readTabletStorage(key, fallback = null) {
+  try {
+    return tabletStorage?.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeTabletStorage(key, value) {
+  try {
+    tabletStorage?.setItem(key, value);
+  } catch {
+    // Idempotency persistence is best effort.
+  }
+}
+
+function removeTabletStorage(key) {
+  try {
+    tabletStorage?.removeItem(key);
+  } catch {
+    // Idempotency persistence is best effort.
+  }
+}
+
 const state = {
   status: null,
   serviceType: null,
@@ -113,7 +145,7 @@ function renderPriorityOptions() {
       state.priorityReason = button.dataset.tabletPriority;
       elements.priorityOptions.querySelectorAll(".selected").forEach((item) => item.classList.remove("selected"));
       button.classList.add("selected");
-      issueTicket();
+      setStep("confirm");
     });
   });
 }
@@ -165,17 +197,19 @@ async function issueTicket() {
   elements.issueButton.textContent = "Solicitando...";
   elements.feedback.textContent = "Emitindo e imprimindo...";
   try {
-    const payload = await api("/api/tablet/tickets", {
-      method: "POST",
-      body: {
-        sectorId: state.selectedSector.id,
-        idempotencyKey: state.issueIdempotencyKey,
-        priority: state.serviceType === "preferencial",
-        priorityReason: state.priorityReason
-      }
-    });
+    const operationKey = 'senhahub:issuance:tablet:' + (state.status?.user?.id || state.selectedSector.id);
+    let body = {
+      sectorId: state.selectedSector.id, idempotencyKey: state.issueIdempotencyKey,
+      priority: state.serviceType === 'preferencial', priorityReason: state.priorityReason
+    };
+    const pending = readTabletStorage(operationKey);
+    if (pending) body = JSON.parse(pending);
+    else writeTabletStorage(operationKey, JSON.stringify(body));
+    const payload = await api('/api/tablet/tickets', { method:'POST', body });
     if (!payload.printJob?.id) throw new Error("A senha foi emitida, mas não entrou na fila de impressão.");
-    resetOperation();
+    const tickets = payload.tickets || (payload.ticket ? [payload.ticket] : []);
+    removeTabletStorage(operationKey);
+    renderResult(tickets, [payload.printJob]);
   } catch (error) {
     elements.feedback.textContent = error.message;
   } finally {
@@ -209,13 +243,13 @@ async function pollPrintJobs(jobIds) {
       const payload = await api(`/api/tablet/print-jobs/${encodeURIComponent(jobId)}`);
       return { jobId, status: payload.job?.status || "failed", error: payload.job?.lastError || "" };
     } catch (error) {
-      return { jobId, status: "failed", error: error.message };
+      return { jobId, status: "unavailable", error: error.message };
     }
   }));
   if (elements.result.hidden) return;
   results.forEach((result) => state.printJobStatuses.set(result.jobId, result.status));
   setPrintState(results);
-  if (results.some((result) => ["pending", "printing"].includes(result.status))) {
+  if (results.some((result) => ["pending", "leased", "printing", "retry_wait", "unavailable"].includes(result.status))) {
     state.printPollTimer = setTimeout(() => pollPrintJobs(jobIds), 1200);
   }
 }
@@ -229,17 +263,15 @@ function setPrintState(latestResults = []) {
     return;
   }
   const failed = statuses.includes("failed");
-  const status = failed
-    ? "failed"
-    : statuses.includes("printing")
-      ? "printing"
-      : statuses.includes("pending")
-        ? "pending"
-        : "printed";
+  const status = ['needs_review','failed','retry_wait','printing','leased','pending','unavailable'].find(value => statuses.includes(value)) || 'printed';
   const message = status === "failed"
     ? latestResults.find((result) => result.status === "failed")?.error || "Falha na impressão. Solicite ajuda."
     : {
-        pending: "Senha aguardando a impressora.",
+        pending: "Senha emitida; aguardando a impressora.",
+        leased: 'Trabalho reservado pela impressora.',
+        retry_wait: 'Falha antes do envio. Nova tentativa agendada.',
+        needs_review: 'Resultado incerto. Solicite ajuda; não emita novamente.',
+        unavailable: 'Senha emitida. Consulta da impressão indisponível.',
         printing: "Imprimindo sua senha...",
         printed: "Senha impressa. Retire o papel."
       }[status];

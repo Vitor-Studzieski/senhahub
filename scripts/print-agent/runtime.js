@@ -16,17 +16,33 @@ function loadAgentEnvironment(filePath = process.env.PRINT_AGENT_CONFIG) {
 function readAgentConfiguration(env = process.env) {
   const apiUrl = String(env.PRINT_API_URL || "").replace(/\/+$/, "");
   const token = String(env.PRINT_AGENT_TOKEN || "");
-  if (!/^https:\/\//i.test(apiUrl) && env.NODE_ENV !== "test") {
+  if (!/^https:\/\//i.test(apiUrl) && env.NODE_ENV !== "test" && !isLoopbackHttp(apiUrl)) {
     throw new Error("PRINT_API_URL deve usar HTTPS.");
   }
-  if (token.length < 32) {
+  if (token && token.length < 32) {
     throw new Error("PRINT_AGENT_TOKEN deve ter ao menos 32 caracteres.");
   }
 
+  const kioskId = cleanId(env.KIOSK_ID) || "totem-pompeia-01";
+  const supabaseUrl = String(env.SUPABASE_URL || env.PRINT_REALTIME_URL || "").replace(/\/+$/, "");
+  const supabaseKey = String(
+    env.SUPABASE_PUBLISHABLE_KEY
+      || env.SUPABASE_ANON_KEY
+      || env.PRINT_REALTIME_KEY
+      || ""
+  ).trim();
   return {
     apiUrl,
     token,
-    kioskId: cleanId(env.KIOSK_ID) || "totem-pompeia-01",
+    enrollmentCode: String(env.PRINT_ENROLLMENT_CODE || ""),
+    localToken: String(env.PRINT_DEVICE_LOCAL_TOKEN || ""),
+    reconciliationMs: Math.max(60000, integer(env.PRINT_RECONCILIATION_MS, 600000)),
+    kioskId,
+    supabaseUrl,
+    supabaseKey,
+    realtimeEnabled: flagWithDefault(env.PRINT_REALTIME_ENABLED, true),
+    realtimeTopic: String(env.PRINT_REALTIME_TOPIC || `senhahub:print:${kioskId}`).trim(),
+    realtimeReconnectMs: Math.max(1000, integer(env.PRINT_REALTIME_RECONNECT_MS, 5000)),
     printerPort: String(env.KIOSK_PRINTER_PORT || "COM3").trim(),
     baudRate: integer(env.PRINT_SERIAL_BAUD_RATE, 115200),
     dataBits: Number(env.PRINT_SERIAL_DATA_BITS) === 7 ? 7 : 8,
@@ -35,7 +51,7 @@ function readAgentConfiguration(env = process.env) {
     rtscts: flag(env.PRINT_SERIAL_RTSCTS),
     statusCheck: flag(env.PRINT_STATUS_CHECK_ENABLED),
     statusTimeoutMs: integer(env.PRINT_STATUS_TIMEOUT_MS, 1500),
-    pollIntervalMs: Math.max(500, integer(env.PRINT_POLL_INTERVAL_MS, 2000)),
+
     retryMaxMs: Math.max(5000, integer(env.PRINT_RETRY_MAX_MS, 60000)),
     stateDir: path.resolve(env.PRINT_AGENT_STATE_DIR || path.join(process.cwd(), "data", "print-agent"))
   };
@@ -107,6 +123,20 @@ function integer(value, fallback) {
 
 function flag(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function flagWithDefault(value, fallback) {
+  if (value === undefined || value === null || value === "") return Boolean(fallback);
+  return flag(value);
+}
+
+function isLoopbackHttp(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 function unquote(value) {

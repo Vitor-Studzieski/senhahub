@@ -45,17 +45,16 @@
   async function handlePush(event) {
     const payload = parsePayload(event);
     const visible = await visibleWindowClients();
-    if (visible.length) {
-      visible.forEach((client) => client.postMessage({ type: "PUSH_EVENT", payload }));
-      return;
-    }
-    await scope.registration.showNotification(payload.title, {
+    const isCallNotification = ["queue_called", "queue_recalled"].includes(payload.type);
+    const notification = scope.registration.showNotification(payload.title, {
       body: payload.body,
       icon: "/icons/senhahub-192.png",
       badge: "/icons/favicon-32.png",
       tag: payload.eventId,
-      renotify: payload.type === "queue_recalled",
+      silent: false,
+      renotify: isCallNotification,
       requireInteraction: ["queue_called", "queue_recalled"].includes(payload.type),
+      ...(isCallNotification ? { vibrate: [180, 90, 180] } : {}),
       data: {
         type: payload.type,
         url: payload.url,
@@ -66,7 +65,12 @@
         { action: "open", title: "Ver atendimento" },
         { action: "dismiss", title: "Fechar" }
       ]
+    }).catch((error) => {
+      console.warn("push_notification_display_failed", error?.message || error);
     });
+
+    visible.forEach((client) => client.postMessage({ type: "PUSH_EVENT", payload }));
+    await notification;
   }
 
   async function handleNotificationClick(event) {

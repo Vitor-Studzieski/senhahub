@@ -15,7 +15,6 @@
           <a href="/admin/operacao"><span>Operação</span><small>02</small></a>
           <a href="/admin/setores"><span>Setores</span><small>03</small></a>
           <a href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/iccf"><span>Inteligência</span><small>05</small></a>
           <a class="active" href="/admin/usuarios"><span>Usuários</span><small>06</small></a>
         </nav>
         <div class="manager-sidebar-note">Gerencie acessos, perfis e permissões por setor.</div>
@@ -44,6 +43,7 @@
                 <label>Perfil<select id="userRole" name="role"><option value="customer">Cliente</option><option value="attendant">Funcionário</option><option value="manager">Gestor</option><option value="tablet">Tablet - solicitar senhas</option><option value="tv">TV - açougue</option></select></label>
                 <fieldset class="manager-checks" id="userSectorPermissions"><legend>Setores do atendente</legend><label><input type="checkbox" name="sectorIds" value="acougue" /><span>Açougue</span></label><label><input type="checkbox" name="sectorIds" value="frios" /><span>Frios</span></label><label><input type="checkbox" name="sectorIds" value="padaria" /><span>Padaria</span></label></fieldset>
                 <button class="manager-button" type="submit">Criar usuário</button>
+                <p class="manager-form-feedback" data-user-feedback role="status" aria-live="polite"></p>
               </form>
             </div>
           </article>

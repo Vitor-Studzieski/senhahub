@@ -14,7 +14,7 @@ O navegador registra `public/sw.js`, que importa modulos separados para versao, 
 - `public/sw/cache.js`: estrategias e limites de cache.
 - `public/sw/push.js`: exibicao, validacao e clique das notificacoes.
 - `public/pwa.js`: instalacao, atualizacao, conectividade, consentimento e preferencias.
-- `server/push-notification-service.js`: validacao VAPID, payloads, idempotencia e envio.
+- `server/notifications/push-notification-service.js`: validacao VAPID, payloads, idempotencia e envio.
 - `supabase/migrations/20260724182303_pwa_push_notifications.sql`: persistencia, RLS e funcoes atomicas.
 
 ## Variaveis

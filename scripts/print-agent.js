@@ -1,8 +1,8 @@
-const { buildTicketReceipt } = require("../server/escpos-receipt");
+const { buildTicketReceipt } = require("../server/kiosk/escpos-receipt");
 const { SerialPrinter } = require("./print-agent/serial-printer");
+const { PrintRealtimeSignal } = require("./print-agent/realtime");
 const {
   AgentLogger,
-  PrintedJobJournal,
   loadAgentEnvironment,
   readAgentConfiguration
 } = require("./print-agent/runtime");
@@ -18,98 +18,53 @@ if (require.main === module) {
 }
 
 async function main() {
-  if (argumentsList.has("--list-ports")) {
-    const ports = await SerialPrinter.list();
-    console.log(JSON.stringify(ports, null, 2));
-    return;
-  }
-
-  const config = readAgentConfiguration();
-  const logger = new AgentLogger(config.stateDir);
-  const journal = new PrintedJobJournal(config.stateDir);
-  const printer = new SerialPrinter(config);
-
-  if (argumentsList.has("--test-printer")) {
-    await printer.print(buildTicketReceipt({
-      ticketCode: "T001",
-      sectorName: "Teste de impressao",
-      issuedAt: new Date().toISOString(),
-      trackUrl: `${config.apiUrl}/acompanhar/teste-de-impressao`,
-      paperWidthMm: 80
-    }));
-    logger.info("Cupom de teste enviado para a impressora.", { port: config.printerPort });
-    return;
-  }
-
-  const controller = new AbortController();
-  const stop = () => controller.abort();
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-
-  logger.info("Agente de impressao iniciado.", {
-    apiUrl: config.apiUrl,
-    kioskId: config.kioskId,
-    port: config.printerPort,
-    baudRate: config.baudRate
-  });
-
-  let failures = 0;
-  while (!controller.signal.aborted) {
-    try {
-      const job = await claimJob(config, controller.signal);
-      if (job) {
-        await processJob(job, config, printer, journal, logger, controller.signal);
-      } else if (argumentsList.has("--once")) {
-        logger.info("Nenhum trabalho pendente.");
-        break;
-      }
-      failures = 0;
-      await delay(config.pollIntervalMs, controller.signal);
-    } catch (error) {
-      if (controller.signal.aborted) break;
-      failures += 1;
-      logger.error("Falha no ciclo do agente.", { error: error.message, failures });
-      if (argumentsList.has("--once")) throw error;
-      const backoff = Math.min(config.retryMaxMs, config.pollIntervalMs * (2 ** Math.min(failures, 5)));
-      await delay(backoff, controller.signal);
+  if (argumentsList.has('--list-ports')) { console.log(JSON.stringify(await SerialPrinter.list(),null,2)); return; }
+  const config=readAgentConfiguration();
+  const {DurableStore,acquirePrinterLock}=require('./print-agent/durable-store');
+  const {openDeviceSession,deviceApi}=require('./print-agent/session');
+  const {PrintConsumer}=require('./print-agent/consumer');
+  const {PrintSseSignal}=require('./print-agent/realtime');
+  const release=await acquirePrinterLock(config.printerPort);
+  const store=new DurableStore(config.stateDir),logger=new AgentLogger(config.stateDir),printer=new SerialPrinter(config);
+  const controller=new AbortController();
+  const stop=()=>controller.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
+  let session,realtime,consumer;
+  try {
+    if(argumentsList.has('--test-printer')) {
+      await printer.print(buildTicketReceipt({ticketCode:'T001',sectorName:'Teste',issuedAt:new Date().toISOString(),paperWidthMm:80}));return;
     }
+    let api,bootstrap,failures=0;
+    while(!controller.signal.aborted) {
+      try {
+        if(!session)session=await openDeviceSession(config,store,controller.signal);
+        api=deviceApi(config,session,controller.signal);bootstrap=await api('bootstrap');break;
+      } catch {
+        logger.error('Autenticacao/conexao indisponivel; configuracao e journal preservados.');
+        await require('node:timers/promises').setTimeout(Math.min(300000,15000*2**Math.min(failures++,4))*(0.75+Math.random()/2),null,{signal:controller.signal}).catch(()=>{});
+      }
+    }
+    if(controller.signal.aborted)return;
+    if(argumentsList.has('--simulate')) {
+      if(bootstrap.device.capabilities?.simulator!==true)throw new Error('Simulacao exige dispositivo cadastrado exclusivamente para teste.');
+      printer.print=async()=>logger.info('Envio simulado em destino de teste.');
+    }
+    store.set('bootstrap',bootstrap);
+    consumer=new PrintConsumer({api,store,printer,logger,signal:controller.signal,reconciliationMs:config.reconciliationMs||bootstrap.reconciliationMs});
+    const onSignal=()=>consumer.wake();
+    realtime=bootstrap.transport==='sse'
+      ?new PrintSseSignal({apiUrl:config.apiUrl,token:session.token,onSignal,signal:controller.signal})
+      :new PrintRealtimeSignal({client:session.client,topic:bootstrap.topic,onSignal,logger});
+    logger.info('Agente v2 iniciado.',{protocol:2,version:'2.0.0',deviceId:bootstrap.device.id,printerId:bootstrap.device.printerId});
+    if(config.realtimeEnabled && bootstrap.realtimeEnabled !== false)await realtime.start();
+    else {logger.info('Recuperacao limitada ativada por configuracao.');consumer.wake();}
+    // Subscription confirmation starts recovery; safety timer covers a lost Broadcast
+    // or a transport that remains unavailable. No startup claim before subscription.
+    consumer.arm(consumer.reconciliationMs);
+    await new Promise(resolve=>{if(controller.signal.aborted)resolve();else controller.signal.addEventListener('abort',resolve,{once:true});});
+  } finally {
+    controller.abort();await realtime?.stop();await consumer?.stop();await session?.close();store.close();await release();
+    process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);
   }
-
-  logger.info("Agente de impressao encerrado.");
-}
-
-async function processJob(job, config, printer, journal, logger, signal, finish = finishJob) {
-  assertPrintableJob(job);
-  if (journal.has(job.id)) {
-    await finish(config, job.id, true, null, signal);
-    logger.info("Trabalho ja impresso confirmado novamente na API.", { jobId: job.id });
-    return;
-  }
-
-  const payload = receiptPayload(job, logger);
-  let receipt;
-  try {
-    receipt = buildTicketReceipt(payload);
-  } catch (error) {
-    await reportPrintFailure(config, job.id, error, logger, signal, finish);
-    throw error;
-  }
-  logger.info("Enviando senha para a impressora.", {
-    jobId: job.id,
-    ticketCode: payload.ticketCode,
-    bytes: receipt.length
-  });
-
-  try {
-    await printer.print(receipt);
-    journal.add(job.id);
-  } catch (error) {
-    await reportPrintFailure(config, job.id, error, logger, signal, finish);
-    throw error;
-  }
-
-  await finish(config, job.id, true, null, signal);
-  logger.info("Impressao concluida.", { jobId: job.id, ticketCode: payload.ticketCode });
 }
 
 function receiptPayload(job, logger) {
@@ -137,68 +92,5 @@ function assertPrintableJob(job) {
   }
 }
 
-async function reportPrintFailure(config, jobId, error, logger, signal, finish) {
-  try {
-    await finish(config, jobId, false, error.message, signal);
-  } catch (finishError) {
-    logger.error("Nao foi possivel registrar a falha na API.", {
-      jobId,
-      error: finishError.message
-    });
-  }
-}
-
-function validDate(value) {
-  return Number.isFinite(new Date(value).getTime());
-}
-
-async function claimJob(config, signal) {
-  const payload = await agentFetch(config, "/api/print/jobs/claim", {
-    kioskId: config.kioskId
-  }, signal);
-  return payload.job || null;
-}
-
-function finishJob(config, jobId, success, error, signal) {
-  return agentFetch(config, `/api/print/jobs/${encodeURIComponent(jobId)}/finish`, {
-    kioskId: config.kioskId,
-    success,
-    error
-  }, signal);
-}
-
-async function agentFetch(config, path, body, signal) {
-  const response = await fetch(`${config.apiUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-print-agent-token": config.token,
-      "x-print-agent-kiosk-id": config.kioskId
-    },
-    body: JSON.stringify(body),
-    signal
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error || `Falha HTTP ${response.status}`);
-  }
-  return payload;
-}
-
-function delay(milliseconds, signal) {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
-      clearTimeout(timer);
-      resolve();
-    }, { once: true });
-  });
-}
-
-module.exports = {
-  agentFetch,
-  processJob,
-  receiptPayload,
-  assertPrintableJob
-};
+function validDate(value) { return Number.isFinite(new Date(value).getTime()); }
+module.exports = { main, receiptPayload, assertPrintableJob };

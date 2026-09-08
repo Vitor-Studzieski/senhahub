@@ -3,7 +3,7 @@ export default function manifest() {
     id: "/",
     name: "SenhaHub - Supermercado Pompeia",
     short_name: "SenhaHub",
-    description: "Fila virtual, acompanhamento de atendimento e lista de compras do Supermercado Pompeia.",
+    description: "Fila virtual e acompanhamento de atendimento do Supermercado Pompeia.",
     start_url: "/",
     scope: "/",
     display: "standalone",

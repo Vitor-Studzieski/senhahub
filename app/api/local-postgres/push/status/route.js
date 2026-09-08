@@ -1,5 +1,5 @@
-import { authenticateLocalRequest } from "../../../../../server/local-http-auth.js";
-import { getLocalPushStatus } from "../../../../../server/local-push.js";
+import { authenticateLocalRequest } from "../../../../../server/auth/local-http-auth.js";
+import { getLocalPushStatus } from "../../../../../server/notifications/local-push.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

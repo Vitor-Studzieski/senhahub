@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/local-http-auth.js";
-import { consumeLocalPushRateLimit, localPushService, verifyLocalPushOrigin } from "../../../../../server/local-push.js";
+import { authenticateLocalRequest, hasValidCsrf } from "../../../../../server/auth/local-http-auth.js";
+import { consumeLocalPushRateLimit, localPushService, verifyLocalPushOrigin } from "../../../../../server/notifications/local-push.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

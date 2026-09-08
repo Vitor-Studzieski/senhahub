@@ -4,7 +4,7 @@ const path = require("node:path");
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 loadEnvFile(path.resolve(process.cwd(), ".env"));
 
-const { validateProductionEnvironment } = require("../server/production-readiness");
+const { validateProductionEnvironment } = require("../server/platform/production-readiness");
 const result = validateProductionEnvironment({ ...process.env, NODE_ENV: "production" });
 
 if (!result.ok) {

@@ -1,4 +1,4 @@
-import { authenticateLocalRequest } from "../../../../../server/local-http-auth.js";
+import { authenticateLocalRequest } from "../../../../../server/auth/local-http-auth.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

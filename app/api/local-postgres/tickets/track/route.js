@@ -1,6 +1,6 @@
-import { getLocalTrackedTickets } from "../../../../../server/local-repository.js";
-import { clientIp } from "../../../../../server/local-http-auth.js";
-import { consumeLocalRateLimit } from "../../../../../server/local-auth.js";
+import { getLocalTrackedTickets } from "../../../../../server/data/local-repository.js";
+import { clientIp } from "../../../../../server/auth/local-http-auth.js";
+import { consumeLocalRateLimit } from "../../../../../server/auth/local-auth.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +23,11 @@ export async function GET(request) {
 
   try {
     const result = await getLocalTrackedTickets(token);
-    if (result.status === "expired") return Response.json({ error: "Este QR Code expirou." }, { status: 404 });
-    if (result.status !== "ok" || !result.tickets.length) return Response.json({ error: "Senha não encontrada." }, { status: 404 });
+    if (result.status === "used") return Response.json({ error: "Este QR Code já foi utilizado.", code: "QR_CODE_USED" }, { status: 404 });
+    if (result.status === "expired") return Response.json({ error: "Este QR Code expirou.", code: "QR_CODE_EXPIRED" }, { status: 404 });
+    if (result.status === "not_found" || result.status !== "ok" || !result.tickets.length) {
+      return Response.json({ error: "QR Code inválido.", code: "QR_CODE_INVALID" }, { status: 404 });
+    }
     return Response.json({ ticket: result.tickets[0], tickets: result.tickets }, {
       headers: { "cache-control": "no-store" }
     });

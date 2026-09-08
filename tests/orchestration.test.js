@@ -45,7 +45,7 @@ test.before(async () => {
 });
 
 test("bloqueia paginas sensiveis, HTML legado e status do totem sem acesso", async () => {
-  const protectedPaths = ["/", "/attendant", "/admin", "/admin/totens/", "/iccf", "/totem"];
+  const protectedPaths = ["/", "/attendant", "/admin", "/admin/totens/", "/totem"];
   for (const pathname of protectedPaths) {
     const response = await fetch(`${BASE_URL}${pathname}`, { redirect: "manual" });
     assert.equal(response.status, 302, pathname);
@@ -315,27 +315,6 @@ test("permite senha sem presenca durante testes controlados", async () => {
   assert.equal(result.ticket.qrVerified, false);
 });
 
-test("bloqueia acoes autenticadas sem token CSRF", async () => {
-  const { cookie, identity } = await createCustomer("sem-csrf");
-  const response = await fetch(`${BASE_URL}/api/cart/items`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie
-    },
-    body: JSON.stringify({
-      ...identity,
-      productId: "picanha",
-      productName: "Picanha Bovina",
-      sectorName: "Acougue",
-      price: "R$ 59,90"
-    })
-  });
-  const payload = await response.json();
-  assert.equal(response.status, 403);
-  assert.match(payload.error, /seguranca/i);
-});
-
 test("bloqueia login apos muitas tentativas invalidas", async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
@@ -397,7 +376,7 @@ test("atendente consegue sair e o runtime Supabase aceita todos os perfis autent
   assert.equal(response.status, 200);
   assert.equal((await response.json()).user, null);
 
-  const runtime = fs.readFileSync(path.resolve(__dirname, "../server/supabase-runtime.js"), "utf8");
+  const runtime = fs.readFileSync(path.resolve(__dirname, "../server/integrations/supabase-runtime.js"), "utf8");
   const logoutStart = runtime.indexOf("async function logout(request)");
   const meStart = runtime.indexOf("async function me(request)");
   assert.ok(logoutStart >= 0 && meStart > logoutStart);

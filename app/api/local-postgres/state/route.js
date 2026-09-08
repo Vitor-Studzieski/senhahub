@@ -1,5 +1,5 @@
-import { authenticateLocalRequest } from "../../../../server/local-http-auth.js";
-import { getCustomerState } from "../../../../server/local-repository.js";
+import { authenticateLocalRequest } from "../../../../server/auth/local-http-auth.js";
+import { getCustomerState } from "../../../../server/data/local-repository.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

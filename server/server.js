@@ -1,11 +1,12 @@
 const http = require("node:http");
+const { Readable } = require("node:stream");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
-const { getLocalSession } = require("./local-auth");
-const { checkConnection: checkLocalPostgresConnection } = require("./local-postgres");
-const { runLocalMaintenance } = require("./local-repository");
+const { getLocalSession } = require("./auth/local-auth");
+const { checkConnection: checkLocalPostgresConnection } = require("./data/local-postgres");
+const { runLocalMaintenance } = require("./data/local-repository");
 const { DatabaseSync } = require("node:sqlite");
 const {
   DEFAULT_PREFERENCES,
@@ -15,7 +16,7 @@ const {
   normalizePreferences,
   preferencesToRow,
   validatePushSubscription
-} = require("./push-notification-service");
+} = require("./notifications/push-notification-service");
 const {
   clearKioskCookies,
   createKioskSession,
@@ -27,12 +28,12 @@ const {
   verifyKioskRequest,
   verifyKioskSession,
   verifyPrintAgentRequest
-} = require("./print-kiosk-service");
+} = require("./kiosk/print-kiosk-service");
 const {
   evaluatePasswordPolicy,
   isStrongPassword,
   passwordPolicyError
-} = require("./password-policy");
+} = require("./auth/password-policy");
 const {
   createRequestContext,
   dispatchObservabilityAlert,
@@ -41,8 +42,10 @@ const {
   finishRequest,
   logStructured,
   summarizePrintAttempts
-} = require("./observability");
-const { healthResponse, validateProductionEnvironment } = require("./production-readiness");
+} = require("./platform/observability");
+const { healthResponse, validateProductionEnvironment } = require("./platform/production-readiness");
+const { fetchCurrentWeather } = require("./integrations/weather");
+const { fetchInstagramVideo } = require("./integrations/instagram-video");
 
 const ROOT = path.resolve(__dirname, "..");
 loadEnvFile(path.join(ROOT, ".env.local"));
@@ -60,7 +63,6 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["GET /api/local-postgres/events", "app/api/local-postgres/events/route.js"],
   ["GET /api/local-postgres/history", "app/api/local-postgres/history/route.js"],
   ["GET /api/local-postgres/metrics", "app/api/local-postgres/metrics/route.js"],
-  ["GET /api/local-postgres/offer-insights", "app/api/local-postgres/offer-insights/route.js"],
   ["POST /api/local-postgres/ratings", "app/api/local-postgres/ratings/route.js"],
   ["GET /api/local-postgres/users", "app/api/local-postgres/users/route.js"],
   ["POST /api/local-postgres/users", "app/api/local-postgres/users/route.js"],
@@ -69,10 +71,6 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["GET /api/local-postgres/staff/state", "app/api/local-postgres/staff/state/route.js"],
   ["GET /api/local-postgres/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/local-postgres/staff/call-next", "app/api/local-postgres/staff/call-next/route.js"],
-  ["GET /api/local-postgres/cart", "app/api/local-postgres/cart/route.js"],
-  ["POST /api/local-postgres/cart/items", "app/api/local-postgres/cart/route.js"],
-  ["GET /api/local-postgres/shopping-agent", "app/api/local-postgres/shopping-agent/route.js"],
-  ["POST /api/local-postgres/shopping-signals", "app/api/local-postgres/shopping-signals/route.js"],
   ["POST /api/local-postgres/tickets", "app/api/local-postgres/tickets/route.js"],
   ["GET /api/local-postgres/tickets/track", "app/api/local-postgres/tickets/track/route.js"],
   ["POST /api/local-postgres/tickets/cancel", "app/api/local-postgres/tickets/cancel/route.js"],
@@ -85,9 +83,12 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["POST /api/local-postgres/kiosk/tickets", "app/api/local-postgres/kiosk/tickets/route.js"],
   ["GET /api/local-postgres/tablet/status", "app/api/local-postgres/tablet/status/route.js"],
   ["POST /api/local-postgres/tablet/tickets", "app/api/local-postgres/tablet/tickets/route.js"],
+  ["GET /api/local-postgres/tablet/print-job", "app/api/local-postgres/tablet/print-job/route.js"],
   ["GET /api/local-postgres/kiosk/print-job", "app/api/local-postgres/kiosk/print-job/route.js"],
   ["POST /api/local-postgres/print/jobs/claim", "app/api/local-postgres/print/jobs/claim/route.js"],
   ["POST /api/local-postgres/print/jobs/finish", "app/api/local-postgres/print/jobs/finish/route.js"],
+  ["POST /api/local-postgres/print/realtime-config", "app/api/local-postgres/print/realtime-config/route.js"],
+  ["POST /api/local-postgres/print/heartbeat", "app/api/local-postgres/print/heartbeat/route.js"],
   ["GET /api/local-postgres/push/status", "app/api/local-postgres/push/status/route.js"],
   ["POST /api/local-postgres/push/subscribe", "app/api/local-postgres/push/subscribe/route.js"],
   ["DELETE /api/local-postgres/push/unsubscribe", "app/api/local-postgres/push/unsubscribe/route.js"],
@@ -107,24 +108,22 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["GET /api/events", "app/api/local-postgres/events/route.js"],
   ["GET /api/history", "app/api/local-postgres/history/route.js"],
   ["GET /api/metrics", "app/api/local-postgres/metrics/route.js"],
-  ["GET /api/offer-insights", "app/api/local-postgres/offer-insights/route.js"],
   ["POST /api/ratings", "app/api/local-postgres/ratings/route.js"],
   ["GET /api/users", "app/api/local-postgres/users/route.js"],
   ["POST /api/users", "app/api/local-postgres/users/route.js"],
   ["GET /api/staff/state", "app/api/local-postgres/staff/state/route.js"],
   ["GET /api/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/tickets", "app/api/local-postgres/tickets/route.js"],
-  ["GET /api/cart", "app/api/local-postgres/cart/route.js"],
-  ["POST /api/cart/items", "app/api/local-postgres/cart/route.js"],
-  ["GET /api/shopping-agent", "app/api/local-postgres/shopping-agent/route.js"],
-  ["POST /api/shopping-signals", "app/api/local-postgres/shopping-signals/route.js"],
   ["GET /api/kiosk/status", "app/api/local-postgres/kiosk/status/route.js"],
   ["POST /api/kiosk/pair", "app/api/local-postgres/kiosk/pair/route.js"],
   ["POST /api/kiosk/unpair", "app/api/local-postgres/kiosk/unpair/route.js"],
   ["POST /api/kiosk/tickets", "app/api/local-postgres/kiosk/tickets/route.js"],
   ["GET /api/tablet/status", "app/api/local-postgres/tablet/status/route.js"],
   ["POST /api/tablet/tickets", "app/api/local-postgres/tablet/tickets/route.js"],
+  ["GET /api/tablet/print-job", "app/api/local-postgres/tablet/print-job/route.js"],
   ["POST /api/print/jobs/claim", "app/api/local-postgres/print/jobs/claim/route.js"],
+  ["POST /api/print/realtime-config", "app/api/local-postgres/print/realtime-config/route.js"],
+  ["POST /api/print/heartbeat", "app/api/local-postgres/print/heartbeat/route.js"],
   ["GET /api/push/status", "app/api/local-postgres/push/status/route.js"],
   ["POST /api/push/subscribe", "app/api/local-postgres/push/subscribe/route.js"],
   ["DELETE /api/push/unsubscribe", "app/api/local-postgres/push/unsubscribe/route.js"],
@@ -157,7 +156,7 @@ const pushNotificationService = new PushNotificationService({
 
 const PRESENCE_CHECK_ENABLED = false;
 const MAX_ACTIVE_TICKETS_PER_CUSTOMER = 3;
-const AUTO_CALL_DELAY_SECONDS = 30;
+const AUTO_CALL_DELAY_SECONDS = 10;
 const TRACKING_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const CALL_ABSENCE_SECONDS = 10 * 60;
 const STANDBY_SECONDS = 10 * 60;
@@ -211,7 +210,20 @@ if (isStandaloneServer) {
   assertProductionBackend();
 }
 
+let sqlitePrintQueue = null;
 if (!supabaseRuntimeEnabled) bootstrap();
+sqlitePrintQueue = !supabaseRuntimeEnabled && !isLocalPostgresEnabled()
+  ? new (require('./kiosk/print-v2-sqlite').SqlitePrintQueue)(db) : null;
+const sqlitePrintApi = sqlitePrintQueue ? require('./kiosk/print-v2-local').createLocalPrintApi({
+  sqlite: sqlitePrintQueue,
+  requireAdmin: async (request) => {
+    const req={headers:Object.fromEntries(request.headers),method:request.method};
+    const user=getAuthUser(req);
+    if(!user || user.role!=='admin')return {response:Response.json({error:'Admin required'},{status:403})};
+    if(!safeEqual(req.headers['x-csrf-token']||'',user.csrf_token||'') || !safeEqual(getCookie(req,'senhahub_csrf')||'',user.csrf_token||''))return {response:Response.json({error:'Invalid CSRF'},{status:403})};
+    return user;
+  }
+}) : null;
 
 if (isStandaloneServer) {
   startStandaloneServer();
@@ -290,6 +302,10 @@ function listen(server) {
 
 function startBackgroundJobs() {
   if (supabaseRuntimeEnabled) return;
+  setInterval(() => {
+    if(isLocalPostgresEnabled())require('./data/local-postgres').query('SELECT public.sweep_print_leases_v2()').catch(()=>logStructured('error','print.recovery_failed',{}));
+    else {try{sqlitePrintQueue?.sweep();}catch{logStructured('error','print.recovery_failed',{});}}
+  },60000);
   setInterval(() => {
     if (isLocalPostgresEnabled()) {
       if (localMaintenanceRunning) return;
@@ -490,29 +506,6 @@ function bootstrap() {
       FOREIGN KEY (sector_id) REFERENCES sectors(id)
     );
 
-    CREATE TABLE IF NOT EXISTS cart_items (
-      id TEXT PRIMARY KEY,
-      customer_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      product_name TEXT NOT NULL,
-      sector_name TEXT NOT NULL,
-      price TEXT NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS shopping_signals (
-      id TEXT PRIMARY KEY,
-      customer_id TEXT NOT NULL,
-      signal_type TEXT NOT NULL,
-      query TEXT,
-      product_id TEXT,
-      product_name TEXT,
-      sector_name TEXT,
-      created_at TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS web_push_subscriptions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -632,16 +625,12 @@ function bootstrap() {
       FOREIGN KEY (kiosk_id) REFERENCES print_kiosks(id) ON DELETE RESTRICT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_cart_items_created_at ON cart_items(created_at);
-    CREATE INDEX IF NOT EXISTS idx_cart_items_product ON cart_items(product_id);
-    CREATE INDEX IF NOT EXISTS idx_cart_items_customer_created ON cart_items(customer_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tickets_customer_created ON tickets(customer_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tickets_sector_created ON tickets(sector_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tickets_sector_finished ON tickets(sector_id, finished_at);
     CREATE INDEX IF NOT EXISTS idx_tickets_sector_expired ON tickets(sector_id, expired_at);
     CREATE INDEX IF NOT EXISTS idx_tickets_sector_canceled ON tickets(sector_id, canceled_at);
     CREATE INDEX IF NOT EXISTS idx_ratings_created_at ON ratings(created_at);
-    CREATE INDEX IF NOT EXISTS idx_shopping_signals_customer_created ON shopping_signals(customer_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_user_enabled ON web_push_subscriptions(user_id, enabled);
     CREATE INDEX IF NOT EXISTS idx_push_notification_events_user_created ON push_notification_events(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_push_notification_events_ticket_type ON push_notification_events(ticket_id, event_type);
@@ -825,7 +814,7 @@ async function handleApi(req, res, url) {
 }
 
 async function handleSupabaseApiRoute(req, res, url) {
-  const backend = await import("./supabase-runtime.js");
+  const backend = await import("./integrations/supabase-runtime.js");
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers || {})) {
     if (value === undefined) continue;
@@ -858,12 +847,24 @@ async function handleSupabaseApiRoute(req, res, url) {
   }
   if (setCookies.length) res.setHeader("set-cookie", setCookies);
   res.statusCode = response.status;
-  res.end(Buffer.from(await response.arrayBuffer()));
+  if(response.headers.get('content-type')?.includes('text/event-stream')) {
+    const reader=response.body.getReader();res.on('close',()=>reader.cancel().catch(()=>{}));
+    while(!res.destroyed){const {done,value}=await reader.read();if(done)break;res.write(Buffer.from(value));}
+    res.end();
+  } else res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 async function handleApiInternal(req, res, url) {
   if (!dev && !isSecureNodeRequest(req, url)) {
     sendJson(res, 426, { error: "Esta API aceita somente conexoes HTTPS." });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/weather") {
+    await handleWeatherRoute(res);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/instagram/video") {
+    await handleInstagramVideoRoute(req, res, url);
     return;
   }
   if (supabaseRuntimeEnabled) {
@@ -927,7 +928,16 @@ async function handleApiInternal(req, res, url) {
     return;
   }
 
-  maybeRunScheduledJobs();
+  if (sqlitePrintApi && url.pathname.startsWith('/api/print/v2/')) {
+    const controller=new AbortController();res.on('close',()=>controller.abort());
+    const body=['GET','HEAD'].includes(req.method)?undefined:await readRawRequestBody(req);
+    const request=new Request('http://localhost'+url.pathname,{method:req.method,headers:req.headers,body,signal:controller.signal});
+    const response=await sqlitePrintApi.handle(request);
+    res.writeHead(response.status,Object.fromEntries(response.headers));
+    if(response.body){const reader=response.body.getReader();while(!res.destroyed){const {done,value}=await reader.read();if(done)break;res.write(Buffer.from(value));}}
+    res.end();return;
+  }
+  if (!url.pathname.startsWith('/api/print/')) maybeRunScheduledJobs();
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     const body = await readBody(req);
@@ -985,12 +995,20 @@ async function handleApiInternal(req, res, url) {
     const token = decodeURIComponent(trackedTicket[1]);
     const row = db.prepare("SELECT * FROM tickets WHERE tracking_token = ?").get(token);
     if (!row) {
-      sendJson(res, 404, { error: "Senha nao encontrada." });
+      sendJson(res, 404, { error: "QR Code invalido.", code: "QR_CODE_INVALID" });
+      return;
+    }
+    if (row.status === "atendido") {
+      sendJson(res, 404, { error: "Este QR Code ja foi utilizado.", code: "QR_CODE_USED" });
+      return;
+    }
+    if (row.status === "expirado") {
+      sendJson(res, 404, { error: "Este QR Code expirou.", code: "QR_CODE_EXPIRED" });
       return;
     }
     const createdAt = new Date(row.created_at).getTime();
     if (!Number.isFinite(createdAt) || Date.now() - createdAt > TRACKING_TOKEN_TTL_MS) {
-      sendJson(res, 404, { error: "Este QR Code expirou." });
+      sendJson(res, 404, { error: "Este QR Code expirou.", code: "QR_CODE_EXPIRED" });
       return;
     }
     const tickets = trackedTicketRows(row).map((ticket) => publicTicketView(ticketDto(ticket)));
@@ -1100,6 +1118,46 @@ async function handleApiInternal(req, res, url) {
       return;
     }
     sendJson(res, 200, { job: claimNextPrintJob(kioskId) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/print/realtime-config") {
+    const agent = verifyPrintAgentRequest(req.headers);
+    if (agent.error) {
+      sendJson(res, agent.status, { error: agent.error });
+      return;
+    }
+    const body = await readBody(req);
+    const kioskId = cleanId(body.kioskId) || KIOSK_CONFIGURATION.id;
+    if (kioskId !== agent.kioskId) {
+      sendJson(res, 403, { error: "Agente nao autorizado para este totem." });
+      return;
+    }
+    sendJson(res, 200, { enabled: false, kioskId, realtimeTopic: `senhahub:print:${kioskId}` });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/print/heartbeat") {
+    const agent = verifyPrintAgentRequest(req.headers);
+    if (agent.error) {
+      sendJson(res, agent.status, { error: agent.error });
+      return;
+    }
+    const body = await readBody(req);
+    const kioskId = cleanId(body.kioskId) || KIOSK_CONFIGURATION.id;
+    if (kioskId !== agent.kioskId) {
+      sendJson(res, 403, { error: "Agente nao autorizado para este totem." });
+      return;
+    }
+    const now = isoNow();
+    const result = db.prepare(
+      "UPDATE print_kiosks SET last_seen_at = ?, updated_at = ? WHERE id = ? AND active = 1"
+    ).run(now, now, kioskId);
+    if (!result.changes) {
+      sendJson(res, 404, { error: "Totem de impressao nao encontrado ou inativo." });
+      return;
+    }
+    sendJson(res, 200, { ok: true, kioskId, lastSeenAt: now });
     return;
   }
 
@@ -1241,12 +1299,6 @@ async function handleApiInternal(req, res, url) {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/offer-insights") {
-    if (!requireAuth(req, res, ADMIN_ROLES)) return;
-    sendJson(res, 200, getOfferInsights(url));
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/staff/state") {
     const user = requireAuth(req, res, STAFF_ROLES);
     if (!user) return;
@@ -1372,62 +1424,6 @@ async function handleApiInternal(req, res, url) {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/cart") {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    sendJson(res, 200, getCart(user.customerId));
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/shopping-agent") {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    sendJson(res, 200, getShoppingAgent(user.customerId));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/shopping-signals") {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    if (!verifyCsrf(req, res, user)) return;
-    const result = createShoppingSignal(user.customerId, await readBody(req));
-    sendApiResult(res, 201, result);
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/cart/items") {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    if (!verifyCsrf(req, res, user)) return;
-    const body = await readBody(req);
-    const result = addCartItem({ ...body, customerId: user.customerId });
-    broadcast();
-    sendApiResult(res, 201, result);
-    return;
-  }
-
-  const cartUpdate = url.pathname.match(/^\/api\/cart\/items\/([^/]+)$/);
-  if (req.method === "PATCH" && cartUpdate) {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    if (!verifyCsrf(req, res, user)) return;
-    const result = updateCartItemQuantity(cartUpdate[1], user.customerId, await readBody(req));
-    broadcast();
-    sendApiResult(res, 200, result);
-    return;
-  }
-
-  const cartDelete = url.pathname.match(/^\/api\/cart\/items\/([^/]+)$/);
-  if (req.method === "DELETE" && cartDelete) {
-    const user = requireAuth(req, res, CUSTOMER_ROLES);
-    if (!user) return;
-    if (!verifyCsrf(req, res, user)) return;
-    const result = removeCartItem(cartDelete[1], user.customerId);
-    broadcast();
-    sendApiResult(res, 200, result);
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/users") {
     if (!requireAuth(req, res, ADMIN_ROLES)) return;
     sendJson(res, 200, { users: await listUsers() });
@@ -1446,6 +1442,38 @@ async function handleApiInternal(req, res, url) {
   }
 
   sendJson(res, 404, { error: "Rota não encontrada." });
+}
+
+async function handleWeatherRoute(res) {
+  try {
+    const weather = await fetchCurrentWeather();
+    sendJson(res, 200, weather, {
+      "cache-control": "public, max-age=300, stale-while-revalidate=600"
+    });
+  } catch (error) {
+    logStructured("warn", "weather.fetch_failed", { error: errorDetails(error) });
+    sendJson(res, 503, { error: "Clima indisponivel." }, { "cache-control": "no-store" });
+  }
+}
+
+async function handleInstagramVideoRoute(req, res, url) {
+  try {
+    const response = await fetchInstagramVideo(url.searchParams.get("url"), req.headers.range || "");
+    const headers = {
+      "content-type": response.headers.get("content-type") || "video/mp4",
+      "cache-control": "private, max-age=60",
+      "accept-ranges": response.headers.get("accept-ranges") || "bytes"
+    };
+    for (const name of ["content-length", "content-range"]) {
+      const value = response.headers.get(name);
+      if (value) headers[name] = value;
+    }
+    res.writeHead(response.status, headers);
+    Readable.fromWeb(response.body).pipe(res);
+  } catch (error) {
+    logStructured("warn", "instagram.video_resolve_failed", { error: errorDetails(error) });
+    sendJson(res, 502, { error: "Não foi possível carregar o vídeo da publicação." }, { "cache-control": "no-store" });
+  }
 }
 
 async function handleLocalPostgresAppAlias(req, res, url) {
@@ -1481,13 +1509,6 @@ async function handleLocalPostgresAppAlias(req, res, url) {
     }));
   }
 
-  const cartItemMatch = url.pathname.match(/^\/api\/cart\/items\/([^/]+)$/);
-  if ((req.method === "PATCH" || req.method === "DELETE") && cartItemMatch) {
-    routeFile = "app/api/local-postgres/cart/items/[itemId]/route.js";
-    const body = req.method === "PATCH" ? await readJsonBodyForLocalRoute(req) : {};
-    bodyOverride = Buffer.from(JSON.stringify({ ...body, itemId: decodeURIComponent(cartItemMatch[1]) }));
-  }
-
   const sectorUpdateMatch = url.pathname.match(/^\/api\/sectors\/([^/]+)$/);
   if (req.method === "PUT" && sectorUpdateMatch) {
     routeFile = "app/api/local-postgres/sectors/[sectorId]/route.js";
@@ -1500,9 +1521,18 @@ async function handleLocalPostgresAppAlias(req, res, url) {
     routeFile = "app/api/local-postgres/kiosk/print-job/route.js";
   }
 
+  const tabletPrintJobMatch = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)$/);
+  if (req.method === "GET" && tabletPrintJobMatch) {
+    routeFile = "app/api/local-postgres/tablet/print-job/route.js";
+  }
+
   const printFinishMatch = url.pathname.match(/^\/api\/print\/jobs\/([^/]+)\/finish$/);
   if (req.method === "POST" && printFinishMatch) {
     routeFile = "app/api/local-postgres/print/jobs/finish/route.js";
+  }
+
+  if (url.pathname.startsWith('/api/print/v2/') || url.pathname.startsWith('/api/local-postgres/print/v2/')) {
+    routeFile='app/api/local-postgres/print/v2/[...command]/route.js';
   }
 
   if (!routeFile) return false;
@@ -1562,7 +1592,11 @@ async function handleLocalPostgresRoute(req, res, url, routeFileOverride = null,
   }
   if (setCookies.length) res.setHeader("set-cookie", setCookies);
   res.statusCode = response.status;
-  res.end(Buffer.from(await response.arrayBuffer()));
+  if(response.headers.get('content-type')?.includes('text/event-stream')) {
+    const reader=response.body.getReader();res.on('close',()=>reader.cancel().catch(()=>{}));
+    while(!res.destroyed){const {done,value}=await reader.read();if(done)break;res.write(Buffer.from(value));}
+    res.end();
+  } else res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 async function readJsonBodyForLocalRoute(req) {
@@ -1746,6 +1780,10 @@ function getObservabilityMetrics() {
       recent: cronRecent
     },
     printing: {
+      needsReviewJobs: statusTotals.needs_review || 0,
+      leasedJobs: statusTotals.leased || 0,
+      retryWaitJobs: statusTotals.retry_wait || 0,
+      reviewJobs: db.prepare("SELECT id,kiosk_id,printer_id,status,last_error,updated_at FROM print_jobs WHERE status='needs_review' ORDER BY updated_at DESC LIMIT 50").all(),
       pendingJobs: statusTotals.pending || 0,
       printingJobs: statusTotals.printing || 0,
       failedJobs: statusTotals.failed || 0,
@@ -1773,7 +1811,6 @@ const LEGACY_PAGE_REDIRECTS = {
   "/admin-setores.html": "/admin/setores",
   "/admin-totens.html": "/admin/totens",
   "/admin-usuarios.html": "/admin/usuarios",
-  "/iccf.html": "/iccf",
   "/totem.html": "/totem",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
@@ -1796,14 +1833,12 @@ async function handlePage(req, res, url) {
     "/admin/setores": ADMIN_ROLES,
     "/admin/totens": ADMIN_ROLES,
     "/admin/usuarios": ADMIN_ROLES,
-    "/iccf": ADMIN_ROLES,
     "/tablet": ["tablet", "attendant"],
     "/tv/acougue": ["tv"]
   };
   const requiredRoles = pageRoles[requested]
     || (requested.startsWith("/admin/") ? ADMIN_ROLES : null)
     || (requested.startsWith("/attendant/") ? STAFF_ROLES : null)
-    || (requested.startsWith("/iccf/") ? ADMIN_ROLES : null);
   if (requiredRoles) {
     const user = await getPageAuthUser(req);
     if (!user) {
@@ -2881,7 +2916,7 @@ function roleHome(user) {
 }
 
 function applySecurityHeaders(req, res) {
-  const connectSrc = dev ? "'self' ws: http://localhost:*" : "'self'";
+  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com";
   const scriptSrc = dev ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self' 'unsafe-inline'";
   res.setHeader("content-security-policy", [
     "default-src 'self'",
@@ -2891,6 +2926,7 @@ function applySecurityHeaders(req, res) {
     `connect-src ${connectSrc}`,
     "font-src 'self' https://fonts.gstatic.com",
     "worker-src 'self'",
+    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:",
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
@@ -3011,8 +3047,13 @@ function createPhysicalTicket(kioskSession, body) {
   if (sector.status !== "open") return fail("Setor fechado para novas senhas.");
   const priority = normalizePriority(body);
 
-  const previous = db.prepare("SELECT * FROM print_jobs WHERE idempotency_key = ?").get(input.idempotencyKey);
+  const originalKey=input.idempotencyKey;
+  input.idempotencyKey='v2:'+crypto.createHash('sha256').update(kiosk.id+':'+originalKey).digest('hex');
+  const previous=db.prepare('SELECT * FROM print_jobs WHERE idempotency_key IN (?,?) ORDER BY protocol_version DESC LIMIT 1').get(input.idempotencyKey,originalKey);
   if (previous) {
+    const payload=JSON.parse(previous.payload);
+    const previousSectors=(payload.tickets || [payload]).map(t=>t.sectorId).sort();
+    if(previous.kiosk_id!==kiosk.id || JSON.stringify(previousSectors)!==JSON.stringify([...[input.sectorId]].sort()) || Boolean(payload.priority)!==priority.enabled || (payload.priorityReason||null)!==(priority.reason||null))return fail('idempotency_conflict');
     return {
       ticket: ticketDto(getTicket(previous.ticket_id)),
       printJob: printJobDto(previous),
@@ -3029,7 +3070,7 @@ function createPhysicalTicket(kioskSession, body) {
     const customerId = `walkin-${crypto.randomUUID()}`;
     const deviceId = `totem-${crypto.randomUUID()}`;
     const ticketId = `ticket-${crypto.randomUUID()}`;
-    const jobId = `print-${crypto.randomUUID()}`;
+    const jobId = crypto.randomUUID();
     const trackingToken = createTrackingToken();
     const nextNumber = nextTicketNumber(sector.id, now);
     const queueOrder = nextQueueOrder(sector.id);
@@ -3090,6 +3131,7 @@ function createPhysicalTicket(kioskSession, body) {
     return { ticketId, jobId };
   });
 
+  sqlitePrintQueue?.events.emit('available',kiosk.id);
   notifyQueueMilestones(sector.id);
   return {
     ticket: ticketDto(getTicket(result.ticketId)),
@@ -3109,8 +3151,14 @@ function createPhysicalTicketBundle(kioskSession, body) {
   if (sectors.some((sector) => !sector)) return fail("Setor nao encontrado.");
   if (sectors.some((sector) => sector.status !== "open")) return fail("Um dos setores está fechado para novas senhas.");
 
-  const previous = db.prepare("SELECT * FROM print_jobs WHERE idempotency_key = ?").get(input.idempotencyKey);
+  const originalKey=input.idempotencyKey;
+  input.idempotencyKey='v2:'+crypto.createHash('sha256').update(kiosk.id+':'+originalKey).digest('hex');
+  const priority = normalizePriority(body);
+  const previous=db.prepare('SELECT * FROM print_jobs WHERE idempotency_key IN (?,?) ORDER BY protocol_version DESC LIMIT 1').get(input.idempotencyKey,originalKey);
   if (previous) {
+    const payload=JSON.parse(previous.payload);
+    const previousSectors=(payload.tickets || [payload]).map(t=>t.sectorId).sort();
+    if(previous.kiosk_id!==kiosk.id || JSON.stringify(previousSectors)!==JSON.stringify([...input.sectorIds].sort()) || Boolean(payload.priority)!==priority.enabled || (payload.priorityReason||null)!==(priority.reason||null))return fail('idempotency_conflict');
     const previousJob = printJobDto(previous);
     const previousTickets = (previousJob.payload.ticketIds || [])
       .map((ticketId) => getTicket(ticketId))
@@ -3128,10 +3176,9 @@ function createPhysicalTicketBundle(kioskSession, body) {
     return fail("Limite de emissao atingido. Aguarde um minuto.");
   }
 
-  const priority = normalizePriority(body);
   const result = runInTransaction(() => {
     const now = isoNow();
-    const jobId = `print-${crypto.randomUUID()}`;
+    const jobId = crypto.randomUUID();
     const ticketIds = [];
     const payloadTickets = [];
 
@@ -3211,6 +3258,7 @@ function createPhysicalTicketBundle(kioskSession, body) {
     return { jobId, ticketIds, sectorIds: sectors.map((sector) => sector.id) };
   });
 
+  sqlitePrintQueue?.events.emit('available',kiosk.id);
   result.sectorIds.forEach((sectorId) => notifyQueueMilestones(sectorId));
   const tickets = result.ticketIds.map((ticketId) => ticketDto(getTicket(ticketId)));
   return {
@@ -3224,6 +3272,7 @@ function createPhysicalTicketBundle(kioskSession, body) {
 function claimNextPrintJob(kioskId) {
   const kiosk = db.prepare("SELECT * FROM print_kiosks WHERE id = ? AND active = 1").get(kioskId);
   if (!kiosk) return null;
+  if (kiosk.protocol_version === 2) throw new Error("print_protocol_upgrade_required");
   return runInTransaction(() => {
     const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const row = db.prepare(`
@@ -3238,8 +3287,8 @@ function claimNextPrintJob(kioskId) {
       LIMIT 1
     `).get(kioskId, staleBefore);
     const now = isoNow();
-    db.prepare("UPDATE print_kiosks SET last_seen_at = ?, updated_at = ? WHERE id = ?").run(now, now, kioskId);
     if (!row) return null;
+    db.prepare("UPDATE print_kiosks SET last_seen_at = ?, updated_at = ? WHERE id = ?").run(now, now, kioskId);
     const previousAttempts = db.prepare(`
       SELECT id, started_at
       FROM print_job_attempts
@@ -3271,6 +3320,7 @@ function claimNextPrintJob(kioskId) {
 function finishPrintJob(jobId, kioskId, success, errorMessage) {
   const row = db.prepare("SELECT * FROM print_jobs WHERE id = ? AND kiosk_id = ?").get(jobId, kioskId);
   if (!row) return fail("Trabalho de impressao nao encontrado.");
+  if(row.protocol_version===2)return fail("print_protocol_upgrade_required");
   if (row.status !== "printing") return fail("O trabalho precisa estar em impressao.");
   const now = isoNow();
   const error = success ? null : cleanLimitedText(errorMessage, 500) || "Falha de impressao.";
@@ -3831,178 +3881,6 @@ function createRating(body) {
   return { id, createdAt: now };
 }
 
-function getCart(customerId) {
-  if (!customerId) return { items: [] };
-  const items = db.prepare("SELECT * FROM cart_items WHERE customer_id = ? ORDER BY created_at ASC").all(customerId).map(cartItemDto);
-  return { items };
-}
-
-function addCartItem(body) {
-  const customerId = cleanId(body.customerId);
-  const productId = cleanId(body.productId);
-  if (!customerId || !productId) return fail("Cliente e produto são obrigatórios.");
-
-  const existing = db.prepare("SELECT * FROM cart_items WHERE customer_id = ? AND product_id = ?").get(customerId, productId);
-  const now = isoNow();
-  if (existing) {
-    db.prepare("UPDATE cart_items SET quantity = quantity + 1, updated_at = ? WHERE id = ?").run(now, existing.id);
-    registerEvent("carrinho_item_incrementado", "cart_item", existing.id, customerId, null, { productId });
-    return { item: cartItemDto(db.prepare("SELECT * FROM cart_items WHERE id = ?").get(existing.id)) };
-  }
-
-  const id = `cart-${crypto.randomUUID()}`;
-  db.prepare(`
-    INSERT INTO cart_items (id, customer_id, product_id, product_name, sector_name, price, quantity, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, customerId, productId, String(body.productName || "Produto"), String(body.sectorName || "Oferta"), String(body.price || ""), 1, now, now);
-  registerEvent("carrinho_item_adicionado", "cart_item", id, customerId, null, { productId });
-  return { item: cartItemDto(db.prepare("SELECT * FROM cart_items WHERE id = ?").get(id)) };
-}
-
-function updateCartItemQuantity(itemId, customerId, body = {}) {
-  const quantity = Math.max(1, Math.min(99, Number.parseInt(body.quantity, 10) || 1));
-  const item = db.prepare("SELECT * FROM cart_items WHERE id = ? AND customer_id = ?").get(itemId, customerId);
-  if (!item) return fail("Item não encontrado.");
-  db.prepare("UPDATE cart_items SET quantity = ?, updated_at = ? WHERE id = ?").run(quantity, isoNow(), item.id);
-  registerEvent("carrinho_item_quantidade_atualizada", "cart_item", item.id, customerId, null, { productId: item.product_id, quantity });
-  return { item: cartItemDto(db.prepare("SELECT * FROM cart_items WHERE id = ?").get(item.id)) };
-}
-
-function createShoppingSignal(customerId, body = {}) {
-  const signalType = ["search", "view"].includes(body.type) ? body.type : "view";
-  const id = `signal-${crypto.randomUUID()}`;
-  const now = isoNow();
-  db.prepare(`
-    INSERT INTO shopping_signals (id, customer_id, signal_type, query, product_id, product_name, sector_name, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    customerId,
-    signalType,
-    String(body.query || "").slice(0, 120),
-    cleanId(body.productId || ""),
-    String(body.productName || "").slice(0, 160),
-    String(body.sectorName || "").slice(0, 80),
-    now
-  );
-  return { ok: true, id, createdAt: now };
-}
-
-function getShoppingAgent(customerId) {
-  const cartRows = db.prepare("SELECT * FROM cart_items WHERE customer_id = ? ORDER BY updated_at DESC LIMIT 200").all(customerId);
-  const signalRows = db.prepare("SELECT * FROM shopping_signals WHERE customer_id = ? ORDER BY created_at DESC LIMIT 200").all(customerId);
-  const ticketRows = db.prepare("SELECT tickets.*, sectors.name AS sector_name FROM tickets LEFT JOIN sectors ON sectors.id = tickets.sector_id WHERE tickets.customer_id = ? ORDER BY tickets.created_at DESC LIMIT 100").all(customerId);
-  return buildShoppingAgentProfile(cartRows, signalRows, ticketRows);
-}
-
-function buildShoppingAgentProfile(cartRows, signalRows, ticketRows) {
-  const sectorEvents = [
-    ...cartRows.map((row) => ({ sectorName: row.sector_name, createdAt: row.updated_at, weight: Number(row.quantity || 1) * 2 })),
-    ...signalRows.filter((row) => row.sector_name).map((row) => ({ sectorName: row.sector_name, createdAt: row.created_at, weight: 1 })),
-    ...ticketRows.map((row) => ({ sectorName: row.sector_name || row.sector_id, createdAt: row.created_at, weight: 3 }))
-  ];
-  const productEvents = [
-    ...cartRows.map((row) => ({ productId: row.product_id, productName: row.product_name, sectorName: row.sector_name, quantity: Number(row.quantity || 1) * 2 })),
-    ...signalRows.filter((row) => row.product_id).map((row) => ({ productId: row.product_id, productName: row.product_name, sectorName: row.sector_name, quantity: 1 }))
-  ];
-  return {
-    favoriteSectors: rankSignals(sectorEvents, (event) => event.sectorName, (group) => ({ sectorName: group.key, quantity: group.quantity })).slice(0, 6),
-    favoriteProducts: rankSignals(productEvents, (event) => event.productId, (group) => ({
-      productId: group.key,
-      productName: group.events[0].productName,
-      sectorName: group.events[0].sectorName,
-      quantity: group.quantity
-    })).slice(0, 10),
-    recentSearches: rankSignals(signalRows.filter((row) => row.signal_type === "search" && row.query), (row) => normalizeSignalText(row.query), (group) => ({ query: group.events[0].query, quantity: group.quantity })).slice(0, 6),
-    clusterSuggestions: buildShoppingClusterSuggestions(cartRows, signalRows, ticketRows),
-    preferredHourBucket: preferredHourBucket([...cartRows, ...signalRows, ...ticketRows]),
-    generatedAt: isoNow()
-  };
-}
-
-function buildShoppingClusterSuggestions(cartRows, signalRows, ticketRows) {
-  const definitions = [
-    {
-      id: "acougue-complementar",
-      name: "Açougue com complementos",
-      triggerSectors: ["acougue"],
-      sectors: ["Açougue", "Bebidas", "Padaria", "Mercearia", "Hortifruti"],
-      keywords: ["carvao", "carvão", "refrigerante", "suco", "pao", "cebola", "tomate", "batata", "molho", "oleo"],
-      reason: "Quando o cliente passa pelo açougue, o cluster busca itens de preparo, bebida e acompanhamento."
-    },
-    {
-      id: "padaria-manha",
-      name: "Padaria de manhã",
-      triggerSectors: ["padaria"],
-      sectors: ["Padaria", "Frios e Laticínios", "Mercearia", "Bebidas", "Hortifruti"],
-      keywords: ["cafe", "leite", "pao", "manteiga", "requeijao", "queijo", "presunto", "suco", "banana", "iogurte"],
-      reason: "Perfil de café da manhã com produtos que combinam com padaria e reposição diária."
-    },
-    {
-      id: "frios-lanche",
-      name: "Frios para lanche",
-      triggerSectors: ["frios"],
-      sectors: ["Frios e Laticínios", "Padaria", "Mercearia", "Bebidas"],
-      keywords: ["queijo", "presunto", "requeijao", "pao", "baguete", "manteiga", "cafe", "suco", "molho", "macarrao"],
-      reason: "Cluster voltado a lanches rápidos, frios fatiados e complementos próximos."
-    },
-    {
-      id: "reposicao-recorrente",
-      name: "Reposição recorrente",
-      triggerSectors: [],
-      sectors: ["Mercearia", "Frios e Laticínios", "Hortifruti", "Bebidas"],
-      keywords: ["arroz", "feijao", "leite", "cafe", "macarrao", "molho", "banana", "suco"],
-      reason: "Produtos básicos ligados ao histórico de seleção e busca do cliente."
-    }
-  ];
-  const events = [
-    ...cartRows.map((row) => ({ sector: row.sector_name, product: row.product_name, quantity: Number(row.quantity || 1) * 2 })),
-    ...signalRows.map((row) => ({ sector: row.sector_name, product: `${row.product_name || ""} ${row.query || ""}`, quantity: 1 })),
-    ...ticketRows.map((row) => ({ sector: row.sector_name || row.sector_id, product: "", quantity: 3 }))
-  ];
-  return definitions
-    .map((definition) => {
-      const score = events.reduce((sum, event) => {
-        const text = normalizeSignalText(`${event.sector || ""} ${event.product || ""}`);
-        const sectorMatch = definition.sectors.some((sector) => text.includes(normalizeSignalText(sector))) || definition.triggerSectors.some((sector) => text.includes(sector));
-        const keywordMatch = definition.keywords.some((keyword) => text.includes(normalizeSignalText(keyword)));
-        return sum + (sectorMatch ? event.quantity * 3 : 0) + (keywordMatch ? event.quantity * 2 : 0);
-      }, 0);
-      return { ...definition, score };
-    })
-    .sort((first, second) => second.score - first.score)
-    .slice(0, 4);
-}
-
-function rankSignals(events, keyFn, summaryFn) {
-  const groups = new Map();
-  events.forEach((event) => {
-    const key = keyFn(event);
-    if (!key) return;
-    const group = groups.get(key) || { key, events: [], quantity: 0 };
-    group.events.push(event);
-    group.quantity += Number(event.quantity || event.weight || 1);
-    groups.set(key, group);
-  });
-  return [...groups.values()].map(summaryFn).sort((left, right) => right.quantity - left.quantity);
-}
-
-function preferredHourBucket(events) {
-  return rankSignals(events, (event) => hourBucketFor(Number(new Date(event.created_at || event.createdAt).toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: BUSINESS_TIME_ZONE }))), (group) => ({ label: group.key, quantity: group.quantity }))[0]?.label || "";
-}
-
-function normalizeSignalText(value) {
-  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
-
-function removeCartItem(itemId, customerId) {
-  const item = db.prepare("SELECT * FROM cart_items WHERE id = ? AND customer_id = ?").get(itemId, customerId);
-  if (!item) return fail("Item não encontrado.");
-  db.prepare("DELETE FROM cart_items WHERE id = ?").run(itemId);
-  registerEvent("carrinho_item_removido", "cart_item", itemId, customerId, null, { productId: item.product_id });
-  return { ok: true };
-}
-
 function getCustomerHistory(customerId) {
   if (!customerId) return { tickets: [], ratings: [] };
   const tickets = db.prepare(`
@@ -4044,230 +3922,6 @@ function getMetrics(metricsDate = businessDateFor()) {
     satisfaction: satisfactionSummary(ratings),
     generatedAt: isoNow()
   };
-}
-
-function getOfferInsights(url = null) {
-  const days = Math.max(1, Math.min(90, Number(url?.searchParams?.get("days") || 30)));
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const cartRows = db.prepare(`
-    SELECT
-      cart_items.*,
-      (
-        SELECT tickets.sector_id
-        FROM tickets
-        WHERE tickets.customer_id = cart_items.customer_id
-          AND ABS(strftime('%s', tickets.created_at) - strftime('%s', cart_items.created_at)) <= 21600
-        ORDER BY ABS(strftime('%s', tickets.created_at) - strftime('%s', cart_items.created_at)) ASC
-        LIMIT 1
-      ) AS visit_sector_id
-    FROM cart_items
-    WHERE cart_items.created_at >= ?
-    ORDER BY cart_items.created_at DESC
-  `).all(since);
-
-  return buildOfferInsights(cartRows, { days });
-}
-
-function buildOfferInsights(rows, options = {}) {
-  const events = rows.map(offerEvent).filter(Boolean);
-  const productRanking = rankBy(events, (event) => event.productId, productSummary).slice(0, 8);
-  const sectorPatterns = rankBy(events, (event) => event.visitSectorId || slugifyLabel(event.productSector), sectorSummary).slice(0, 6);
-  const timePatterns = rankBy(events, (event) => `${event.dayName}|${event.hourBucket}|${event.visitSectorId || slugifyLabel(event.productSector)}`, timeSummary).slice(0, 8);
-  const clusters = buildOfferClusters(events);
-
-  return {
-    periodDays: options.days || 30,
-    totalSelections: events.reduce((sum, event) => sum + event.quantity, 0),
-    totalCustomers: new Set(events.map((event) => event.customerId)).size,
-    generatedAt: isoNow(),
-    productRanking,
-    sectorPatterns,
-    timePatterns,
-    clusters,
-    suggestions: buildOfferSuggestions(clusters, productRanking, timePatterns),
-    confidence: insightConfidence(events.length)
-  };
-}
-
-function offerEvent(row) {
-  const createdAt = new Date(row.created_at);
-  if (Number.isNaN(createdAt.getTime())) return null;
-  const hour = Number(createdAt.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: BUSINESS_TIME_ZONE }));
-  return {
-    customerId: row.customer_id,
-    productId: row.product_id,
-    productName: row.product_name,
-    productSector: row.sector_name || "Oferta",
-    visitSectorId: row.visit_sector_id || null,
-    price: row.price || "",
-    quantity: Number(row.quantity || 1),
-    createdAt: row.created_at,
-    hour,
-    hourBucket: hourBucketFor(hour),
-    dayName: weekdayName(createdAt),
-    dayKey: weekdayKey(createdAt)
-  };
-}
-
-function rankBy(events, keyFn, summaryFn) {
-  const groups = new Map();
-  events.forEach((event) => {
-    const key = keyFn(event);
-    if (!key) return;
-    const group = groups.get(key) || { key, events: [], quantity: 0, customers: new Set() };
-    group.events.push(event);
-    group.quantity += event.quantity;
-    group.customers.add(event.customerId);
-    groups.set(key, group);
-  });
-  return [...groups.values()]
-    .map((group) => summaryFn(group))
-    .sort((left, right) => right.quantity - left.quantity || right.customers - left.customers);
-}
-
-function productSummary(group) {
-  const first = group.events[0];
-  return {
-    productId: first.productId,
-    productName: first.productName,
-    sectorName: first.productSector,
-    quantity: group.quantity,
-    customers: group.customers.size,
-    shareLabel: `${group.quantity} selecoes`
-  };
-}
-
-function sectorSummary(group) {
-  const first = group.events[0];
-  return {
-    sectorId: first.visitSectorId || slugifyLabel(first.productSector),
-    sectorName: sectorNameFor(first.visitSectorId, first.productSector),
-    quantity: group.quantity,
-    customers: group.customers.size,
-    topProducts: topProducts(group.events, 4)
-  };
-}
-
-function timeSummary(group) {
-  const first = group.events[0];
-  return {
-    label: `${first.dayName}, ${first.hourBucket} em ${sectorNameFor(first.visitSectorId, first.productSector)}`,
-    dayName: first.dayName,
-    hourBucket: first.hourBucket,
-    sectorName: sectorNameFor(first.visitSectorId, first.productSector),
-    quantity: group.quantity,
-    customers: group.customers.size,
-    topProducts: topProducts(group.events, 5)
-  };
-}
-
-function buildOfferClusters(events) {
-  const definitions = [
-    {
-      id: "churrasco-sexta",
-      name: "Churrasco de sexta",
-      matches: (event) => event.dayKey === 5 && event.hour >= 16 && event.hour <= 19 && matchesSector(event, "acougue")
-    },
-    {
-      id: "padaria-manha",
-      name: "Padaria de manha",
-      matches: (event) => event.hour >= 6 && event.hour < 11 && matchesSector(event, "padaria")
-    },
-    {
-      id: "frios-lanche",
-      name: "Lanche rapido de frios",
-      matches: (event) => matchesSector(event, "frios") || /queijo|presunto|requeij|pao|pão/i.test(event.productName)
-    },
-    {
-      id: "compra-complementar",
-      name: "Compra complementar",
-      matches: () => true
-    }
-  ];
-
-  const buckets = new Map(definitions.map((definition) => [definition.id, { ...definition, events: [] }]));
-  events.forEach((event) => {
-    const definition = definitions.find((candidate) => candidate.matches(event));
-    buckets.get(definition.id).events.push(event);
-  });
-
-  return [...buckets.values()]
-    .filter((cluster) => cluster.events.length)
-    .map(clusterSummary)
-    .sort((left, right) => right.quantity - left.quantity)
-    .slice(0, 6);
-}
-
-function clusterSummary(cluster) {
-  const quantity = cluster.events.reduce((sum, event) => sum + event.quantity, 0);
-  const customers = new Set(cluster.events.map((event) => event.customerId)).size;
-  const top = topProducts(cluster.events, 6);
-  const dominantTime = rankBy(cluster.events, (event) => event.hourBucket, (group) => ({ label: group.key, quantity: group.quantity, customers: group.customers.size }))[0]?.label || "Horario variado";
-  const dominantSector = rankBy(cluster.events, (event) => event.visitSectorId || slugifyLabel(event.productSector), sectorSummary)[0]?.sectorName || "Setores variados";
-  return {
-    id: cluster.id,
-    name: cluster.name,
-    quantity,
-    customers,
-    dominantTime,
-    dominantSector,
-    topProducts: top,
-    confidence: insightConfidence(cluster.events.length),
-    recommendation: recommendationForCluster(cluster.name, dominantSector, dominantTime, top)
-  };
-}
-
-function buildOfferSuggestions(clusters, products, timePatterns) {
-  const suggestions = clusters.slice(0, 3).map((cluster) => cluster.recommendation);
-  const topProduct = products[0];
-  if (topProduct) suggestions.push(`Dar destaque para ${topProduct.productName} nas ofertas: foi o item mais selecionado no periodo.`);
-  const topTime = timePatterns[0];
-  if (topTime) suggestions.push(`Criar vitrine contextual para ${topTime.label.toLowerCase()} com ${topTime.topProducts.map((item) => item.productName).join(", ")}.`);
-  return [...new Set(suggestions)].slice(0, 5);
-}
-
-function topProducts(events, limit = 5) {
-  return rankBy(events, (event) => event.productId, productSummary).slice(0, limit);
-}
-
-function recommendationForCluster(name, sector, time, products) {
-  const productNames = products.slice(0, 3).map((item) => item.productName).join(", ");
-  return `Para ${name.toLowerCase()}, montar oferta em ${sector} no periodo ${time} com ${productNames || "produtos relacionados"}.`;
-}
-
-function matchesSector(event, sectorId) {
-  const sector = `${event.visitSectorId || ""} ${event.productSector || ""}`.toLowerCase();
-  return sector.includes(sectorId) || (sectorId === "acougue" && sector.includes("açougue"));
-}
-
-function sectorNameFor(sectorId, fallback) {
-  return getSector(sectorId)?.name || fallback || "Oferta";
-}
-
-function hourBucketFor(hour) {
-  if (hour >= 6 && hour < 11) return "manha";
-  if (hour >= 11 && hour < 14) return "almoco";
-  if (hour >= 14 && hour < 18) return "tarde";
-  if (hour >= 18 && hour < 22) return "noite";
-  return "madrugada";
-}
-
-function weekdayName(date) {
-  return ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"][weekdayKey(date)];
-}
-
-function weekdayKey(date) {
-  return new Date(date.toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE })).getDay();
-}
-
-function slugifyLabel(value) {
-  return String(value || "oferta").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "oferta";
-}
-
-function insightConfidence(sampleSize) {
-  if (sampleSize >= 40) return "alta";
-  if (sampleSize >= 12) return "media";
-  return "baixa";
 }
 
 function getCustomerState(customerId) {
@@ -4602,20 +4256,6 @@ function sectorDto(row) {
   };
 }
 
-function cartItemDto(row) {
-  return {
-    id: row.id,
-    customerId: row.customer_id,
-    productId: row.product_id,
-    productName: row.product_name,
-    sectorName: row.sector_name,
-    price: row.price,
-    quantity: row.quantity,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
 function getSectors() {
   return db.prepare("SELECT * FROM sectors ORDER BY rowid ASC").all();
 }
@@ -4892,8 +4532,8 @@ function fail(message) {
   return { error: message };
 }
 
-function sendJson(res, status, payload) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+function sendJson(res, status, payload, extraHeaders = {}) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...extraHeaders });
   res.end(JSON.stringify(payload));
 }
 

@@ -1,11 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { close, query } = require("../server/local-postgres");
+const { close, query } = require("../server/data/local-postgres");
 const {
   getLocalSession,
   hashSessionToken,
   loginLocalUser
-} = require("../server/local-auth");
+} = require("../server/auth/local-auth");
 
 const ROOT = path.resolve(__dirname, "..");
 

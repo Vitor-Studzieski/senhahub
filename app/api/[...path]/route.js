@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 async function route(request) {
@@ -8,7 +9,7 @@ async function route(request) {
     }, { status: 503 });
   }
 
-  const backend = await import("../../../server/supabase-runtime.js");
+  const backend = await import("../../../server/integrations/supabase-runtime.js");
   return backend.handleRequest(request);
 }
 

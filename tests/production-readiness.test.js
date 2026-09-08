@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { healthResponse, validateProductionEnvironment } = require("../server/production-readiness");
+const { healthResponse, validateProductionEnvironment } = require("../server/platform/production-readiness");
 
 function productionEnvironment(overrides = {}) {
   return {

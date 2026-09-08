@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { close, query } = require("../server/local-postgres");
+const { close, query } = require("../server/data/local-postgres");
 
 const ROOT = path.resolve(__dirname, "..");
 

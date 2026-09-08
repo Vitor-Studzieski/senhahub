@@ -5,7 +5,7 @@ const path = require("node:path");
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 loadEnvFile(path.resolve(process.cwd(), ".env"));
 
-const { close, query, withTransaction } = require("../server/local-postgres");
+const { close, query, withTransaction } = require("../server/data/local-postgres");
 
 const tokenHash = crypto.createHash("sha256").update(`maintenance-test-${Date.now()}-${Math.random()}`).digest("hex");
 
@@ -36,7 +36,7 @@ async function run() {
   const before = await query("SELECT count(*)::integer AS count FROM auth.sessions WHERE token_hash = $1", [tokenHash]);
   if (before.rows[0].count !== 1) throw new Error("a sessao temporaria nao foi criada.");
 
-  const { runLocalMaintenance } = require("../server/local-repository");
+  const { runLocalMaintenance } = require("../server/data/local-repository");
   const summary = await runLocalMaintenance();
   const after = await query("SELECT count(*)::integer AS count FROM auth.sessions WHERE token_hash = $1", [tokenHash]);
   if (after.rows[0].count !== 0) throw new Error("a manutencao nao removeu a sessao expirada.");

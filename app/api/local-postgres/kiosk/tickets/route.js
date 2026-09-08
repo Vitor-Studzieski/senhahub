@@ -1,5 +1,5 @@
-import { issueLocalPhysicalTicket, localKioskSecret } from "../../../../../server/local-kiosk.js";
-import { verifyKioskRequest } from "../../../../../server/print-kiosk-service.js";
+import { issueLocalPhysicalTicket, localKioskSecret } from "../../../../../server/kiosk/local-kiosk.js";
+import { verifyKioskRequest } from "../../../../../server/kiosk/print-kiosk-service.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

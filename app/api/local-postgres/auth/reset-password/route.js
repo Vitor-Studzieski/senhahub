@@ -1,6 +1,6 @@
-import { consumeLocalRateLimit, resetLocalPassword } from "../../../../../server/local-auth.js";
-import { clientIp } from "../../../../../server/local-http-auth.js";
-import { isLocalPostgresEnabled, readJson } from "../../../../../server/local-route-helpers.js";
+import { consumeLocalRateLimit, resetLocalPassword } from "../../../../../server/auth/local-auth.js";
+import { clientIp } from "../../../../../server/auth/local-http-auth.js";
+import { isLocalPostgresEnabled, readJson } from "../../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

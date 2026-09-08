@@ -1,13 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { close, query, withTransaction } = require("../server/local-postgres");
-const { createKioskSession, verifyKioskSession } = require("../server/print-kiosk-service");
+const { close, query, withTransaction } = require("../server/data/local-postgres");
+const { createKioskSession, verifyKioskSession } = require("../server/kiosk/print-kiosk-service");
 const {
   claimLocalPrintJob,
   finishLocalPrintJob,
   issueLocalPhysicalTicket,
   localKioskSecret
-} = require("../server/local-kiosk");
+} = require("../server/kiosk/local-kiosk");
 
 const ROOT = path.resolve(__dirname, "..");
 loadEnvFile(path.join(ROOT, ".env.local"));

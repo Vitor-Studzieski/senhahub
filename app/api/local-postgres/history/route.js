@@ -1,5 +1,5 @@
-import { getLocalCustomerHistory } from "../../../../server/local-legacy.js";
-import { requireLocalUser } from "../../../../server/local-route-helpers.js";
+import { getLocalCustomerHistory } from "../../../../server/data/local-legacy.js";
+import { requireLocalUser } from "../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

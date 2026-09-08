@@ -1,8 +1,8 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const { evaluatePasswordPolicy, isCommonPassword, isStrongPassword, passwordPolicyError } = require("../server/password-policy");
-const { close, withTransaction } = require("../server/local-postgres");
+const { evaluatePasswordPolicy, isCommonPassword, isStrongPassword, passwordPolicyError } = require("../server/auth/password-policy");
+const { close, withTransaction } = require("../server/data/local-postgres");
 
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 loadEnvFile(path.resolve(process.cwd(), ".env"));

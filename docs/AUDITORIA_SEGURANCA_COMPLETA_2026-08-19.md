@@ -61,20 +61,17 @@ Os itens Info são hardening, governança ou lacunas operacionais; não foram tr
 | Estado | queue, state, staff/state | autenticação conforme o dado, `no-store` privado |
 | Tickets | criar, cancelar, confirmar, finalizar, pular, rastrear | CSRF, ownership/setor, transações e locks |
 | Atendimento | staff/call-next | função de staff, setor permitido, CSRF |
-| Carrinho | leitura, inserção, edição e remoção | cliente autenticado, CSRF e ownership |
 | Totem | status, pair, unpair, tickets, print-job | sessão, nonce, role, CSRF e idempotência |
 | Impressão | claim e finish | agente/runtime, função interna e estado |
 | Push | status, subscribe, unsubscribe, preferences, test | sessão, CSRF, origem, allowlist e rate limit |
-| Sinais | shopping-agent, shopping-signals | autenticação, allowlist de campos e CSRF |
 
 ### Rotas legadas migradas para PostgreSQL local
 
 Com `DATA_BACKEND=local-postgres`, `LOCAL_POSTGRES_ROUTES_ENABLED=1` e `LOCAL_POSTGRES_ALLOW_LEGACY_FALLBACK=0`, as rotas antigas abaixo agora usam o mesmo backend PostgreSQL local, com autenticação, autorização, CSRF e queries parametrizadas:
 
 - `POST /api/auth/change-password`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`;
-- `GET /api/history`, `GET /api/events`, `GET /api/metrics`, `GET /api/offer-insights`;
+- `GET /api/history`, `GET /api/events`, `GET /api/metrics`;
 - `GET/POST /api/users`, `PUT /api/sectors/:id`, `POST /api/ratings`;
-- `PATCH/DELETE /api/cart/items/:id`.
 
 Foi criada a tabela privada `auth.password_resets` com token armazenado somente em hash, expiração de 30 minutos, uso único e revogação das sessões após redefinição. A entrega do link por e-mail continua sendo uma configuração externa do ambiente, sem enumeração de usuários. O rastreamento `GET /api/tickets/track/:token` também permanece coberto pela camada local.
 
@@ -111,7 +108,7 @@ Foi criada a tabela privada `auth.password_resets` com token armazenado somente 
       return;
     }
 
-**Código corrigido:** o guard foi adicionado em `server/server.js:825–831`; `LOCAL_POSTGRES_ALLOW_LEGACY_FALLBACK=0` foi documentado em `.env.example`; o preflight reprova valor `1` em `server/production-readiness.js:67–69`.
+**Código corrigido:** o guard foi adicionado em `server/server.js:825–831`; `LOCAL_POSTGRES_ALLOW_LEGACY_FALLBACK=0` foi documentado em `.env.example`; o preflight reprova valor `1` em `server/platform/production-readiness.js:67–69`.
 
 **Risco de regressão:** uma rota nova que não seja adicionada ao mapa local retorna 503 em vez de responder pelo SQLite. Isso é intencional; o teste `test:local-legacy-routes` e o preflight devem continuar obrigatórios.
 
@@ -125,7 +122,7 @@ Foi criada a tabela privada `auth.password_resets` com token armazenado somente 
 **Categoria:** Authentication Failures / API Abuse  
 **CWE:** CWE-307 — Improper Restriction of Excessive Authentication Attempts  
 **OWASP:** A07 Identification and Authentication Failures; API4 Unrestricted Resource Consumption  
-**Arquivo:** `app/api/local-postgres/auth/login/route.js`, `server/local-http-auth.js`  
+**Arquivo:** `app/api/local-postgres/auth/login/route.js`, `server/auth/local-http-auth.js`
 **Linha(s):** login 21–30; helper 8–14  
 **Componente:** login local PostgreSQL.
 
@@ -141,7 +138,7 @@ Foi criada a tabela privada `auth.password_resets` com token armazenado somente 
 
 **Correção recomendada:** aceitar headers encaminhados somente com `TRUST_PROXY_HEADERS=1` e proxy confiável; caso contrário usar uma chave conservadora.
 
-**Código atual/corrigido:** `server/local-http-auth.js:8–14` ignora headers por padrão. O login limita 60 tentativas por IP em 15 minutos e mantém a chave por IP/e-mail (`route.js:21–30`).
+**Código atual/corrigido:** `server/auth/local-http-auth.js:8–14` ignora headers por padrão. O login limita 60 tentativas por IP em 15 minutos e mantém a chave por IP/e-mail (`route.js:21–30`).
 
 **Risco de regressão:** atrás de proxy confiável, é necessário configurar explicitamente `TRUST_PROXY_HEADERS=1`; sem isso vários clientes podem compartilhar a chave `unknown`.
 
@@ -214,7 +211,7 @@ Foi criada a tabela privada `auth.password_resets` com token armazenado somente 
 **Categoria:** Security Misconfiguration / XSS Defense-in-Depth  
 **CWE:** CWE-16 — Configuration  
 **OWASP:** A03 Injection; A05 Security Misconfiguration  
-**Arquivo:** `next.config.js:3–17`, `server/server.js:2745–2760`, `server/supabase-runtime.js:3351–3360`  
+**Arquivo:** `next.config.js:3–17`, `server/server.js:2745–2760`, `server/integrations/supabase-runtime.js:3351–3360`
 **Componente:** headers HTTP.
 
 **Descrição:** a CSP mantém `script-src 'self' 'unsafe-inline'` para compatibilidade com scripts inline existentes. Isso não prova XSS: o código dinâmico analisado usa escaping e não confirmou entrada controlada pelo usuário em `dangerouslySetInnerHTML`. Porém a CSP oferece menos contenção se outra falha surgir.
@@ -248,7 +245,7 @@ Foi criada a tabela privada `auth.password_resets` com token armazenado somente 
 ### XSS e DOM
 
 - Existem `innerHTML` em telas, mas os campos provenientes de API passam por `escapeHtml` nos trechos analisados.
-- `dangerouslySetInnerHTML` em `app/_components/HtmlTemplate.jsx` lê templates locais allowlisted, não conteúdo de usuário.
+- `dangerouslySetInnerHTML` em `app/components/shared/HtmlTemplate.jsx` lê templates locais allowlisted, não conteúdo de usuário.
 - O SVG do QR é produzido por biblioteca local a partir de URL previamente validada.
 - Nenhuma Stored/Reflected/DOM XSS foi confirmada. A CSP continua sendo hardening SEC-005.
 
@@ -336,7 +333,7 @@ Após as correções, foram executados:
 - `npm test` — **66/66 testes passaram**;
 - `npm run build` — passou; permanece apenas warning conhecido de dependência dinâmica em `server/server.js` usado pelo dispatcher;
 - `npm run preflight:local-postgres` após o hardening — passou: conexão real como `senhahub_service`, 24/24 tabelas públicas com RLS, `BYPASSRLS=false`, 28 tabelas requeridas e 7 funções requeridas, sem warnings;
-- `npm run test:local-legacy-routes` — passou: métricas, ICCF, usuários, histórico, SSE, setor, carrinho, recuperação, troca e redefinição de senha;
+- `npm run test:local-legacy-routes` — passou: métricas, usuários, histórico, SSE, setor, recuperação, troca e redefinição de senha;
 - `npm run test:local-auth` — passou;
 - `npm run test:local-auth-session-routes` — passou: login, `/me`, estado, validação, CSRF e logout;
 - `npm run test:local-ticket-route` — passou: criação e cancelamento;

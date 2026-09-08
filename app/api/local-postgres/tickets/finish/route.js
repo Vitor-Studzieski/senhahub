@@ -1,9 +1,9 @@
-import { finishLocalTicket } from "../../../../../server/local-repository.js";
-import { dispatchLocalPushEvent } from "../../../../../server/local-push.js";
+import { finishLocalTicket } from "../../../../../server/data/local-repository.js";
+import { dispatchLocalPushEvent } from "../../../../../server/notifications/local-push.js";
 import {
   authenticateLocalRequest,
   hasValidCsrf
-} from "../../../../../server/local-http-auth.js";
+} from "../../../../../server/auth/local-http-auth.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

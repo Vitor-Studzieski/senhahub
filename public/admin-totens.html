@@ -15,8 +15,7 @@
           <a href="/admin/operacao"><span>Operação</span><small>02</small></a>
           <a href="/admin/setores"><span>Setores</span><small>03</small></a>
           <a class="active" href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/iccf"><span>Inteligência</span><small>05</small></a>
-          <a href="/admin/usuarios"><span>Usuários</span><small>06</small></a>
+          <a href="/admin/usuarios"><span>Usuários</span><small>05</small></a>
         </nav>
         <div class="manager-sidebar-note">Acompanhe os dispositivos e os trabalhos de impressão.</div>
       </aside>
@@ -25,7 +24,7 @@
         <header class="manager-topbar">
           <div><p class="manager-eyebrow">Dispositivos</p><h1>Totens e impressão</h1><p>Centralize a configuração dos totens e o acompanhamento da impressão.</p></div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização automática</span></span>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização manual</span></span>
             <a class="manager-button secondary" href="/admin">Visão geral</a>
             <button class="manager-button warning" id="logoutButton" type="button">Sair</button>
           </div>
@@ -36,6 +35,12 @@
         <section class="manager-content-grid manager-future-grid">
           <article class="manager-panel manager-future-card"><div class="manager-future-icon">T</div><div><h3>Configuração dos Totens</h3><p>Central ou específico por balcão, com setor associado e estado do dispositivo.</p><span class="manager-badge neutral">Módulo em preparação</span></div></article>
           <article class="manager-panel manager-future-card"><div class="manager-future-icon">P</div><div><h3>Fila de impressão</h3><p>Trabalhos pendentes, impressões concluídas e falhas que precisam de recuperação.</p><span class="manager-badge neutral">Módulo em preparação</span></div></article>
+        </section>
+        <section class="manager-panel" aria-labelledby="printReviewHeading">
+          <h2 id="printReviewHeading">Impressões que precisam de atenção</h2>
+          <p>Confira o papel e pare o agente responsável antes de resolver um resultado incerto.</p>
+          <button class="manager-button secondary" id="refreshPrintReview" type="button">Atualizar impressões</button>
+          <div id="printReviewList" role="status">Carregando...</div>
         </section>
       </main>
     </div>

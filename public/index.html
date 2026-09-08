@@ -2,18 +2,19 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>SenhaHub - Supermercado Pompeia</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260905.2" />
+    <link rel="stylesheet" href="/pwa.css?v=20260905.1" />
   </head>
   <body>
     <main class="app-stage">
       <section class="phone" aria-label="Aplicativo SenhaHub">
         <header class="appbar">
-          <button class="icon-button" id="backButton" aria-label="Voltar">
+          <button class="icon-button is-hidden" id="backButton" aria-label="Voltar">
             <svg class="top-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m15 18-6-6 6-6"></path>
             </svg>
@@ -29,6 +30,14 @@
           </button>
         </header>
 
+        <div class="call-notification" id="callNotification" role="alert" aria-live="assertive" hidden>
+          <span class="call-notification-icon" aria-hidden="true">!</span>
+          <div>
+            <strong id="callNotificationTitle">É a sua vez!</strong>
+            <span id="callNotificationText"></span>
+          </div>
+        </div>
+
         <section class="queue-banner" id="queueBanner">
           <div>
             <strong id="bannerTicket"></strong>
@@ -38,38 +47,67 @@
         </section>
 
         <div class="screen-stack">
-          <section class="screen active" data-screen="home">
-            <input class="search" type="search" placeholder="Buscar ofertas, setores e serviços" aria-label="Buscar ofertas, setores e serviços" />
-            <h3>Acesso rápido</h3>
-            <div class="quick-grid">
-              <button class="quick highlighted" data-go="sectors"><span>SH</span>SenhaHub</button>
-              <button class="quick" data-go="offers"><span>✓</span>Lista</button>
-              <button class="quick" data-go="club"><span>C</span>Clube</button>
-              <button class="quick" data-go="account"><span>+</span>Conta</button>
-            </div>
-            <h3>Destaques da Semana</h3>
-            <div class="promo-photo"></div>
-            <article class="promo-copy">
-              <strong>Seleção Pompeia</strong>
-              <p>Ofertas organizadas por setor para aproveitar enquanto acompanha seu atendimento.</p>
-              <button class="blue-action" data-go="offers">Montar lista</button>
-            </article>
-            <div class="shelf-photo"></div>
+          <section class="screen home-screen active" data-screen="home">
+            <section class="welcome-hero" aria-labelledby="welcomeTitle">
+              <div class="welcome-hero-head">
+                <div>
+                  <span class="welcome-eyebrow">Bem-vindo ao SenhaHub</span>
+                  <h1 id="welcomeTitle">Olá, <span id="homeFirstName">Cliente</span>!</h1>
+                </div>
+                <div class="welcome-market-logo">
+                  <img src="/assets/mercado-pompeia-logo.jpg" alt="Logo do Supermercado Pompeia" />
+                </div>
+              </div>
+              <p>Seu atendimento no Supermercado Pompeia começa aqui.</p>
+              <div class="welcome-status" aria-live="polite">
+                <span class="welcome-status-dot" aria-hidden="true"></span>
+                <strong id="homeAvailability">Preparando os setores...</strong>
+              </div>
+            </section>
+
+            <button class="welcome-primary" id="homeQueueAction" type="button">
+              <span class="welcome-primary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 4h12a2 2 0 0 1 2 2v3a3 3 0 0 0 0 6v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 1 2-2Z"></path>
+                  <path d="M9 9h6M9 15h6"></path>
+                </svg>
+              </span>
+              <span class="welcome-primary-copy">
+                <strong id="homeQueueActionTitle">Retirar minha senha</strong>
+                <small id="homeQueueActionText">Escolha o setor e acompanhe sua vez</small>
+              </span>
+              <svg class="welcome-primary-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 18 6-6-6-6"></path>
+              </svg>
+            </button>
+
+            <section class="welcome-assurance" aria-labelledby="welcomeAssuranceTitle">
+              <div class="welcome-assurance-copy">
+                <span>Mais tranquilidade para você</span>
+                <h2 id="welcomeAssuranceTitle">Seu tempo importa.</h2>
+                <p>Continue suas compras enquanto o SenhaHub acompanha sua vez em tempo real.</p>
+              </div>
+              <button class="welcome-assurance-action" type="button" data-go="account">
+                Ativar alertas na conta
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6"></path>
+                </svg>
+              </button>
+            </section>
           </section>
 
           <section class="screen" data-screen="sectors">
             <h2>Escolha o setor</h2>
             <button class="help-action" id="queueHelpButton" type="button">Como funciona?</button>
-            <p class="muted center">A senha será criada somente após sua solicitação.</p>
             <section class="priority-panel" aria-label="Atendimento preferencial">
               <label class="priority-toggle">
                 <input id="priorityToggle" type="checkbox" />
                 <span>
-                  <strong>Fila preferencial</strong>
-                  <small>Use esta opcao se voce se enquadra em atendimento prioritario.</small>
+                  <strong>Atendimento preferencial</strong>
+                  <small>Ative se você tiver direito à prioridade.</small>
                 </span>
               </label>
-              <select id="priorityReason" disabled>
+              <select id="priorityReason" disabled hidden>
                 <option value="">Selecionar categoria</option>
                 <option value="deficiencia_ou_mobilidade_reduzida">Pessoa com deficiencia ou mobilidade reduzida</option>
                 <option value="tea">Pessoa com Transtorno do Espectro Autista (TEA)</option>
@@ -81,48 +119,45 @@
             </section>
             <section class="multi-sector-panel" aria-label="Solicitação para vários locais">
               <div>
-                <strong>Escolha mais de um local</strong>
-                <span id="selectedSectorHint">Marque os locais onde deseja atendimento.</span>
+                <strong>Selecionar vários setores</strong>
+                <span id="selectedSectorHint">Opcional</span>
               </div>
               <button class="blue-action compact" id="requestSelectedTickets" type="button" data-online-required disabled>
-                Solicitar senhas selecionadas
+                Solicitar selecionadas
               </button>
             </section>
             <article class="sector-card">
               <div class="sector-head">
-                <div><strong>Açougue</strong><span>Carnes frescas e cortes especiais</span></div>
+                <div><strong>Açougue</strong></div>
                 <b>Balcão 1</b>
               </div>
-              <div class="sector-meta"><span>Fila atual: 7 pessoas</span><span>Atendimento médio: 42s</span></div>
               <label class="sector-select-control">
                 <input type="checkbox" data-select-sector="acougue" />
-                <span>Selecionar este local</span>
+                <span>Selecione aqui para 2 ou 3 setores</span>
               </label>
-              <button class="yellow-action compact" data-join="acougue" data-online-required>Solicitar senha - Açougue</button>
+              <button class="yellow-action compact" data-join="acougue" data-online-required>Solicitar senha</button>
             </article>
             <article class="sector-card">
               <div class="sector-head">
-                <div><strong>Frios e Laticínios</strong><span>Queijos, embutidos e fatiados</span></div>
+                <div><strong>Frios e Laticínios</strong></div>
                 <b>Balcão 2</b>
               </div>
-              <div class="sector-meta"><span>Fila atual: 4 pessoas</span><span>Atendimento médio: 36s</span></div>
               <label class="sector-select-control">
                 <input type="checkbox" data-select-sector="frios" />
-                <span>Selecionar este local</span>
+                <span>Selecione aqui para 2 ou 3 setores</span>
               </label>
-              <button class="yellow-action compact" data-join="frios" data-online-required>Solicitar senha - Frios</button>
+              <button class="yellow-action compact" data-join="frios" data-online-required>Solicitar senha</button>
             </article>
             <article class="sector-card">
               <div class="sector-head">
-                <div><strong>Padaria</strong><span>Pães, bolos e salgados frescos</span></div>
+                <div><strong>Padaria</strong></div>
                 <b>Balcão 3</b>
               </div>
-              <div class="sector-meta"><span>Fila atual: 5 pessoas</span><span>Atendimento médio: 34s</span></div>
               <label class="sector-select-control">
                 <input type="checkbox" data-select-sector="padaria" />
-                <span>Selecionar este local</span>
+                <span>Selecione aqui para 2 ou 3 setores</span>
               </label>
-              <button class="yellow-action compact" data-join="padaria" data-online-required>Solicitar senha - Padaria</button>
+              <button class="yellow-action compact" data-join="padaria" data-online-required>Solicitar senha</button>
             </article>
           </section>
 
@@ -149,16 +184,32 @@
             <div class="hero-photo small"></div>
             <button class="yellow-action" data-go="status">Acompanhar senha</button>
             <button class="soft-action cancel-ticket-action" id="ticketCancelButton" data-online-required>Cancelar senha</button>
-            <button class="blue-action" data-go="offers">Montar lista</button>
           </section>
 
-          <section class="screen" data-screen="status">
-            <h2>Status da fila</h2>
-            <button class="help-action" id="statusHelpButton" type="button">Como funciona?</button>
-            <p class="muted center" id="statusSector">Nenhuma senha ativa</p>
-            <div class="progress-donut"><span id="positionNumber">--</span></div>
+          <section class="screen status-screen" data-screen="status">
+            <div class="status-heading">
+              <div>
+                <h2>Status da fila</h2>
+              </div>
+              <button class="help-action" id="statusHelpButton" type="button">Como funciona?</button>
+            </div>
+            <p class="status-sector" id="statusSector">Nenhuma senha ativa</p>
+
+            <section class="status-ticket-card" aria-label="Resumo da senha">
+              <div class="status-ticket-overview">
+                <div class="status-ticket-panel status-ticket-current">
+                  <span>Senha atual</span>
+                  <strong id="statusCurrentTicket">--</strong>
+                </div>
+                <div class="status-ticket-panel status-ticket-yours">
+                  <span>Sua senha</span>
+                  <strong id="statusYourTicket">--</strong>
+                </div>
+              </div>
+            </section>
+            <section class="status-ticket-bundle" id="statusTicketBundle" hidden aria-label="Todas as suas senhas ativas"></section>
+
             <div id="statusPriorityBadge" class="priority-badge priority-large" hidden></div>
-            <button class="soft-yellow" id="estimatedTime">Sem atendimento em andamento</button>
             <div class="queue-alert" id="queueAlert" hidden>
               <strong id="queueAlertTitle">Atenção</strong>
               <span id="queueAlertText">Sua chamada será realizada em breve.</span>
@@ -167,76 +218,9 @@
               <label><input id="soundAlertToggle" type="checkbox" /> Som</label>
               <label><input id="vibrationAlertToggle" type="checkbox" /> Vibração</label>
             </div>
-            <section class="sync-panel" aria-label="Sincronizacao com o balcao">
-              <div class="sync-panel-head">
-                <strong>Sincronizado com o balcao</strong>
-                <span id="syncUpdatedAt">Atualizando...</span>
-              </div>
-              <div class="sync-grid">
-                <div><span>Chamada no balcao</span><b id="syncCounterTicket">--</b></div>
-                <div><span>Seu atendimento</span><b id="syncCustomerTicket">--</b></div>
-                <div><span>Setor</span><b id="syncSector">--</b></div>
-                <div><span>Status</span><b id="syncStatus">--</b></div>
-                <div><span>Pessoas na frente</span><b id="syncAhead">--</b></div>
-                <div><span>Critério da fila</span><b id="syncPriorityRule">--</b></div>
-              </div>
-            </section>
-            <div class="info-row"><strong>Tempo estimado</strong><span id="timeInfo">--</span></div>
-            <div class="estimate-note" id="estimateNote">Tempo estimado indisponivel.</div>
-            <div class="info-row"><strong>Pessoas na frente</strong><span id="aheadInfo">--</span></div>
+            <button class="blue-action confirm-call-action" id="confirmCall" type="button" data-online-required hidden>Estou a caminho</button>
             <button class="soft-action cancel-ticket-action" id="statusCancelButton" data-online-required>Cancelar senha</button>
             <button class="yellow-action service-finish-action" id="statusFinishButton" data-online-required>Informar fim do pedido</button>
-            <button class="blue-action" data-go="offers">Montar lista</button>
-          </section>
-
-          <section class="screen" data-screen="offers">
-            <div class="queue-mini" id="offersQueue"></div>
-            <h2>Lista de compras</h2>
-            <p class="muted">Produtos recomendados pelo seu comportamento de compra, setor visitado e horário.</p>
-            <div class="shopping-toolbar">
-              <input class="search offers-search" id="productSearch" type="search" placeholder="Buscar item, marca ou setor" aria-label="Buscar item, marca ou setor" />
-              <section class="shopping-preferences" aria-label="Personalizacao da lista">
-                <div class="preference-row">
-                  <span>Personalizar por</span>
-                  <div class="preference-chips" role="group" aria-label="Tipo de recomendacao">
-                    <button type="button" data-shopping-mode="auto">Perfil</button>
-                    <button type="button" data-shopping-mode="history">Mais usados</button>
-                    <button type="button" data-shopping-mode="context">Setor atual</button>
-                    <button type="button" data-shopping-mode="time">Horario</button>
-                    <button type="button" data-shopping-mode="essentials">Essenciais</button>
-                  </div>
-                </div>
-                <div class="preference-row">
-                  <span>Setor</span>
-                  <div class="preference-chips" role="group" aria-label="Filtro por setor">
-                    <button type="button" data-shopping-sector="all">Todos</button>
-                    <button type="button" data-shopping-sector="acougue">Açougue</button>
-                    <button type="button" data-shopping-sector="frios">Frios</button>
-                    <button type="button" data-shopping-sector="padaria">Padaria</button>
-                    <button type="button" data-shopping-sector="mercearia">Mercearia</button>
-                  </div>
-                </div>
-              </section>
-            </div>
-            <div class="cart-panel">
-              <strong>Minha lista</strong>
-              <div id="cartList"></div>
-            </div>
-            <div class="product-list" id="productList"></div>
-          </section>
-
-          <section class="screen" data-screen="detail">
-            <img class="detail-photo" id="detailPhoto" alt="Foto do produto em promoção" />
-            <span class="tag" id="detailSector">Oferta</span>
-            <h2 id="detailName">Produto</h2>
-            <p class="muted" id="detailDescription">Detalhes da oferta selecionada.</p>
-            <div class="price-box">
-              <del id="detailOld">--</del>
-              <strong id="detailPrice">--</strong>
-            </div>
-            <button class="yellow-action" id="addProduct" data-online-required>Adicionar à lista</button>
-            <button class="text-action" data-go="offers">Voltar para lista</button>
-            <p class="toast" id="toast">Produto adicionado à lista.</p>
           </section>
 
           <section class="screen centered" data-screen="done">
@@ -251,51 +235,22 @@
             <button class="outline-action" data-go="home">Voltar ao início</button>
           </section>
 
-          <section class="screen" data-screen="club">
-            <h2>Clube Pompeia</h2>
-            <p class="muted center">Vantagens, pontos e ofertas especiais para clientes cadastrados.</p>
-            <article class="club-hero-card">
-              <span>Saldo disponível</span>
-              <strong id="clubPoints">0 pts</strong>
-              <small id="clubLevel">Cliente cadastrado</small>
-            </article>
-            <div class="club-grid">
-              <article class="club-card">
-                <b>2x</b>
-                <strong>Pontos em ofertas</strong>
-                <span>Produtos adicionados à lista geram pontos simulados no protótipo.</span>
-              </article>
-              <article class="club-card">
-                <b>5%</b>
-                <strong>Desconto clube</strong>
-                <span>Benefício demonstrativo para compras vinculadas ao atendimento.</span>
-              </article>
-              <article class="club-card">
-                <b>VIP</b>
-                <strong>Ofertas antecipadas</strong>
-                <span>Acompanhe promoções do setor enquanto aguarda sua senha.</span>
-              </article>
-            </div>
-            <button class="yellow-action" data-go="offers">Montar lista do clube</button>
-          </section>
 
           <section class="screen" data-screen="account">
             <h2>Minha conta</h2>
-            <p class="muted center">Dados da sessão atual e acessos disponíveis.</p>
             <article class="account-card">
               <div class="account-avatar" id="accountAvatar">--</div>
-              <div>
+              <div class="account-card-copy">
                 <strong id="accountName">Cliente</strong>
                 <span id="accountEmail">--</span>
+                <div class="account-card-meta" aria-label="Perfil e status">
+                  <span id="accountRole">--</span>
+                  <span class="account-status" id="accountStatus">Ativo</span>
+                </div>
               </div>
             </article>
-            <div class="account-details">
-              <div><span>Perfil</span><strong id="accountRole">--</strong></div>
-              <div><span>Status</span><strong id="accountStatus">Ativo</strong></div>
-              <div><span>ID do cliente</span><strong id="accountCustomerId">--</strong></div>
-            </div>
             <section class="authorized-panel" id="authorizedPanel" hidden>
-              <strong>Acessos autorizados</strong>
+              <strong>Acessos</strong>
               <div class="access-grid">
                 <a class="access-card manager-access" href="/attendant">
                   <svg class="access-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -306,7 +261,6 @@
                     <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                   </svg>
                   <strong>Atendente</strong>
-                  <span>Abrir painel de atendimento dos setores.</span>
                 </a>
                 <a class="access-card admin-access" href="/admin">
                   <svg class="access-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -315,41 +269,34 @@
                     <path d="M4 15l8 4 8-4"></path>
                   </svg>
                   <strong>Gestor</strong>
-                  <span>Acessar administração, usuários e visão geral.</span>
                 </a>
               </div>
             </section>
             <section class="pwa-settings" id="notificationSettings" aria-labelledby="notificationSettingsTitle">
-              <h3 id="notificationSettingsTitle">Notificações e aplicativo</h3>
-              <p>Ative os alertas para receber um aviso quando sua vez estiver próxima, mesmo que o SenhaHub não esteja aberto.</p>
+              <h3 id="notificationSettingsTitle">Notificações</h3>
               <div class="pwa-settings-state" id="pushSettingsState" role="status" aria-live="polite">
-                <strong id="pushSettingsTitle">Verificando compatibilidade...</strong>
-                <span id="pushSettingsDescription">Aguarde enquanto consultamos este dispositivo.</span>
+                <strong id="pushSettingsTitle">Preparando alertas...</strong>
+                <span id="pushSettingsDescription">Aguarde um instante.</span>
               </div>
               <div class="pwa-preference-list" aria-label="Preferências de notificação">
                 <label class="pwa-switch">
-                  <span>Atendimento próximo</span>
+                  <span>Sua vez se aproxima</span>
                   <input type="checkbox" data-push-preference="queueNear" data-online-required />
                   <span aria-hidden="true"></span>
                 </label>
                 <label class="pwa-switch">
-                  <span>Aviso de chamada</span>
+                  <span>Senha chamada</span>
                   <input type="checkbox" data-push-preference="queueCalled" data-online-required />
                   <span aria-hidden="true"></span>
                 </label>
                 <label class="pwa-switch">
-                  <span>Avisos de standby</span>
+                  <span>Fila em espera</span>
                   <input type="checkbox" data-push-preference="standby" data-online-required />
                   <span aria-hidden="true"></span>
                 </label>
                 <label class="pwa-switch">
-                  <span>Alterações relevantes na fila</span>
+                  <span>Mudanças na fila</span>
                   <input type="checkbox" data-push-preference="queueChanges" data-online-required />
-                  <span aria-hidden="true"></span>
-                </label>
-                <label class="pwa-switch">
-                  <span>Ofertas e comunicações promocionais</span>
-                  <input type="checkbox" data-push-preference="promotions" data-online-required />
                   <span aria-hidden="true"></span>
                 </label>
               </div>
@@ -361,8 +308,8 @@
               </div>
               <div class="pwa-help" id="pushHelp" hidden></div>
               <div class="pwa-install-area">
-                <strong>Instalar SenhaHub</strong>
-                <p id="installStateText">Use o aplicativo pela tela inicial para acessar sua fila com mais rapidez.</p>
+                <strong>Instalar aplicativo</strong>
+                <p id="installStateText">Acesse sua fila pela tela inicial.</p>
                 <button class="pwa-button secondary" id="accountInstallButton" type="button">Instalar aplicativo</button>
               </div>
             </section>
@@ -384,7 +331,7 @@
         </div>
 
         <nav class="tabbar" aria-label="Navegação principal">
-          <button data-tab="home" aria-label="Início">
+          <button data-tab="home" class="on" aria-label="Início">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m3 11 9-8 9 8"></path>
               <path d="M5 10v10h14V10"></path>
@@ -392,31 +339,13 @@
             </svg>
             <span>Início</span>
           </button>
-          <button data-tab="offers" aria-label="Lista">
-            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"></path>
-              <path d="M7.5 7.5h.01"></path>
-              <path d="m9 15 6-6"></path>
-              <path d="M9 9h.01"></path>
-              <path d="M15 15h.01"></path>
-            </svg>
-            <span>Lista</span>
-          </button>
-          <button data-tab="sectors" class="on" aria-label="Senhas">
+          <button data-tab="sectors" aria-label="Senhas">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 4h12a2 2 0 0 1 2 2v3a3 3 0 0 0 0 6v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 1 2-2Z"></path>
               <path d="M9 9h6"></path>
               <path d="M9 15h6"></path>
             </svg>
             <span>Senhas</span>
-          </button>
-          <button data-tab="club" aria-label="Clube">
-            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 21s-7-4.4-9-10a5.3 5.3 0 0 1 9-5.4 5.3 5.3 0 0 1 9 5.4c-2 5.6-9 10-9 10Z"></path>
-              <path d="M9 11h6"></path>
-              <path d="M12 8v6"></path>
-            </svg>
-            <span>Clube</span>
           </button>
           <button data-tab="account" aria-label="Conta e acesso">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -436,14 +365,6 @@
           Informar fim do pedido
         </button>
 
-        <div class="modal-backdrop" id="callModal">
-          <div class="call-card">
-            <div class="notify-icon">!</div>
-            <h3>É a sua vez</h3>
-            <p id="callText"></p>
-            <button class="blue-action" id="confirmCall" data-online-required>Estou a caminho</button>
-          </div>
-        </div>
         <div class="tutorial-backdrop" id="queueTutorial" hidden>
           <section class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
             <div class="tutorial-head">
@@ -463,6 +384,6 @@
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260904.7"></script>
   </body>
 </html>

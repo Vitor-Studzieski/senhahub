@@ -1,5 +1,7 @@
 # Estudo da feature de impressão
 
+> A implementação atual segue o protocolo v2 descrito em [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md). Este estudo preserva o raciocínio e os requisitos históricos; não use seus exemplos de token v1, polling ou heartbeat para um novo dispositivo.
+
 Projeto: SenhaHub Supermercado Pompeia
 Feature: totem de senhas físicas + fila de impressão + Bematech MP-4200 TH  
 Status: guia técnico e operacional para estudo
@@ -27,7 +29,7 @@ Navegador do totem em /totem
   ▼
 API do SenhaHub
   │
-  ├── Produção: server/supabase-runtime.js
+  ├── Produção: server/integrations/supabase-runtime.js
   │       │
   │       └── Supabase REST + RPCs
   │
@@ -63,15 +65,15 @@ O simulador também pode consumir a fila local e representar a impressão no ter
 | `app/totem/page.jsx` | Entrega a página Next.js do totem e carrega os scripts. |
 | `public/totem.html` | Estrutura visual: pareamento, setores, confirmação e status da impressão. |
 | `public/totem.js` | Consulta status, pareia, emite senha, acompanha o `print_job` e mostra o resultado. |
-| `server/print-kiosk-service.js` | Sessões do totem, CSRF, token do agente e validações comuns. |
-| `server/supabase-runtime.js` | API de produção usando Supabase e RPCs. |
+| `server/kiosk/print-kiosk-service.js` | Sessões do totem, CSRF, token do agente e validações comuns. |
+| `server/integrations/supabase-runtime.js` | API de produção usando Supabase e RPCs. |
 | `server/server.js` | API local equivalente usando SQLite. |
 | `supabase/migrations/20260729154028_print_kiosk_jobs.sql` | Tabelas, índices, seed, RPCs, RLS e grants da fila física. |
 | `supabase/migrations/20260729175827_index_tickets_kiosk_id.sql` | Índice para tickets associados ao totem. |
 | `scripts/print-agent.js` | Processo Windows que consome a fila e confirma o resultado. |
 | `scripts/print-agent/runtime.js` | Carregamento de configuração, logs e journal contra reimpressão. |
 | `scripts/print-agent/serial-printer.js` | Comunicação serial ESC/POS. |
-| `server/escpos-receipt.js` | Montagem dos bytes do cupom. |
+| `server/kiosk/escpos-receipt.js` | Montagem dos bytes do cupom. |
 | `windows/print-agent/install.ps1` | Instalação automática no Agendador de Tarefas do Windows. |
 | `docs/totem-impressao.md` | Guia operacional resumido já existente. |
 
@@ -164,7 +166,7 @@ Essa RPC executa em uma transação:
 
 O ticket físico possui `customer_id` e `device_id` nulos no Supabase, pois não representa um usuário autenticado. Ele usa o nome operacional `Cliente do totem`.
 
-O ticket fica elegível para chamada automática depois de 30 segundos, conforme `AUTO_CALL_DELAY_SECONDS`.
+O ticket fica elegível para chamada automática depois de 10 segundos, conforme `AUTO_CALL_DELAY_SECONDS`.
 
 ### 4.5 Acompanhamento no totem
 
@@ -326,7 +328,7 @@ O log principal registra início, busca, impressão, falhas, tentativas e encerr
 
 ## 7. Recibo ESC/POS
 
-O arquivo `server/escpos-receipt.js` gera um `Buffer` com comandos ESC/POS.
+O arquivo `server/kiosk/escpos-receipt.js` gera um `Buffer` com comandos ESC/POS.
 
 Antes do conteúdo, o agente seleciona temporariamente o modo ESC/POS da MP-4200 TH. A impressora possui modos ESC/Bematech e ESC/POS; sem essa seleção, os bytes de formatação e do QR Code podem ser impressos como texto.
 
@@ -623,12 +625,12 @@ Referência: [segurança da Data API do Supabase](https://supabase.com/docs/guid
 
 1. [docs/totem-impressao.md](totem-impressao.md)
 2. [public/totem.js](../public/totem.js)
-3. [server/print-kiosk-service.js](../server/print-kiosk-service.js)
+3. [server/kiosk/print-kiosk-service.js](../server/kiosk/print-kiosk-service.js)
 4. [supabase/migrations/20260729154028_print_kiosk_jobs.sql](../supabase/migrations/20260729154028_print_kiosk_jobs.sql)
-5. [server/supabase-runtime.js](../server/supabase-runtime.js)
+5. [server/integrations/supabase-runtime.js](../server/integrations/supabase-runtime.js)
 6. [scripts/print-agent.js](../scripts/print-agent.js)
 7. [scripts/print-agent/serial-printer.js](../scripts/print-agent/serial-printer.js)
-8. [server/escpos-receipt.js](../server/escpos-receipt.js)
+8. [server/kiosk/escpos-receipt.js](../server/kiosk/escpos-receipt.js)
 9. [windows/print-agent/install.ps1](../windows/print-agent/install.ps1)
 
 ## 17. Próxima prática recomendada

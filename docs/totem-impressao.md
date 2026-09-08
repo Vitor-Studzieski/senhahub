@@ -1,5 +1,7 @@
 # Totem e fila de impressao
 
+> A operação atual está em [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md). Este arquivo preserva o contexto histórico do totem e dos parâmetros físicos; os tokens v1, polling e endpoints antigos abaixo não são instruções para um novo pareamento.
+
 O totem emite senhas fisicas na mesma fila usada pelo aplicativo. A emissao cria, em uma unica transacao no Supabase, a senha e um trabalho de impressao. O agente Windows consome essa fila e envia o recibo em ESC/POS para a Bematech MP-4200 TH pela porta serial.
 
 ## Componentes entregues
@@ -10,6 +12,7 @@ O totem emite senhas fisicas na mesma fila usada pelo aplicativo. A emissao cria
 - `print_jobs`: fila persistente, idempotente e com controle de tentativas.
 - `npm run print:simulate`: consumidor local que simula o recibo de 80 mm.
 - `npm run print:agent`: agente real que imprime pela porta `COM3`.
+- Supabase Realtime: sinaliza novos trabalhos sem polling contínuo quando a fila está vazia.
 
 ## Variaveis da Vercel
 
@@ -39,9 +42,10 @@ Depois do schema inicial e da migration de PWA, aplique:
 ```text
 supabase/migrations/20260729154028_print_kiosk_jobs.sql
 supabase/migrations/20260729175827_index_tickets_kiosk_id.sql
+supabase/migrations/20260823130843_print_job_realtime_signal.sql
 ```
 
-Essas migrations ja foram aplicadas ao projeto Supabase atualmente conectado.
+Essas migrations ja foram aplicadas ao projeto Supabase atualmente conectado. A última cria um sinal Realtime mínimo por totem; a reivindicação continua protegida pelo token do agente e pela RPC `claim_next_print_job`.
 
 ## Pareamento do totem
 
@@ -60,6 +64,10 @@ No computador que consumira a fila, configure:
 PRINT_API_URL=https://senhahub.vercel.app
 PRINT_AGENT_TOKEN=<o-mesmo-segredo-configurado-na-vercel>
 KIOSK_ID=totem-pompeia-01
+PRINT_REALTIME_ENABLED=1
+PRINT_POLL_INTERVAL_MS=2000
+PRINT_FALLBACK_POLL_INTERVAL_MS=30000
+PRINT_HEARTBEAT_INTERVAL_MS=60000
 ```
 
 Execute:
@@ -80,7 +88,7 @@ Requisitos no computador do totem:
 - impressora configurada no modo de comandos ESC/POS;
 - acesso HTTPS a `https://senhahub.vercel.app`.
 
-No computador Windows, clone ou copie o projeto para uma pasta fixa. Depois copie `.env.print-agent.example` para `.env.print-agent` e preencha `PRINT_AGENT_TOKEN` com o mesmo segredo cadastrado na Vercel.
+No computador Windows, clone ou copie o projeto para uma pasta fixa. Depois copie `.env.print-agent.example` para `.env.print-agent` e preencha `PRINT_AGENT_TOKEN` com o mesmo segredo cadastrado na Vercel. O agente obtém automaticamente a configuração pública do Realtime por uma rota protegida pelo token. Nunca configure a `SUPABASE_SERVICE_ROLE_KEY` no computador do totem.
 
 Confirme a porta detectada:
 
@@ -128,3 +136,22 @@ Para remover a inicializacao automatica:
 O papel impresso segue esta ordem: `SUPERMERCADO POMPEIA`, `SenhaHub`, setor, `SENHA`, numero da senha, data e horario de emissao e o QR Code individual para acompanhar a senha. O QR Code impresso aponta para `/acompanhar/<token>` e nao para a tela de instalacao.
 
 O agente registra localmente cada trabalho enviado antes de confirma-lo na API. Se a internet cair apos a impressao, uma nova tentativa confirma o mesmo trabalho sem imprimir novamente. Uma queda de energia exatamente entre o corte do papel e esse registro ainda pode gerar uma segunda via, limitacao inerente a impressoras sem confirmacao transacional.
+
+## Impressora Bluetooth dos tablets — Açougue da Loja 2
+
+A POS-5890A-L dos tablets usa uma fila própria, `tablet-pompeia-01`, restrita ao setor `acougue-loja-2`. Ela não deve ser configurada no agente Windows do totem.
+
+Como o PWA não controla de forma confiável impressoras Bluetooth clássicas a partir do navegador, o tablet que ficar junto à impressora deve executar o agente Android em `android/print-agent`. Esse agente mantém a conexão Bluetooth, consome `/api/print/jobs/claim`, envia o cupom ESC/POS e confirma `/api/print/jobs/:id/finish`. Os demais tablets emitem normalmente e acompanham o status da mesma fila.
+
+Variáveis adicionais do backend:
+
+```env
+TABLET_PRINTER_KIOSK_ID=tablet-pompeia-01
+TABLET_PRINTER_MODE=sector
+TABLET_PRINTER_SECTOR_ID=acougue-loja-2
+TABLET_PRINTER_STORE_CODE=loja-2
+TABLET_PRINTER_NAME=POS-5890A-L
+TABLET_PRINTER_PORT=BLUETOOTH
+TABLET_PAPER_WIDTH_MM=58
+PRINT_AGENT_KIOSKS_JSON={"totem-pompeia-01":"token-do-totem","tablet-pompeia-01":"token-do-tablet"}
+```

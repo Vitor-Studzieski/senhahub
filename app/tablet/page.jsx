@@ -1,5 +1,5 @@
 import Script from "next/script";
-import HtmlTemplate from "../_components/HtmlTemplate";
+import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export const metadata = {
   title: "Solicitar senha",
@@ -10,7 +10,7 @@ export default function TabletPage() {
   return (
     <>
       <HtmlTemplate fileName="tablet.html" />
-      <Script src="/tablet.js?v=20260821-priority-direct" strategy="afterInteractive" />
+      <Script src="/tablet.js?v=20260908.1" strategy="afterInteractive" />
     </>
   );
 }

@@ -136,6 +136,9 @@ function renderAttendant() {
   document.querySelectorAll("[data-call-next]").forEach((button) => {
     button.addEventListener("click", () => callNext(button.dataset.callNext));
   });
+  document.querySelectorAll("[data-skip-ticket]").forEach((button) => {
+    button.addEventListener("click", () => openSkipModal(button.dataset.skipTicket));
+  });
   scheduleCallHighlightExpiry();
 }
 
@@ -157,12 +160,14 @@ function ticketRow(ticket) {
         <span>${escapeHtml(ticket.sector)} - ${escapeHtml(supportCode(ticket))}</span>
         <small>${escapeHtml(ticketDetailLine(ticket))}</small>
       </div>
+      ${ticketActions(ticket)}
     </div>
   `;
 }
 
 function ticketActions(ticket) {
-  return "";
+  if (!ticket?.id || !["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)) return "";
+  return `<div class="ops-ticket-actions"><button type="button" class="danger-action" data-skip-ticket="${escapeHtml(ticket.id)}">Pular senha</button></div>`;
 }
 
 function ticketDetailLine(ticket) {
@@ -331,16 +336,6 @@ function applyCalledTicket(sectorId, ticket) {
   applyStaffState(nextState);
 }
 
-async function startTicket(ticketId) {
-  await api(`/api/tickets/${ticketId}/confirm`, { method: "POST" });
-  await loadStaffState();
-}
-
-async function finishTicket(ticketId) {
-  await api(`/api/tickets/${ticketId}/finish`, { method: "POST" });
-  await loadStaffState();
-}
-
 function openSkipModal(ticketId) {
   pendingSkipTicketId = ticketId;
   document.querySelector("#skipForm").reset();
@@ -357,12 +352,30 @@ async function submitSkipTicket(event) {
   if (!pendingSkipTicketId) return;
   const reason = new FormData(event.currentTarget).get("reason");
   if (!reason) return;
-  await api(`/api/tickets/${encodeURIComponent(pendingSkipTicketId)}/skip`, {
-    method: "POST",
-    body: { reason }
-  });
-  closeSkipModal();
-  await loadStaffState();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton?.disabled) return;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Registrando…";
+  }
+  try {
+    await api(`/api/tickets/${encodeURIComponent(pendingSkipTicketId)}/skip`, {
+      method: "POST",
+      body: { reason }
+    });
+    closeSkipModal();
+    await loadStaffState();
+  } catch (error) {
+    const message = error?.message || "Não foi possível pular a senha.";
+    const paragraph = form.querySelector("p");
+    if (paragraph) paragraph.textContent = message;
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Confirmar";
+    }
+  }
 }
 
 function ticketStatus(ticket) {

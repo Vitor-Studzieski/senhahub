@@ -1,13 +1,15 @@
 # SenhaHub Supermercado Pompeia
 
-Aplicativo de fila virtual para supermercado, com login por perfil, solicitacao de senhas por setor, painel do atendente, painel administrativo e lista de compras/promocoes.
+Aplicativo de fila virtual para supermercado, com login por perfil, solicitacao de senhas por setor, painel do atendente e painel administrativo.
 
 ## Requisitos
 
 - Node.js 22.x
 - npm
 
-O projeto requer Node 22. O deploy atual na Vercel usa exclusivamente o Supabase para autenticação, dados da fila, carrinho, notificações, impressão e RPCs transacionais. O caminho PostgreSQL local permanece preservado para a futura instalação do servidor da loja.
+O projeto requer Node 22. O deploy atual na Vercel usa exclusivamente o Supabase para autenticação, dados da fila, notificações, impressão e RPCs transacionais. O caminho PostgreSQL local permanece preservado para a futura instalação do servidor da loja.
+
+O protocolo atual de impressão, pareamento, recuperação e rollout está em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md). Ele inclui a operação Node/Windows e o agente Android; a validação física Android/Bluetooth depende do tablet e da impressora de campo.
 
 ## Como rodar localmente
 
@@ -51,7 +53,6 @@ Em desenvolvimento e produção, as telas chamam o runtime Supabase pelo mesmo d
 - `http://localhost:3000/admin/setores` - configuração dos setores
 - `http://localhost:3000/admin/totens` - totens e impressão
 - `http://localhost:3000/admin/usuarios` - usuários e permissões
-- `http://localhost:3000/iccf` - clusters e inteligencia comercial
 - `http://localhost:3000/totem` - emissão física de senhas por etapas
 - `http://localhost:3000/acompanhar/<token>` - acompanhamento individual da senha
 
@@ -127,7 +128,7 @@ O monitoramento de Cron, request IDs, logs estruturados e métricas de impressã
 
 ## Dados e operação no Supabase
 
-O runtime oficial usa o Supabase para Auth, perfis, setores, tickets, carrinho, notificações, impressão e funções transacionais. O navegador acessa somente a API HTTPS do próprio domínio; as chaves administrativas ficam exclusivamente no servidor.
+O runtime oficial usa o Supabase para Auth, perfis, setores, tickets, notificações, impressão e funções transacionais. O navegador acessa somente a API HTTPS do próprio domínio; as chaves administrativas ficam exclusivamente no servidor.
 
 Validações e operação:
 
@@ -173,7 +174,7 @@ O acompanhamento das tarefas fica em [BACKLOG_SENHAHUB.md](BACKLOG_SENHAHUB.md).
 
 O registro da demonstração técnica e do formulário de feedback fica em [docs/INOVASKILL_VALIDACAO.md](docs/INOVASKILL_VALIDACAO.md).
 
-As acoes autenticadas usam cookie `HttpOnly` e token CSRF. Se o login funcionar, mas acoes como carrinho ou senha falharem com erro de token de seguranca, recarregue a pagina para sincronizar o cookie `senhahub_csrf`.
+As acoes autenticadas usam cookie `HttpOnly` e token CSRF. Se o login funcionar, mas acoes como solicitar ou acompanhar uma senha falharem com erro de token de seguranca, recarregue a pagina para sincronizar o cookie `senhahub_csrf`.
 
 ## Configuração Supabase
 

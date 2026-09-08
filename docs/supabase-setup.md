@@ -114,7 +114,6 @@ Isso cria:
 - `ratings`
 - `events`
 - `ticket_counters`
-- `cart_items`
 - `login_attempts`
 - `web_push_subscriptions`
 - `push_notification_preferences`
@@ -156,7 +155,7 @@ Troque `acougue` por `frios` ou `padaria` conforme o caso.
 
 ## Ativando o backend Supabase
 
-Com `DATA_BACKEND=supabase`, a rota `app/api/[...path]/route.js` usa o runtime `server/supabase-runtime.js`.
+Com `DATA_BACKEND=supabase`, a rota `app/api/[...path]/route.js` usa o runtime `server/integrations/supabase-runtime.js`.
 
 Nesse modo, o app usa Supabase/Postgres para:
 
@@ -165,7 +164,6 @@ Nesse modo, o app usa Supabase/Postgres para:
 - setores;
 - tickets/senhas;
 - chamadas e atendimentos;
-- carrinho;
 - avaliacoes;
 - eventos;
 - metricas;

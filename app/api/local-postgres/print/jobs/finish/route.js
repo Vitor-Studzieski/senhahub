@@ -1,5 +1,5 @@
-import { finishLocalPrintJob } from "../../../../../../server/local-kiosk.js";
-import { verifyPrintAgentRequest } from "../../../../../../server/print-kiosk-service.js";
+import { finishLocalPrintJob } from "../../../../../../server/kiosk/local-kiosk.js";
+import { verifyPrintAgentRequest } from "../../../../../../server/kiosk/print-kiosk-service.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
