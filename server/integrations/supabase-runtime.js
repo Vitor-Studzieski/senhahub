@@ -146,7 +146,7 @@ async function handleRequest(request) {
 const printV2Api = createPrintV2Api({ rpc, select, supabaseFetch, log: logStructured,
   rateLimit: async request => await consumeSecurityRateLimit('print:enroll',crypto.createHash('sha256').update(request.headers.get('x-forwarded-for') || 'unknown').digest('hex'),10,600) === true,
   requireAdmin: async (request) => {
-    const user = await requireUser(request, ['admin']);
+    const user = await requireUser(request, ['admin', 'manager']);
     if (user.response) return user;
     if (!await verifyCsrf(request, user)) return { response: json({ error: 'CSRF invalido.' },403) };
     return user;
