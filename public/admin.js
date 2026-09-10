@@ -2,6 +2,9 @@ let adminState = { sectors: [] };
 let adminUsers = [];
 let adminMetrics = { sectors: [], satisfaction: { count: 0, average: 0 } };
 let currentUser = null;
+let adminRefreshTimer = null;
+let adminRefreshInFlight = null;
+const ADMIN_REFRESH_INTERVAL_MS = 12000;
 
 initAdmin();
 
@@ -44,13 +47,31 @@ async function initAdmin() {
       alerts.innerHTML = `<div class="manager-alert manager-alert-attention"><span class="manager-alert-mark">!</span><div><strong>Não foi possível carregar todos os dados</strong><p>Tente atualizar o painel novamente. ${escapeHtml(error.message || "Erro de comunicação")}</p></div></div>`;
     }
   }
+  startAdminPolling();
 }
 
 async function refreshDashboard() {
+  if (adminRefreshInFlight) return adminRefreshInFlight;
   const requests = [];
   if (needsAdminState()) requests.push(loadAdminState());
   if (needsAdminMetrics()) requests.push(loadMetrics());
-  await Promise.all(requests);
+  adminRefreshInFlight = Promise.all(requests).finally(() => {
+    adminRefreshInFlight = null;
+  });
+  return adminRefreshInFlight;
+}
+
+function startAdminPolling() {
+  if (adminRefreshTimer || !needsAdminState()) return;
+  adminRefreshTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    refreshDashboard().catch((error) => {
+      const alerts = document.querySelector("#dashboardAlerts");
+      if (alerts) {
+        alerts.innerHTML = `<div class="manager-alert manager-alert-attention"><span class="manager-alert-mark">!</span><div><strong>Não foi possível atualizar o painel</strong><p>${escapeHtml(error.message || "Erro de comunicação")}</p></div></div>`;
+      }
+    });
+  }, ADMIN_REFRESH_INTERVAL_MS);
 }
 
 function needsAdminState() {
