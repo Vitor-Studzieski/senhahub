@@ -52,7 +52,7 @@ No backend cloud: `PRINT_PROVISIONING_SECRET`, `PRINT_REALTIME_ENABLED=1`, `PRIN
 
 No Windows, use `npm run print:agent:ports` para descobrir a porta e `npm run print:agent:test` para um cupom de diagnóstico. O serviço mantém a configuração e o journal em `data/print-agent`; o instalador aplica ACL ao diretório padrão. Se `PRINT_AGENT_STATE_DIR` apontar para outro diretório, aplique ACL equivalente manualmente.
 
-No Android, o aplicativo precisa permanecer como serviço em primeiro plano, com a notificação ativa, Bluetooth pareado e permissão `BLUETOOTH_CONNECT`. A ausência de Android físico não impede o build, os testes unitários ou a revisão do protocolo; a primeira validação de campo ainda deve cobrir pareamento, reboot, queda de rede, queda de energia e papel/corte.
+No Android, quando a operação usar o agente Bluetooth alternativo, o aplicativo precisa permanecer como serviço em primeiro plano, com a notificação ativa, Bluetooth pareado e permissão `BLUETOOTH_CONNECT`. Para o fluxo ativo dos tablets com RawBT, o navegador abre o esquema `rawbt:base64,...` e o próprio RawBT envia o cupom à impressora; nesse caso, não inicie o agente Android do projeto no mesmo tablet. A ausência de Android físico não impede o build, os testes unitários ou a revisão do protocolo; a primeira validação de campo ainda deve cobrir abertura do RawBT, reboot, queda de rede, queda de energia e papel/corte.
 
 A impressora só confirma que recebeu os bytes. Sem sensor transacional, não é possível provar que o papel saiu; queda exatamente entre o envio e o journal pode exigir resolução manual. Em qualquer dúvida, deixe `needs_review` e use o painel administrativo. Nunca apague a linha ou recrie manualmente o mesmo ticket para “destravar”.
 

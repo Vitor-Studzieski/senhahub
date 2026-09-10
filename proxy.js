@@ -38,17 +38,17 @@ export async function proxy(request) {
     const user = await loadCurrentUser(request);
     if (!user) return redirectToLogin(request, pathname);
     if (!hasManagerRole(user)) return NextResponse.redirect(new URL(roleHome(user), request.url));
-    return NextResponse.next();
+    return allowPage(request);
   }
 
   const roles = rolesForPath(pathname);
-  if (!roles) return NextResponse.next();
+  if (!roles) return allowPage(request);
 
   // The signed cookie is only a bearer credential. The role is read again
   // through the protected API so a role/status change is not accepted until
   // the next long-lived cookie refresh.
   const user = await loadCurrentUser(request);
-  if (user && roles.includes(normalizeRole(user.role))) return NextResponse.next();
+  if (user && roles.includes(normalizeRole(user.role))) return allowPage(request);
   if (user) {
     if (pathname === "/tablet") return redirectToLogin(request, pathname);
     return NextResponse.redirect(new URL(roleHome(user), request.url));
@@ -75,6 +75,43 @@ function redirectToLogin(request, pathname) {
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", pathname);
   return NextResponse.redirect(loginUrl);
+}
+
+function allowPage(request) {
+  const nonce = createNonce();
+  const contentSecurityPolicy = buildContentSecurityPolicy(nonce);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("content-security-policy", contentSecurityPolicy);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", contentSecurityPolicy);
+  return response;
+}
+
+function createNonce() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return bytesToBase64Url(bytes);
+}
+
+function buildContentSecurityPolicy(nonce) {
+  const development = process.env.NODE_ENV !== "production";
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'${development ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' https://fonts.googleapis.com",
+    "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com",
+    `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com${development ? " ws: http://localhost:*" : ""}`,
+    "font-src 'self' https://fonts.gstatic.com",
+    "worker-src 'self'",
+    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:",
+    "frame-src 'self' https://www.instagram.com",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join("; ");
 }
 
 function hasManagerRole(user) {
@@ -196,6 +233,11 @@ export const config = {
     "/admin/:path*",
     "/tablet/:path*",
     "/tv/acougue",
+    "/login",
+    "/login/:path*",
+    "/instalar",
+    "/instalar/:path*",
+    "/acompanhar/:path*",
     "/totem",
     "/totem/:path*",
     "/index.html",

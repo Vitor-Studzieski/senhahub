@@ -10,8 +10,8 @@ if (isVercelProduction) {
 }
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  `script-src 'self'${isDevelopment ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' https://fonts.googleapis.com",
   "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com",
   `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com${isDevelopment ? " ws: http://localhost:*" : ""}`,
   "font-src 'self' https://fonts.gstatic.com",

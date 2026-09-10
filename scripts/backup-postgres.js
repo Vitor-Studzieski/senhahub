@@ -59,6 +59,7 @@ try {
     note: "Conteudo criptografado com AES-256-GCM; a chave nao fica no backup."
   };
   fs.writeFileSync(path.join(offsiteDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  writeBackupStatus(offsiteDir, manifest);
   console.log(`Backup PostgreSQL criptografado criado em: ${offsiteDir}`);
 } catch (error) {
   for (const dump of dumps) {
@@ -67,6 +68,19 @@ try {
   }
   console.error(`Backup PostgreSQL nao concluido: ${error.message}`);
   process.exitCode = 1;
+}
+
+function writeBackupStatus(backupDir, manifest) {
+  const statusPath = path.resolve(process.env.BACKUP_STATUS_FILE || path.join(offsitePath, "latest.json"));
+  if (statusPath === projectRoot || statusPath.startsWith(`${projectRoot}${path.sep}`)) {
+    throw new Error("BACKUP_STATUS_FILE precisa ficar fora da pasta do projeto.");
+  }
+  if (!statusPath.startsWith(`${offsitePath}${path.sep}`)) {
+    throw new Error("BACKUP_STATUS_FILE precisa ficar dentro do destino externo.");
+  }
+  const temporaryPath = `${statusPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify({ ...manifest, backupDir }, null, 2)}\n`, { mode: 0o600, flag: "w" });
+  fs.renameSync(temporaryPath, statusPath);
 }
 
 function runDump(dump, outputPath, targetDatabaseUrl) {

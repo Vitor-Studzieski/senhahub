@@ -9,7 +9,7 @@ Aplicativo de fila virtual para supermercado, com login por perfil, solicitacao 
 
 O projeto requer Node 22. O deploy atual na Vercel usa exclusivamente o Supabase para autenticação, dados da fila, notificações, impressão e RPCs transacionais. O caminho PostgreSQL local permanece preservado para a futura instalação do servidor da loja.
 
-O protocolo atual de impressão, pareamento, recuperação e rollout está em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md). Ele inclui a operação Node/Windows e o agente Android; a validação física Android/Bluetooth depende do tablet e da impressora de campo.
+O protocolo atual de impressão, pareamento, recuperação e rollout está em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md). Ele inclui a operação Node/Windows e a opção de agente Android; para os tablets, o fluxo ativo usa o RawBT e a validação física depende do tablet e da impressora de campo.
 
 ## Como rodar localmente
 

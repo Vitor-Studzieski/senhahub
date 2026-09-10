@@ -7,18 +7,21 @@ loadEnvFile(path.join(ROOT, ".env.local"));
 loadEnvFile(path.join(ROOT, ".env"));
 
 async function main() {
+  process.env.DATA_BACKEND = "local-postgres";
+  process.env.LOCAL_POSTGRES_ROUTES_ENABLED = "1";
+
   const { GET } = await import("../app/api/local-postgres/queue/route.js");
   const response = await GET(new Request("http://localhost/api/local-postgres/queue"));
   const body = await response.json();
 
   console.log(JSON.stringify({
     statusHttp: response.status,
-    source: body.source,
+    error: body.error,
     setores: body.sectors?.length ?? 0,
     tickets: body.tickets?.length ?? 0
   }, null, 2));
 
-  if (!response.ok) process.exitCode = 1;
+  if (response.status !== 401) process.exitCode = 1;
 }
 
 main().catch((error) => {

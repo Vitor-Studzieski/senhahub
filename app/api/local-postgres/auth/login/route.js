@@ -20,7 +20,7 @@ export async function POST(request) {
 
   const email = String(body?.email || "").trim().toLowerCase();
   const requestIp = clientIp(request);
-  if (!await consumeLocalRateLimit("local-login-ip", requestIp, 60, 15 * 60)) {
+  if (requestIp !== "unknown" && !await consumeLocalRateLimit("local-login-ip", requestIp, 30, 60)) {
     return Response.json({ error: "Muitas tentativas. Aguarde alguns minutos." }, { status: 429 });
   }
   const result = await loginLocalUser({

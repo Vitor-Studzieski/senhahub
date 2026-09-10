@@ -1,0 +1,10 @@
+[Unit]
+Description=Verificação diária do backup do SenhaHub
+
+[Timer]
+OnCalendar=*-*-* 03:35:00
+Persistent=true
+Unit=senhahub-backup-verify.service
+
+[Install]
+WantedBy=timers.target

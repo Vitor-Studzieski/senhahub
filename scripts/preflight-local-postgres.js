@@ -74,6 +74,22 @@ async function main() {
     const missingTables = REQUIRED_TABLES.filter((table) => !tableNames.has(table));
     if (missingTables.length) errors.push(`Tabelas ausentes: ${missingTables.join(", ")}`);
 
+    const requiredColumns = await query(
+      `
+        SELECT table_schema, table_name, column_name
+        FROM information_schema.columns
+        WHERE (table_schema, table_name, column_name) IN (
+          ('public', 'profiles', 'store_code'),
+          ('public', 'sectors', 'store_code'),
+          ('public', 'print_kiosks', 'store_code')
+        )
+      `
+    );
+    const presentColumns = new Set(requiredColumns.rows.map((row) => `${row.table_schema}.${row.table_name}.${row.column_name}`));
+    for (const requiredColumn of ["public.profiles.store_code", "public.sectors.store_code", "public.print_kiosks.store_code"]) {
+      if (!presentColumns.has(requiredColumn)) errors.push(`Coluna de isolamento ausente: ${requiredColumn}`);
+    }
+
     const publicTables = tables.rows.filter((row) => row.schema_name === "public");
     const publicWithoutRls = publicTables.filter((row) => !row.rls_enabled).map((row) => row.table_name);
     if (publicWithoutRls.length) errors.push(`Tabelas públicas sem RLS: ${publicWithoutRls.join(", ")}`);
@@ -96,6 +112,34 @@ async function main() {
     if (roleByName.get("senhahub_service")?.rolbypassrls) {
       errors.push("senhahub_service não pode usar BYPASSRLS; aplique a migration de policies explícitas do runtime.");
     }
+
+    const storeChecks = await query(
+      `
+        SELECT
+          (SELECT count(*) FROM public.profile_sector_permissions permissions
+           JOIN public.profiles profiles ON profiles.id = permissions.profile_id
+           JOIN public.sectors sectors ON sectors.id = permissions.sector_id
+           WHERE profiles.store_code IS NOT NULL
+             AND profiles.store_code <> sectors.store_code) AS permission_store_mismatches,
+          (SELECT count(*) FROM public.tickets tickets
+           JOIN public.print_kiosks kiosks ON kiosks.id = tickets.kiosk_id
+           JOIN public.sectors sectors ON sectors.id = tickets.sector_id
+           WHERE tickets.source = 'physical'
+             AND tickets.kiosk_id IS NOT NULL
+             AND kiosks.store_code <> sectors.store_code) AS physical_ticket_store_mismatches,
+          (SELECT count(*) FROM pg_trigger
+           WHERE tgname = 'profile_sector_store_boundary'
+             AND NOT tgisinternal) AS permission_store_triggers,
+          (SELECT count(*) FROM pg_trigger
+           WHERE tgname = 'tickets_physical_store_boundary'
+             AND NOT tgisinternal) AS physical_ticket_store_triggers
+      `
+    );
+    const storeCheck = storeChecks.rows[0] || {};
+    if (Number(storeCheck.permission_store_mismatches) > 0) errors.push("Permissões de perfil atravessam lojas.");
+    if (Number(storeCheck.physical_ticket_store_mismatches) > 0) errors.push("Tickets físicos atravessam lojas.");
+    if (Number(storeCheck.permission_store_triggers) !== 1) errors.push("Trigger de isolamento de permissões ausente.");
+    if (Number(storeCheck.physical_ticket_store_triggers) !== 1) errors.push("Trigger de isolamento de tickets físicos ausente.");
 
     const functions = await query(
       `
@@ -131,6 +175,12 @@ async function main() {
       publicTablesWithRls: publicTables.filter((row) => row.rls_enabled).length,
       requiredTables: REQUIRED_TABLES.length,
       requiredFunctions: REQUIRED_FUNCTIONS.length,
+      storeIsolation: {
+        permissionStoreMismatches: Number(storeCheck.permission_store_mismatches || 0),
+        physicalTicketStoreMismatches: Number(storeCheck.physical_ticket_store_mismatches || 0),
+        permissionStoreTriggers: Number(storeCheck.permission_store_triggers || 0),
+        physicalTicketStoreTriggers: Number(storeCheck.physical_ticket_store_triggers || 0)
+      },
       schemaMigrations: await query("SELECT count(*)::integer AS count FROM public.senhahub_schema_migrations").then((result) => result.rows[0].count),
       warnings,
       errors

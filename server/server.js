@@ -133,6 +133,7 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
 const localPostgresRouteModules = new Map();
 
 const PORT = Number(process.env.PORT || 3000);
+const MAX_REQUEST_BODY_BYTES = 1_000_000;
 const dev = process.env.NODE_ENV !== "production";
 const supabaseRuntimeEnabled = process.env.DATA_BACKEND === "supabase";
 const DATA_DIR = process.env.DATA_DIR
@@ -193,6 +194,10 @@ const PRIORITY_CATEGORIES = new Set([
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_IP_RATE_LIMIT = 60;
+const LOGIN_IP_RATE_WINDOW_SECONDS = 60;
+const LOGIN_ACCOUNT_RATE_LIMIT = 12;
+const LOGIN_ACCOUNT_RATE_WINDOW_SECONDS = 15 * 60;
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
 const SCHEDULED_JOBS_MIN_INTERVAL_MS = 1000;
 const STANDBY_WARNING_SECONDS = 2 * 60;
@@ -797,6 +802,10 @@ async function handleApi(req, res, url) {
   try {
     await handleApiInternal(req, res, url);
   } catch (error) {
+    if (error?.code === "PAYLOAD_TOO_LARGE") {
+      sendJson(res, 413, { error: "O corpo da requisicao excede o limite permitido." });
+      return;
+    }
     if (error?.code === "INVALID_JSON") {
       sendJson(res, 400, { error: "O corpo da requisicao precisa ser um JSON valido." });
       return;
@@ -830,11 +839,7 @@ async function handleSupabaseApiRoute(req, res, url) {
     requestInit.duplex = "half";
   }
 
-  const forwardedProtocol = String(req.headers["x-forwarded-proto"] || "")
-    .split(",")[0]
-    .trim()
-    .toLowerCase();
-  const requestProtocol = forwardedProtocol === "https" ? "https" : "http";
+  const requestProtocol = nodeRequestProtocol(req);
   const request = new Request(
     `${requestProtocol}://${req.headers.host || "localhost"}${url.pathname}${url.search}`,
     requestInit
@@ -1526,6 +1531,11 @@ async function handleLocalPostgresAppAlias(req, res, url) {
     routeFile = "app/api/local-postgres/tablet/print-job/route.js";
   }
 
+  const tabletRawbtPrintMatch = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)\/rawbt$/);
+  if (req.method === "POST" && tabletRawbtPrintMatch) {
+    routeFile = "app/api/local-postgres/tablet/print-job/route.js";
+  }
+
   const printFinishMatch = url.pathname.match(/^\/api\/print\/jobs\/([^/]+)\/finish$/);
   if (req.method === "POST" && printFinishMatch) {
     routeFile = "app/api/local-postgres/print/jobs/finish/route.js";
@@ -1578,11 +1588,7 @@ async function handleLocalPostgresRoute(req, res, url, routeFileOverride = null,
     requestInit.duplex = "half";
   }
 
-  const forwardedProtocol = String(req.headers["x-forwarded-proto"] || "")
-    .split(",")[0]
-    .trim()
-    .toLowerCase();
-  const requestProtocol = forwardedProtocol === "https" ? "https" : "http";
+  const requestProtocol = nodeRequestProtocol(req);
   const request = new Request(`${requestProtocol}://${req.headers.host || "localhost"}${url.pathname}${url.search}`, requestInit);
   const response = await method(request);
   const setCookies = response.headers.getSetCookie?.() || [];
@@ -1610,12 +1616,39 @@ async function readJsonBodyForLocalRoute(req) {
   }
 }
 
-function readRawRequestBody(req) {
+function readRawRequestBody(req, maximumBytes = MAX_REQUEST_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
+    let totalBytes = 0;
+    let settled = false;
+    const rejectPayload = () => {
+      if (settled) return;
+      settled = true;
+      const error = new Error("Payload muito grande.");
+      error.code = "PAYLOAD_TOO_LARGE";
+      req.resume?.();
+      reject(error);
+    };
+    req.on("data", (chunk) => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+      if (totalBytes > maximumBytes) {
+        rejectPayload();
+        return;
+      }
+      chunks.push(buffer);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks));
+    });
+    req.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
 }
 
@@ -1972,6 +2005,7 @@ function seedUser(user) {
 }
 
 function isLoginLocked(key) {
+  if (!shouldApplyLoginLock(key)) return false;
   const now = Date.now();
   const entry = db.prepare("SELECT * FROM login_attempts WHERE attempt_key = ?").get(key);
   if (!entry) return false;
@@ -1987,7 +2021,7 @@ function registerLoginFailure(key) {
     ? entry.count + 1
     : 1;
   const firstAttemptAt = entry && now - entry.first_attempt_at <= LOGIN_ATTEMPT_WINDOW_MS ? entry.first_attempt_at : now;
-  const lockedUntil = attempts >= LOGIN_ATTEMPT_LIMIT ? now + LOGIN_LOCK_MS : 0;
+  const lockedUntil = attempts >= LOGIN_ATTEMPT_LIMIT && shouldApplyLoginLock(key) ? now + LOGIN_LOCK_MS : 0;
   db.prepare(`
     INSERT INTO login_attempts (attempt_key, count, first_attempt_at, locked_until, updated_at)
     VALUES (?, ?, ?, ?, ?)
@@ -1997,6 +2031,10 @@ function registerLoginFailure(key) {
       locked_until = excluded.locked_until,
       updated_at = excluded.updated_at
   `).run(key, attempts, firstAttemptAt, lockedUntil, isoNow());
+}
+
+function shouldApplyLoginLock(key) {
+  return !String(key || "").startsWith("unknown:");
 }
 
 function clearLoginFailures(key) {
@@ -2114,7 +2152,14 @@ async function registerLocalCustomer(body, req) {
 function loginLocalUser(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const attemptKey = `${clientIp(req)}:${email || "unknown"}`;
+  const requestIp = clientIp(req);
+  if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
+  }
+  if (!consumeSecurityRateLimit("login:account", email || "missing", LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
+  }
+  const attemptKey = `${requestIp}:${email || "unknown"}`;
   if (isLoginLocked(attemptKey)) {
     return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   }
@@ -2175,7 +2220,14 @@ async function changeLocalPassword(body, req) {
 async function loginSupabaseUser(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const attemptKey = `${clientIp(req)}:${email || "unknown"}`;
+  const requestIp = clientIp(req);
+  if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
+  }
+  if (!consumeSecurityRateLimit("login:account", email || "missing", LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
+  }
+  const attemptKey = `${requestIp}:${email || "unknown"}`;
   if (isLoginLocked(attemptKey)) {
     return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   }
@@ -2539,8 +2591,8 @@ function revokePushSubscriptionsForUser(userId) {
 function verifyPushRequestOrigin(req, res) {
   const origin = String(req.headers.origin || "");
   if (!origin && dev) return true;
-  const protocol = String(req.headers["x-forwarded-proto"] || (dev ? "http" : "https")).split(",")[0].trim();
-  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  const protocol = nodeRequestProtocol(req);
+  const host = trustedProxyHeader(req, "x-forwarded-host") || String(req.headers.host || "").split(",")[0].trim();
   let valid = false;
   try {
     valid = Boolean(origin && host && new URL(origin).origin === `${protocol}://${host}`);
@@ -2917,11 +2969,12 @@ function roleHome(user) {
 
 function applySecurityHeaders(req, res) {
   const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com";
-  const scriptSrc = dev ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self' 'unsafe-inline'";
+  const nonce = crypto.randomBytes(16).toString("base64url");
+  const scriptSrc = dev ? `'self' 'nonce-${nonce}' 'unsafe-eval'` : `'self' 'nonce-${nonce}'`;
   res.setHeader("content-security-policy", [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' https://fonts.googleapis.com",
     "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com",
     `connect-src ${connectSrc}`,
     "font-src 'self' https://fonts.gstatic.com",
@@ -4221,7 +4274,6 @@ function publicTicketView(ticket) {
     ticketNumber: ticket.ticketNumber,
     ticket: ticket.ticket,
     current: ticket.current,
-    currentCustomerName: ticket.currentCustomerName,
     sector: ticket.sector,
     counterLabel: ticket.counterLabel,
     serviceLabel: ticket.serviceLabel,
@@ -4520,8 +4572,17 @@ function clientIp(req) {
 }
 
 function isSecureNodeRequest(req, url) {
-  const forwardedProtocol = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
-  return url?.protocol === "https:" || forwardedProtocol === "https";
+  return nodeRequestProtocol(req, url) === "https";
+}
+
+function trustedProxyHeader(req, name) {
+  if (process.env.TRUST_PROXY_HEADERS !== "1") return "";
+  return String(req.headers[name] || "").split(",")[0].trim();
+}
+
+function nodeRequestProtocol(req, url) {
+  if (url?.protocol === "https:" || req.socket?.encrypted) return "https";
+  return trustedProxyHeader(req, "x-forwarded-proto").toLowerCase() === "https" ? "https" : "http";
 }
 
 function placeholders(values) {
@@ -4595,5 +4656,6 @@ function loadEnvFile(filePath) {
 
 module.exports = {
   applySecurityHeaders,
-  handleApi
+  handleApi,
+  readRawRequestBody
 };

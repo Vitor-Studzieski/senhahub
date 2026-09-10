@@ -137,11 +137,11 @@ O papel impresso segue esta ordem: `SUPERMERCADO POMPEIA`, `SenhaHub`, setor, `S
 
 O agente registra localmente cada trabalho enviado antes de confirma-lo na API. Se a internet cair apos a impressao, uma nova tentativa confirma o mesmo trabalho sem imprimir novamente. Uma queda de energia exatamente entre o corte do papel e esse registro ainda pode gerar uma segunda via, limitacao inerente a impressoras sem confirmacao transacional.
 
-## Impressora Bluetooth dos tablets — Açougue da Loja 2
+## Impressora RawBT dos tablets — Açougue da Loja 2
 
-A POS-5890A-L dos tablets usa uma fila própria, `tablet-pompeia-01`, restrita ao setor `acougue-loja-2`. Ela não deve ser configurada no agente Windows do totem.
+A impressora dos tablets usa uma fila própria, `tablet-pompeia-01`, restrita ao setor `acougue-loja-2`. Ela não deve ser configurada no agente Windows do totem nem no agente Android próprio do projeto.
 
-Como o PWA não controla de forma confiável impressoras Bluetooth clássicas a partir do navegador, o tablet que ficar junto à impressora deve executar o agente Android em `android/print-agent`. Esse agente mantém a conexão Bluetooth, consome `/api/print/jobs/claim`, envia o cupom ESC/POS e confirma `/api/print/jobs/:id/finish`. Os demais tablets emitem normalmente e acompanham o status da mesma fila.
+O tablet em que o RawBT está instalado recebe o cupom ESC/POS pelo link `rawbt:base64,...`. O SenhaHub gera o cupom a partir do mesmo trabalho que criou a senha e confirma o envio ao RawBT. Os demais tablets podem emitir normalmente; o tablet de impressão precisa estar com o RawBT configurado e ativo.
 
 Variáveis adicionais do backend:
 
@@ -153,5 +153,6 @@ TABLET_PRINTER_STORE_CODE=loja-2
 TABLET_PRINTER_NAME=POS-5890A-L
 TABLET_PRINTER_PORT=BLUETOOTH
 TABLET_PAPER_WIDTH_MM=58
-PRINT_AGENT_KIOSKS_JSON={"totem-pompeia-01":"token-do-totem","tablet-pompeia-01":"token-do-tablet"}
 ```
+
+No RawBT, selecione a impressora nova e faça primeiro um teste de impressão pelo próprio aplicativo. Depois abra `/tablet` no navegador Android e solicite uma senha. O botão de nova impressão reenvia a mesma senha, sem criar outra senha na fila.

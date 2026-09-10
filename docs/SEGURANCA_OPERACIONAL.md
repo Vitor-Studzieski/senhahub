@@ -1,6 +1,6 @@
 # Segurança operacional do SenhaHub
 
-Atualizado em 19/08/2026. Este documento separa os controles já aplicados no código dos controles que dependem de uma conta de DNS, do painel do Supabase ou de um destino externo para backup.
+Atualizado em 10/09/2026. Este documento separa os controles já aplicados no código dos controles que dependem de uma conta de DNS, do painel do Supabase ou de um destino externo para backup.
 
 ## Controles aplicados sem serviço pago
 
@@ -10,6 +10,7 @@ Atualizado em 19/08/2026. Este documento separa os controles já aplicados no c�
 - Login, cadastro, emissão no totem e acompanhamento público possuem limites de tentativas.
 - A verificação em duas etapas está temporariamente desativada no login administrativo. A estrutura TOTP e os desafios temporários continuam preservados para a reativação prevista no backlog.
 - `service_role`, `senhahub_service`, URLs de banco, `AUTH_SECRET`, `CRON_SECRET`, VAPID privado e a chave de backup permanecem somente no servidor.
+- O runtime restringe tabelas e RPCs de impressão por allowlists; os grants internos necessários permanecem porque as RPCs atuais são `SECURITY INVOKER`, mantendo o bypass residual do `service_role` documentado.
 
 Quando a tarefa do backlog for concluída, o MFA nativo deverá ser habilitado e validado em Authentication > Multi-Factor Authentication no projeto Supabase.
 
@@ -48,6 +49,8 @@ Configure os valores apenas no `.env.local`, em uma máquina de backup ou em um 
 DATABASE_URL=postgresql://...
 BACKUP_ENCRYPTION_KEY=uma-frase-longa-e-exclusiva-com-32-caracteres-ou-mais
 BACKUP_OFFSITE_DIR=/Volumes/BackupSenhaHub
+BACKUP_STATUS_FILE=/Volumes/BackupSenhaHub/latest.json
+BACKUP_MAX_AGE_HOURS=30
 ```
 
 Execute manualmente ou agende no cron/Agendador de Tarefas:
@@ -76,6 +79,14 @@ Para verificar a chave e a integridade sem restaurar:
 ```bash
 BACKUP_DIR=/Volumes/BackupSenhaHub/AAAAMMDDTHHMMSSZ npm run restore:postgres -- --verify-only
 ```
+
+O backup também publica um `latest.json` atômico no destino externo. A verificação abaixo confirma idade, permissões, manifesto e autenticação AES-GCM sem restaurar o banco:
+
+```bash
+npm run backup:verify
+```
+
+No servidor systemd, habilite `senhahub-backup-verify.service.example` e `senhahub-backup-verify.timer.example`. Uma falha faz o serviço sair com erro e deve gerar alerta no monitoramento do host.
 
 Para ensaiar uma restauração, use uma instância PostgreSQL separada:
 
@@ -117,6 +128,17 @@ Quando houver domínio próprio, a configuração gratuita deve ser:
 
 Não exponha diretamente o endereço do banco ou chaves do Supabase no DNS. O limite da aplicação continua ativo como segunda camada, mesmo sem Cloudflare.
 
+## Teste operacional de impressão e dispositivos
+
+Antes de liberar um agente, totem ou tablet, execute os testes automatizados do protocolo e confirme o fluxo físico em ambiente controlado:
+
+```bash
+npm run check:print-agent
+npm run test:print-v2
+```
+
+O teste real deve emitir uma senha de teste, confirmar que o job foi reivindicado por um único agente, simular queda antes e depois da escrita, validar retry/`needs_review`, confirmar o término idempotente e verificar que o Realtime não libera outro escritor concorrente. Registre o `kiosk_id`, versão do agente, impressora e horário sem registrar tokens.
+
 ## Checklist antes de produção
 
 - [ ] Domínio próprio configurado na Vercel e no Cloudflare.
@@ -125,7 +147,10 @@ Não exponha diretamente o endereço do banco ou chaves do Supabase no DNS. O li
 - [ ] `DATABASE_URL` validada sem aparecer em logs.
 - [ ] `LOCAL_DATABASE_URL` validada sem aparecer em logs quando o servidor interno for usado.
 - [ ] Backup criptografado copiado para destino externo.
+- [ ] `npm run backup:verify` aprovado e `latest.json` fora do projeto.
 - [ ] Restauração testada em banco separado.
 - [ ] `npm run preflight:local-postgres` aprovado no servidor interno.
 - [ ] `TRUST_PROXY_HEADERS=1` somente após Cloudflare estar ativo.
 - [ ] `npm run check`, `npm run build` e `npm test` aprovados.
+- [ ] `npm run check:print-agent` e `npm run test:print-v2` aprovados.
+- [ ] Teste físico controlado de emissão, queda, retry, reimpressão autorizada e recuperação aprovado.

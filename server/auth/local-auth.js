@@ -27,7 +27,7 @@ async function loginLocalUser({ email, password, attemptKey = email } = {}) {
       [normalizedAttemptKey]
     );
     const attempt = attemptResult.rows[0];
-    if (attempt?.locked_until && new Date(attempt.locked_until).getTime() > Date.now()) {
+    if (shouldApplyLoginLock(normalizedAttemptKey) && attempt?.locked_until && new Date(attempt.locked_until).getTime() > Date.now()) {
       return { error: "Muitas tentativas. Aguarde alguns minutos." };
     }
 
@@ -395,7 +395,7 @@ async function registerLoginFailure(client, attemptKey, previousAttempt) {
   const withinWindow = firstAttemptAt > 0 && now - firstAttemptAt <= LOGIN_WINDOW_MS;
   const count = withinWindow ? Number(previousAttempt.count || 0) + 1 : 1;
   const firstAttempt = withinWindow ? new Date(firstAttemptAt).toISOString() : new Date(now).toISOString();
-  const lockedUntil = count >= LOGIN_LIMIT
+  const lockedUntil = count >= LOGIN_LIMIT && shouldApplyLoginLock(attemptKey)
     ? new Date(now + LOGIN_LOCK_MS).toISOString()
     : null;
 
@@ -413,6 +413,10 @@ async function registerLoginFailure(client, attemptKey, previousAttempt) {
     `,
     [attemptKey, count, firstAttempt, lockedUntil]
   );
+}
+
+function shouldApplyLoginLock(attemptKey) {
+  return !String(attemptKey || "").startsWith("unknown:");
 }
 
 async function loadUserSectorIds(client, userId) {

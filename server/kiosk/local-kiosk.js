@@ -10,6 +10,7 @@ const {
   validatePhysicalTicketInput,
   verifyKioskSession
 } = require("./print-kiosk-service");
+const { withRawbtUrl } = require("./rawbt-print");
 const { getCookie } = require("../auth/local-http-auth");
 
 const ACTIVE_TICKET_STATUSES = [
@@ -240,11 +241,15 @@ async function issueLocalPhysicalTicketForTablet(user, body = {}) {
 
   const kiosk = await ensureLocalTabletPrinterKiosk();
   if (!kiosk || !kiosk.active) throw new Error("Impressora dos tablets indisponível.");
-  return issueLocalPhysicalTicket(
+  const result = await issueLocalPhysicalTicket(
     { kioskId: configuration.id, sessionNonce: kiosk.session_nonce },
     { ...body, sectorId },
     configuration
   );
+  return {
+    ...result,
+    printJob: withRawbtUrl(result.printJob)
+  };
 }
 
 async function issueLocalPhysicalTicket(kioskSession, body = {}, configurationOverride = null) {
@@ -348,6 +353,61 @@ async function getLocalPrintJob(kioskSession, jobId) {
   return result.rows[0] ? printJobDto(result.rows[0]) : null;
 }
 
+async function confirmLocalTabletRawbtPrint(user, jobId) {
+  if (!user || !["tablet", "attendant"].includes(user.role)) {
+    throw new Error("Acesso negado.");
+  }
+  if (!Array.isArray(user.sectorIds) || !user.sectorIds.length) {
+    throw new Error("Este usuário não está vinculado a um setor.");
+  }
+
+  const configuration = loadTabletPrinterConfiguration();
+  const updated = await query(
+    `
+      UPDATE public.print_jobs AS j
+      SET status = 'printed',
+          printed_at = now(),
+          failed_at = NULL,
+          last_error = NULL,
+          updated_at = now()
+      FROM public.tickets AS t
+      JOIN public.print_kiosks AS k ON k.id = j.kiosk_id
+      WHERE j.id = $1
+        AND j.kiosk_id = $2
+        AND j.status = 'pending'
+        AND k.active = true
+        AND k.store_code = $3
+        AND t.id = j.ticket_id
+        AND t.source = 'physical'
+        AND t.sector_id = ANY($4::text[])
+      RETURNING j.*
+    `,
+    [jobId, configuration.id, configuration.storeCode, user.sectorIds]
+  );
+  if (updated.rows[0]) return withRawbtUrl(printJobDto(updated.rows[0]));
+
+  const existing = await query(
+    `
+      SELECT j.*
+      FROM public.print_jobs AS j
+      JOIN public.tickets AS t ON t.id = j.ticket_id
+      JOIN public.print_kiosks AS k ON k.id = j.kiosk_id
+      WHERE j.id = $1
+        AND j.kiosk_id = $2
+        AND k.active = true
+        AND k.store_code = $3
+        AND t.source = 'physical'
+        AND t.sector_id = ANY($4::text[])
+      LIMIT 1
+    `,
+    [jobId, configuration.id, configuration.storeCode, user.sectorIds]
+  );
+  const job = existing.rows[0];
+  if (!job) throw new Error("Trabalho de impressão não encontrado.");
+  if (job.status === "printed") return withRawbtUrl(printJobDto(job));
+  throw new Error("Este trabalho de impressão já está sendo processado.");
+}
+
 async function getLocalTabletPrintJob(user, jobId) {
   if (!user || !Array.isArray(user.sectorIds) || !user.sectorIds.length) return null;
   const result = await query(
@@ -362,7 +422,7 @@ async function getLocalTabletPrintJob(user, jobId) {
     `,
     [jobId, user.sectorIds]
   );
-  return result.rows[0] ? printJobDto(result.rows[0]) : null;
+  return result.rows[0] ? withRawbtUrl(printJobDto(result.rows[0])) : null;
 }
 
 async function claimLocalPrintJob(kioskId) {
@@ -467,6 +527,7 @@ module.exports = {
   getLocalKioskStatus,
   getLocalPrintJob,
   getLocalTabletPrintJob,
+  confirmLocalTabletRawbtPrint,
   issueLocalPhysicalTicket,
   issueLocalPhysicalTicketForTablet,
   kioskConfiguration,

@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { buildTicketReceipt } = require("../server/kiosk/escpos-receipt");
+const { rawbtUrlForPrintJob } = require("../server/kiosk/rawbt-print");
 const {
   loadKioskConfiguration,
   loadTabletPrinterConfiguration,
@@ -69,6 +70,22 @@ test("gera duas senhas no mesmo cupom mantendo um unico QR Code", () => {
   assert.equal(receipt.includes(Buffer.from("------------------------------", "ascii")), false);
   assert.equal(countBuffer(receipt, Buffer.from([0x1d, 0x28, 0x6b, 4, 0, 49, 65, 50, 0])), 1);
   assert.ok(receipt.includes(Buffer.from([0x1d, 0x56, 66, 4])));
+});
+
+test("gera um link RawBT com a mesma senha do trabalho de impressao", () => {
+  const rawbtUrl = rawbtUrlForPrintJob({
+    payload: {
+      ticketCode: "A042",
+      sectorName: "Acougue",
+      issuedAt: "2026-07-29T20:00:00.000Z",
+      trackUrl: "https://senhahub.vercel.app/acompanhar/token-de-teste-1234567890"
+    }
+  });
+
+  assert.match(rawbtUrl, /^rawbt:base64,[A-Za-z0-9+/]+=*$/);
+  const receipt = Buffer.from(rawbtUrl.slice("rawbt:base64,".length), "base64");
+  assert.ok(receipt.includes(Buffer.from("A042", "ascii")));
+  assert.equal(receipt.includes(Buffer.from([0x1d, 0xf9, 0x20, 0x01])), false);
 });
 
 test("totem exibe o QR geral separado do QR individual da senha", () => {

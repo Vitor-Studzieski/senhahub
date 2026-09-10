@@ -27,6 +27,7 @@ const {
   isStrongPassword,
   passwordPolicyError
 } = require("../auth/password-policy");
+const { withRawbtUrl } = require("../kiosk/rawbt-print");
 const {
   createRequestContext,
   dispatchObservabilityAlert,
@@ -43,6 +44,59 @@ const { fetchInstagramVideo } = require("./instagram-video");
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "");
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
+  "app_sessions",
+  "auth_mfa_challenges",
+  "calls",
+  "cart_items",
+  "cron_executions",
+  "devices",
+  "events",
+  "login_attempts",
+  "print_devices",
+  "print_job_attempts",
+  "print_jobs",
+  "print_kiosks",
+  "print_signal_failures",
+  "profile_sector_permissions",
+  "profiles",
+  "push_notification_events",
+  "push_notification_preferences",
+  "push_rate_limits",
+  "ratings",
+  "security_rate_limits",
+  "sectors",
+  "services",
+  "shopping_signals",
+  "ticket_counters",
+  "tickets",
+  "web_push_subscriptions"
+]);
+const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
+  "acquire_maintenance_lease",
+  "call_next_ticket",
+  "claim_next_print_job",
+  "claim_next_print_job_v2",
+  "claim_push_notification_event",
+  "confirm_ticket",
+  "consume_print_enrollment_v2",
+  "consume_push_rate_limit",
+  "consume_security_rate_limit",
+  "finish_print_job",
+  "finish_print_job_v2",
+  "finish_ticket",
+  "issue_physical_ticket",
+  "issue_physical_ticket_bundle",
+  "issue_verified_ticket",
+  "provision_print_device_v2",
+  "record_print_device_session_v2",
+  "recover_print_execution_v2",
+  "release_maintenance_lease",
+  "renew_print_lease_v2",
+  "resolve_print_job_v2",
+  "start_print_job_v2",
+  "sweep_print_leases_v2"
+]);
 const AUTH_SECRET = authSecret();
 const CRON_SECRET = String(process.env.CRON_SECRET || "");
 const KIOSK_CONFIGURATION = loadKioskConfiguration(process.env);
@@ -99,6 +153,10 @@ const PRIORITY_CATEGORIES = new Set([
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_IP_RATE_LIMIT = 60;
+const LOGIN_IP_RATE_WINDOW_SECONDS = 60;
+const LOGIN_ACCOUNT_RATE_LIMIT = 12;
+const LOGIN_ACCOUNT_RATE_WINDOW_SECONDS = 15 * 60;
 const SCHEDULED_JOBS_MIN_INTERVAL_MS = 15000;
 const PROFILE_CACHE_TTL_MS = 10 * 1000;
 const METRICS_CACHE_TTL_MS = 60 * 1000;
@@ -196,6 +254,8 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "POST" && url.pathname === "/api/tablet/tickets") return tabletTickets(request);
     const tabletPrintJob = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)$/);
     if (request.method === "GET" && tabletPrintJob) return tabletPrintJobRoute(request, decodeURIComponent(tabletPrintJob[1]));
+    const tabletRawbt = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)\/rawbt$/);
+    if (request.method === "POST" && tabletRawbt) return tabletRawbtPrint(request, decodeURIComponent(tabletRawbt[1]));
     if (request.method === "GET" && url.pathname === "/api/kiosk/status") return kioskStatusRoute(request);
     const trackedTicket = url.pathname.match(/^\/api\/tickets\/track\/([A-Za-z0-9_-]{20,100})$/);
     if (request.method === "GET" && trackedTicket) return ticketTrackingRoute(request, decodeURIComponent(trackedTicket[1]));
@@ -294,7 +354,29 @@ async function login(request) {
   const body = await readJson(request);
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const attemptKey = `${clientIp(request)}:${email || "unknown"}`;
+  const requestIp = clientIp(request);
+  if (isKnownClientIp(requestIp)) {
+    const ipRate = await consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
+    if (ipRate !== true) {
+      return json(
+        { error: ipRate === false ? "Muitas tentativas. Aguarde um minuto." : "Login temporariamente indisponivel." },
+        ipRate === false ? 429 : 503
+      );
+    }
+  }
+  const accountRate = await consumeSecurityRateLimit(
+    "login:account",
+    email || "missing",
+    LOGIN_ACCOUNT_RATE_LIMIT,
+    LOGIN_ACCOUNT_RATE_WINDOW_SECONDS
+  );
+  if (accountRate !== true) {
+    return json(
+      { error: accountRate === false ? "Muitas tentativas. Aguarde alguns minutos." : "Login temporariamente indisponivel." },
+      accountRate === false ? 429 : 503
+    );
+  }
+  const attemptKey = `${requestIp}:${email || "unknown"}`;
   if (await isLoginLocked(attemptKey)) return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." }, 401);
 
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
@@ -1062,7 +1144,6 @@ function publicTicketView(ticket) {
     ticketNumber: ticket.ticketNumber,
     ticket: ticket.ticket,
     current: ticket.current,
-    currentCustomerName: ticket.currentCustomerName,
     sector: ticket.sector,
     counterLabel: ticket.counterLabel,
     serviceLabel: ticket.serviceLabel,
@@ -1461,7 +1542,7 @@ async function tabletTickets(request) {
     source: "supabase",
     ticket,
     tickets: [ticket],
-    printJob: printJobDto(result.printJob),
+    printJob: withRawbtUrl(printJobDto(result.printJob)),
     alreadyExists: Boolean(result.alreadyExists)
   }, 201);
 }
@@ -1476,7 +1557,72 @@ async function tabletPrintJobRoute(request, jobId) {
   const ticket = (await select("tickets", `id=eq.${encodeURIComponent(job.ticket_id)}&source=eq.physical&limit=1`))[0];
   if (!ticket || !canAccessSectorSync(user, ticket.sector_id)) return json({ error: "Acesso negado." }, 403);
 
-  return json({ job: printJobDto(job) }, 200, { "cache-control": "no-store" });
+  return json({ job: withRawbtUrl(printJobDto(job)) }, 200, { "cache-control": "no-store" });
+}
+
+async function tabletRawbtPrint(request, jobId) {
+  const user = await requireUser(request, TABLET_ACCESS_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) {
+    return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  }
+  if (!isUuid(jobId)) return json({ error: "Trabalho de impressão inválido." }, 400);
+
+  const configuredKiosk = await ensureTabletPrinterKiosk();
+  if (!configuredKiosk || !configuredKiosk.active) {
+    return json({ error: "A impressora dos tablets ainda nao esta configurada." }, 503);
+  }
+
+  const job = (await select(
+    "print_jobs",
+    `id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&limit=1`
+  ))[0];
+  const ticket = job?.ticket_id
+    ? (await select("tickets", `id=eq.${encodeURIComponent(job.ticket_id)}&source=eq.physical&limit=1`))[0]
+    : null;
+  if (!job || !ticket || !canAccessSectorSync(user, ticket.sector_id)) {
+    return json({ error: "Trabalho de impressão não encontrado." }, 404);
+  }
+
+  if (job.status === "printed") {
+    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(job)) }, 200, { "cache-control": "no-store" });
+  }
+  if (job.status !== "pending") {
+    return json({ error: "Este trabalho de impressão já está sendo processado." }, 409);
+  }
+
+  const now = isoNow();
+  const updated = await supabaseFetch(
+    `/rest/v1/print_jobs?id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&status=eq.pending&select=*`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: {
+        status: "printed",
+        printed_at: now,
+        failed_at: null,
+        last_error: null,
+        updated_at: now
+      }
+    }
+  );
+  if (updated?.error) {
+    console.error("tablet_rawbt_print_update_failed", updated.error);
+    return json({ error: "Não foi possível registrar a impressão." }, 500);
+  }
+  const updatedJob = Array.isArray(updated) ? updated[0] : null;
+  if (updatedJob) {
+    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(updatedJob)) }, 200, { "cache-control": "no-store" });
+  }
+
+  const current = (await select(
+    "print_jobs",
+    `id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&limit=1`
+  ))[0];
+  if (current?.status === "printed") {
+    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(current)) }, 200, { "cache-control": "no-store" });
+  }
+  return json({ error: "Este trabalho de impressão já está sendo processado." }, 409);
 }
 
 async function history(request) {
@@ -2937,6 +3083,7 @@ function createSupabasePushRepository() {
 }
 
 async function isLoginLocked(key) {
+  if (!shouldApplyLoginLock(key)) return false;
   const entry = (await select("login_attempts", `attempt_key=eq.${encodeURIComponent(key)}&limit=1`))[0];
   return Boolean(entry && Number(entry.locked_until) > Date.now());
 }
@@ -2946,8 +3093,14 @@ async function registerLoginFailure(key) {
   const entry = (await select("login_attempts", `attempt_key=eq.${encodeURIComponent(key)}&limit=1`))[0];
   const firstAttemptAt = entry && now - Number(entry.first_attempt_at) < LOGIN_ATTEMPT_WINDOW_MS ? Number(entry.first_attempt_at) : now;
   const attempts = entry && firstAttemptAt === Number(entry.first_attempt_at) ? Number(entry.count) + 1 : 1;
-  const lockedUntil = attempts >= LOGIN_ATTEMPT_LIMIT ? now + LOGIN_LOCK_MS : 0;
+  const lockedUntil = attempts >= LOGIN_ATTEMPT_LIMIT && shouldApplyLoginLock(key)
+    ? now + LOGIN_LOCK_MS
+    : 0;
   await upsert("login_attempts", { attempt_key: key, count: attempts, first_attempt_at: firstAttemptAt, locked_until: lockedUntil, updated_at: isoNow() }, "attempt_key");
+}
+
+function shouldApplyLoginLock(key) {
+  return !String(key || "").startsWith("unknown:");
 }
 
 async function clearLoginFailures(key) {
@@ -2963,6 +3116,7 @@ async function registerEvent(type, entityType, entityId, customerId, sectorId, p
 }
 
 async function select(table, query = "") {
+  assertServiceRoleTable(table);
   const separator = query ? (query.startsWith("?") ? "" : "?") : "?";
   const path = `/rest/v1/${table}${separator}${query || "select=*"}`;
   const result = await supabaseFetch(path);
@@ -2970,11 +3124,13 @@ async function select(table, query = "") {
 }
 
 async function count(table, query = "") {
+  assertServiceRoleTable(table);
   const result = await supabaseFetch(`/rest/v1/${table}?select=id&${query}`, { headers: { Prefer: "count=exact" }, raw: true });
   return Number(result.count || 0);
 }
 
 async function insert(table, body, returning = true) {
+  assertServiceRoleTable(table);
   const result = await supabaseFetch(`/rest/v1/${table}${returning ? "?select=*" : ""}`, {
     method: "POST",
     headers: { Prefer: returning ? "return=representation" : "return=minimal" },
@@ -2985,6 +3141,7 @@ async function insert(table, body, returning = true) {
 }
 
 async function update(table, id, body) {
+  assertServiceRoleTable(table);
   const result = await supabaseFetch(`/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=*`, {
     method: "PATCH",
     headers: { Prefer: "return=representation" },
@@ -3010,6 +3167,7 @@ async function updateTicketIfStatus(id, expectedStatuses, body) {
 }
 
 async function upsert(table, body, onConflict) {
+  assertServiceRoleTable(table);
   const result = await supabaseFetch(`/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}&select=*`, {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -3020,6 +3178,9 @@ async function upsert(table, body, onConflict) {
 }
 
 async function rpc(name, body) {
+  if (!SERVICE_ROLE_RPC_ALLOWLIST.has(String(name || ""))) {
+    throw new Error(`RPC Supabase fora da allowlist: ${String(name || "")}`);
+  }
   const result = await supabaseFetch(`/rest/v1/rpc/${name}`, {
     method: "POST",
     body
@@ -3028,7 +3189,15 @@ async function rpc(name, body) {
 }
 
 async function remove(table, id) {
+  assertServiceRoleTable(table);
   return supabaseFetch(`/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+function assertServiceRoleTable(table) {
+  const normalized = String(table || "");
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(normalized) || !SERVICE_ROLE_TABLE_ALLOWLIST.has(normalized)) {
+    throw new Error(`Tabela Supabase fora da allowlist de backend: ${normalized || "vazia"}`);
+  }
 }
 
 async function supabaseFetch(pathname, options = {}) {
@@ -3279,6 +3448,10 @@ function clientIp(request) {
   return String(trusted || "unknown").split(",")[0].trim() || "unknown";
 }
 
+function isKnownClientIp(value) {
+  return Boolean(value && value !== "unknown");
+}
+
 function sameOriginRequest(request) {
   const origin = String(request.headers.get("origin") || "");
   if (!origin && process.env.NODE_ENV !== "production") return true;
@@ -3291,7 +3464,9 @@ function sameOriginRequest(request) {
 
 function isProductionHttpsRequest(request) {
   if (process.env.NODE_ENV !== "production") return true;
-  const forwardedProtocol = String(request.headers.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
+  const forwardedProtocol = process.env.TRUST_PROXY_HEADERS === "1"
+    ? String(request.headers.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase()
+    : "";
   return new URL(request.url).protocol === "https:" || forwardedProtocol === "https";
 }
 
@@ -3335,7 +3510,7 @@ function withRequestId(response, requestId) {
 
 function securityHeaders(extra = {}) {
   return {
-    "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
     "strict-transport-security": "max-age=31536000; includeSubDomains; preload",

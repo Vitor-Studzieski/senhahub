@@ -1,25 +1,20 @@
-import { getQueueSnapshot } from "../../../../server/data/local-repository.js";
+import { getLocalStaffState } from "../../../../server/data/local-repository.js";
+import { requireLocalUser } from "../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  if (process.env.DATA_BACKEND !== "local-postgres" || process.env.LOCAL_POSTGRES_ROUTES_ENABLED !== "1") {
-    return Response.json({ error: "Rota PostgreSQL local desativada." }, { status: 404 });
-  }
+  const user = await requireLocalUser(request, ["attendant", "manager", "admin"]);
+  if (user.response) return user.response;
 
   try {
-    const url = new URL(request.url);
-    const sectorId = url.searchParams.get("sector") || null;
-    const snapshot = await getQueueSnapshot(sectorId);
-
     return Response.json({
       source: "postgres-local",
-      sector: sectorId,
-      ...snapshot
-    });
+      ...(await getLocalStaffState(user.session.user))
+    }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
-    console.error("Falha ao consultar a fila no PostgreSQL local:", error);
+    console.error("Falha ao consultar a fila no PostgreSQL local:", error.message);
     return Response.json(
       { error: "Não foi possível consultar o PostgreSQL local." },
       { status: 500 }

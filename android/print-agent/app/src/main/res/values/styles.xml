@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.SenhaHubPrintAgent" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#146C94</item>
+    </style>
+</resources>
