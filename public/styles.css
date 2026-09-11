@@ -5592,6 +5592,12 @@ textarea:focus {
   opacity: 0.65;
 }
 
+.tracking-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .tracking-pwa-prompt {
   background: #fff7d6;
   border: 2px solid #f5c400;

@@ -5,6 +5,15 @@
     const utils = window.SenhaHubPwaUtils;
     if (!utils) return;
 
+  if (utils.isStandaloneDisplay()) {
+    const pendingToken = readStorage(getStorage("localStorage"), "senhaHubPendingTrackingToken");
+    if (/^[A-Za-z0-9_-]{20,100}$/.test(String(pendingToken || ""))) {
+      removeStorage(getStorage("localStorage"), "senhaHubPendingTrackingToken");
+      location.replace(`/acompanhar/${encodeURIComponent(pendingToken)}`);
+      return;
+    }
+  }
+
   // Safari can expose storage with a zero-byte quota, or throw while reading
   // the storage property itself. Keep it optional because it is only used for
   // PWA telemetry and must never block an authenticated request.
@@ -46,6 +55,7 @@
     openNotificationSettings,
     prepareLogout,
     requestInstallation,
+    canInstall: () => Boolean(state.deferredInstallPrompt),
     reportNetworkFailure,
     reportNetworkSuccess,
     isInstalled: () => utils.isStandaloneDisplay()
@@ -228,6 +238,7 @@
   function handleBeforeInstallPrompt(event) {
     event.preventDefault();
     state.deferredInstallPrompt = event;
+    window.dispatchEvent(new Event("senhahub:pwa-install-available"));
     recordPwaEvent("install_available");
     syncInstallState();
     if (!installationDismissed() && !utils.isStandaloneDisplay()) {
@@ -273,6 +284,7 @@
     const prompt = document.querySelector("#pwaInstallPrompt");
     if (prompt) prompt.hidden = true;
     syncInstallState();
+    window.dispatchEvent(new Event("senhahub:pwa-install-available"));
   }
 
   function syncInstallState() {

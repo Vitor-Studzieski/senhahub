@@ -12,14 +12,9 @@
   const feedbackMessage = document.querySelector("#trackingFeedbackMessage");
   const retryButton = document.querySelector("#trackingRetry");
   const autoReturn = document.querySelector("#trackingAutoReturn");
-  const vibration = document.querySelector("#trackingVibration");
-  const vibrationMessage = document.querySelector("#trackingVibrationMessage");
-  const vibrationButton = document.querySelector("#trackingVibrationButton");
   const alertPrompt = document.querySelector("#trackingAlertPrompt");
-  const alertPromptMessage = document.querySelector("#trackingAlertPromptMessage");
   const alertPromptButton = document.querySelector("#trackingAlertPromptButton");
-  const pwaPrompt = document.querySelector("#trackingPwaPrompt");
-  const pwaPromptButton = document.querySelector("#trackingPwaPromptButton");
+  const installButton = document.querySelector("#trackingInstallButton");
   const callAlert = document.querySelector("#trackingCallAlert");
   const callAlertMessage = document.querySelector("#trackingCallAlertMessage");
   const singleView = document.querySelector("#trackingSingleView");
@@ -32,20 +27,23 @@
   let currentTickets = [];
   let vibrationReady = window.Notification?.permission === "granted";
 
-  vibrationButton?.addEventListener("click", () => {
-    enableTrackingAlerts();
-  });
   alertPromptButton?.addEventListener("click", () => {
     enableTrackingAlerts();
   });
-  pwaPromptButton?.addEventListener("click", () => {
-    pwaPrompt.hidden = true;
-    try { sessionStorage.setItem("senhaHubTrackingPwaPromptDismissed", "1"); } catch {}
+  installButton?.addEventListener("click", async () => {
+    try { localStorage.setItem("senhaHubPendingTrackingToken", token); } catch {}
+    await window.senhaHubPwa?.requestInstallation?.();
   });
 
-  showPwaPrompt();
+  window.addEventListener("senhahub:pwa-install-available", updateInstallButton);
+  window.addEventListener("appinstalled", updateInstallButton);
 
   updateVibrationControl();
+  updateInstallButton();
+  window.addEventListener("load", () => {
+    updateVibrationControl();
+    updateInstallButton();
+  }, { once: true });
 
   const FEEDBACK_STATES = {
     invalid: {
@@ -211,55 +209,15 @@
   function updateVibrationControl() {
     const canVibrate = Boolean(window.SenhaHubVibration?.supported());
     const canNotify = typeof window.Notification !== "undefined";
-    if (alertPrompt) {
-      alertPrompt.hidden = false;
-      if (!canVibrate && !canNotify) {
-        alertPromptMessage.textContent = "Este navegador não oferece vibração ou notificações web. Abra o SenhaHub como aplicativo instalado para receber alertas do dispositivo.";
-        alertPromptButton.hidden = true;
-      } else if (vibrationReady) {
-        alertPromptMessage.textContent = canVibrate
-          ? "Alertas e vibração já estão ativados neste dispositivo."
-          : "Alertas já estão ativados neste dispositivo.";
-        alertPromptButton.hidden = true;
-      } else {
-        alertPromptMessage.textContent = canVibrate
-          ? "Toque no botão para autorizar notificação, som e vibração quando sua senha estiver próxima."
-          : "Toque no botão para autorizar a notificação e o som quando sua senha estiver próxima.";
-        alertPromptButton.hidden = false;
-      }
-    }
-    if (!vibration || (!canVibrate && !canNotify)) return;
-    vibration.hidden = false;
-    if (vibrationReady) {
-      vibrationMessage.textContent = canVibrate
-        ? "Alerta e vibração ativados neste dispositivo."
-        : "Alertas ativados neste dispositivo. Este navegador não oferece vibração web.";
-      vibrationButton.hidden = true;
-      return;
-    }
-    vibrationMessage.textContent = canVibrate
-      ? "Ative uma vez para receber alerta e vibração neste dispositivo."
-      : "Ative uma vez para receber alerta neste dispositivo.";
-    vibrationButton.hidden = false;
+    if (!alertPrompt) return;
+    alertPrompt.hidden = vibrationReady || (!canVibrate && !canNotify);
   }
 
-  function showPwaPrompt() {
-    if (!pwaPrompt) return;
-    const isStandalone = navigator.standalone === true
+  function updateInstallButton() {
+    if (!installButton) return;
+    const installed = navigator.standalone === true
       || window.matchMedia?.("(display-mode: standalone)").matches;
-    const userAgent = navigator.userAgent || "";
-    const isChrome = /CriOS|Chrome|EdgA|EdgiOS/i.test(userAgent);
-    if (!isChrome) return;
-    let dismissed = false;
-    try { dismissed = sessionStorage.getItem("senhaHubTrackingPwaPromptDismissed") === "1"; } catch {}
-    const isIos = /iphone|ipad|ipod/i.test(userAgent);
-    const message = pwaPrompt.querySelector("span");
-    if (message) {
-      message.textContent = isIos
-        ? "Você está no Chrome do iPhone. Para receber alertas, feche esta página e abra o SenhaHub pelo ícone instalado na Tela de Início."
-        : "Você está no Chrome. Para receber alertas mesmo fora do navegador, abra o SenhaHub pelo ícone instalado na Tela de Início. Se ainda não instalou, use o menu do Chrome para adicionar à tela inicial.";
-    }
-    pwaPrompt.hidden = isStandalone || dismissed;
+    installButton.hidden = installed || !window.senhaHubPwa?.canInstall?.();
   }
 
   function renderSingle(ticket) {
