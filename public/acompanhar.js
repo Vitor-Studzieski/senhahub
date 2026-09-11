@@ -244,11 +244,21 @@
   }
 
   function showPwaPrompt() {
-    if (!pwaPrompt || !/iphone|ipad|ipod/i.test(navigator.userAgent)) return;
+    if (!pwaPrompt) return;
     const isStandalone = navigator.standalone === true
       || window.matchMedia?.("(display-mode: standalone)").matches;
+    const userAgent = navigator.userAgent || "";
+    const isChrome = /CriOS|Chrome|EdgA|EdgiOS/i.test(userAgent);
+    if (!isChrome) return;
     let dismissed = false;
     try { dismissed = sessionStorage.getItem("senhaHubTrackingPwaPromptDismissed") === "1"; } catch {}
+    const isIos = /iphone|ipad|ipod/i.test(userAgent);
+    const message = pwaPrompt.querySelector("span");
+    if (message) {
+      message.textContent = isIos
+        ? "Você está no Chrome do iPhone. Para receber alertas, feche esta página e abra o SenhaHub pelo ícone instalado na Tela de Início."
+        : "Você está no Chrome. Para receber alertas mesmo fora do navegador, abra o SenhaHub pelo ícone instalado na Tela de Início. Se ainda não instalou, use o menu do Chrome para adicionar à tela inicial.";
+    }
     pwaPrompt.hidden = isStandalone || dismissed;
   }
 
