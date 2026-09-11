@@ -5532,6 +5532,32 @@ textarea:focus {
   margin-bottom: 22px;
 }
 
+.tracking-vibration {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(19, 76, 149, .14);
+  border-radius: 14px;
+  background: #f5f8fc;
+  color: #27466d;
+  font-size: .82rem;
+}
+
+.tracking-vibration button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #134c95;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .tracking-ticket-panel {
   border-radius: 18px;
   display: grid;

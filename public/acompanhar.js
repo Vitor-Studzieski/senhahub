@@ -12,6 +12,9 @@
   const feedbackMessage = document.querySelector("#trackingFeedbackMessage");
   const retryButton = document.querySelector("#trackingRetry");
   const autoReturn = document.querySelector("#trackingAutoReturn");
+  const vibration = document.querySelector("#trackingVibration");
+  const vibrationMessage = document.querySelector("#trackingVibrationMessage");
+  const vibrationButton = document.querySelector("#trackingVibrationButton");
   const singleView = document.querySelector("#trackingSingleView");
   const ticketsList = document.querySelector("#trackingTicketsList");
   let timer = null;
@@ -20,6 +23,13 @@
   let successTimer = null;
   let retryInFlight = false;
   let currentTickets = [];
+  let vibrationReady = window.Notification?.permission === "granted";
+
+  vibrationButton?.addEventListener("click", () => {
+    enableTrackingAlerts();
+  });
+
+  updateVibrationControl();
 
   const FEEDBACK_STATES = {
     invalid: {
@@ -75,6 +85,7 @@
         return;
       }
       render(tickets);
+      notifyCalledTickets(tickets);
       if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, 5000);
     } catch (error) {
       showFeedback(errorState(error));
@@ -122,6 +133,52 @@
     ticketsList.hidden = true;
     ticketsList.innerHTML = "";
     renderSingle(currentTickets[0]);
+  }
+
+  async function enableTrackingAlerts() {
+    const result = await window.SenhaHubVibration?.enable?.();
+    vibrationReady = Boolean(result?.vibrated || result?.permission === "granted");
+    updateVibrationControl();
+    if (vibrationReady) notifyCalledTickets(currentTickets);
+  }
+
+  function notifyCalledTickets(tickets) {
+    if (!window.SenhaHubVibration) return;
+    tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket?.status)).forEach((ticket) => {
+      const callIdentity = ticket.calledAt || `${ticket.ticket || "ticket"}:${ticket.status}`;
+      const result = window.SenhaHubVibration.vibrateOnce(`${token}:${callIdentity}`);
+      if (["ok", "duplicate"].includes(result.reason)) {
+        vibrationReady = true;
+        updateVibrationControl();
+      }
+      void window.SenhaHubVibration.notifyOnce(`${token}:${callIdentity}`, {
+        title: `${ticket.ticket || "Sua senha"} foi chamada`,
+        body: `Dirija-se ao ${ticket.counterLabel || "balcão"} do setor ${ticket.sector || "de atendimento"}.`
+      }).then((notification) => {
+        if (["ok", "duplicate"].includes(notification.reason)) {
+          vibrationReady = true;
+          updateVibrationControl();
+        }
+      });
+    });
+  }
+
+  function updateVibrationControl() {
+    const canVibrate = Boolean(window.SenhaHubVibration?.supported());
+    const canNotify = typeof window.Notification !== "undefined";
+    if (!vibration || (!canVibrate && !canNotify)) return;
+    vibration.hidden = false;
+    if (vibrationReady) {
+      vibrationMessage.textContent = canVibrate
+        ? "Alerta e vibração ativados neste dispositivo."
+        : "Alertas ativados neste dispositivo. Este navegador não oferece vibração web.";
+      vibrationButton.hidden = true;
+      return;
+    }
+    vibrationMessage.textContent = canVibrate
+      ? "Ative uma vez para receber alerta e vibração neste dispositivo."
+      : "Ative uma vez para receber alerta neste dispositivo.";
+    vibrationButton.hidden = false;
   }
 
   function renderSingle(ticket) {
