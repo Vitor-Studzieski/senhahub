@@ -18,6 +18,8 @@
   const alertPrompt = document.querySelector("#trackingAlertPrompt");
   const alertPromptMessage = document.querySelector("#trackingAlertPromptMessage");
   const alertPromptButton = document.querySelector("#trackingAlertPromptButton");
+  const pwaPrompt = document.querySelector("#trackingPwaPrompt");
+  const pwaPromptButton = document.querySelector("#trackingPwaPromptButton");
   const callAlert = document.querySelector("#trackingCallAlert");
   const callAlertMessage = document.querySelector("#trackingCallAlertMessage");
   const singleView = document.querySelector("#trackingSingleView");
@@ -36,6 +38,12 @@
   alertPromptButton?.addEventListener("click", () => {
     enableTrackingAlerts();
   });
+  pwaPromptButton?.addEventListener("click", () => {
+    pwaPrompt.hidden = true;
+    try { sessionStorage.setItem("senhaHubTrackingPwaPromptDismissed", "1"); } catch {}
+  });
+
+  showPwaPrompt();
 
   updateVibrationControl();
 
@@ -233,6 +241,15 @@
       ? "Ative uma vez para receber alerta e vibração neste dispositivo."
       : "Ative uma vez para receber alerta neste dispositivo.";
     vibrationButton.hidden = false;
+  }
+
+  function showPwaPrompt() {
+    if (!pwaPrompt || !/iphone|ipad|ipod/i.test(navigator.userAgent)) return;
+    const isStandalone = navigator.standalone === true
+      || window.matchMedia?.("(display-mode: standalone)").matches;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem("senhaHubTrackingPwaPromptDismissed") === "1"; } catch {}
+    pwaPrompt.hidden = isStandalone || dismissed;
   }
 
   function renderSingle(ticket) {
