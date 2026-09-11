@@ -32,7 +32,15 @@
   });
   installButton?.addEventListener("click", async () => {
     try { localStorage.setItem("senhaHubPendingTrackingToken", token); } catch {}
-    await window.senhaHubPwa?.requestInstallation?.();
+    if (window.senhaHubPwa?.canInstall?.()) {
+      await window.senhaHubPwa.requestInstallation();
+      return;
+    }
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "SenhaHub", url: location.href });
+      } catch {}
+    }
   });
 
   window.addEventListener("senhahub:pwa-install-available", updateInstallButton);
@@ -210,14 +218,20 @@
     const canVibrate = Boolean(window.SenhaHubVibration?.supported());
     const canNotify = typeof window.Notification !== "undefined";
     if (!alertPrompt) return;
-    alertPrompt.hidden = vibrationReady || (!canVibrate && !canNotify);
+    const userAgent = navigator.userAgent || "";
+    const isIosChrome = /CriOS/i.test(userAgent) && /iphone|ipad|ipod/i.test(userAgent);
+    const hasInstallOption = Boolean(window.senhaHubPwa?.canInstall?.()) || isIosChrome;
+    alertPrompt.hidden = vibrationReady || (!canVibrate && !canNotify && !hasInstallOption);
+    if (alertPromptButton) alertPromptButton.hidden = !canVibrate && !canNotify;
   }
 
   function updateInstallButton() {
     if (!installButton) return;
     const installed = navigator.standalone === true
       || window.matchMedia?.("(display-mode: standalone)").matches;
-    installButton.hidden = installed || !window.senhaHubPwa?.canInstall?.();
+    const isIosChrome = /CriOS/i.test(navigator.userAgent || "")
+      && /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    installButton.hidden = installed || (!window.senhaHubPwa?.canInstall?.() && !isIosChrome);
   }
 
   function renderSingle(ticket) {
