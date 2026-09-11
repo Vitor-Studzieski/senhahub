@@ -15,6 +15,8 @@
   const vibration = document.querySelector("#trackingVibration");
   const vibrationMessage = document.querySelector("#trackingVibrationMessage");
   const vibrationButton = document.querySelector("#trackingVibrationButton");
+  const callAlert = document.querySelector("#trackingCallAlert");
+  const callAlertMessage = document.querySelector("#trackingCallAlertMessage");
   const singleView = document.querySelector("#trackingSingleView");
   const ticketsList = document.querySelector("#trackingTicketsList");
   let timer = null;
@@ -85,7 +87,7 @@
         return;
       }
       render(tickets);
-      notifyCalledTickets(tickets);
+      notifyTicketAlerts(tickets);
       if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, 5000);
     } catch (error) {
       showFeedback(errorState(error));
@@ -139,14 +141,15 @@
     const result = await window.SenhaHubVibration?.enable?.();
     vibrationReady = Boolean(result?.vibrated || result?.permission === "granted");
     updateVibrationControl();
-    if (vibrationReady) notifyCalledTickets(currentTickets);
+    if (vibrationReady) notifyTicketAlerts(currentTickets);
   }
 
-  function notifyCalledTickets(tickets) {
+  function notifyTicketAlerts(tickets) {
     if (!window.SenhaHubVibration) return;
     tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket?.status)).forEach((ticket) => {
       const callIdentity = ticket.calledAt || `${ticket.ticket || "ticket"}:${ticket.status}`;
-      const result = window.SenhaHubVibration.vibrateOnce(`${token}:${callIdentity}`);
+      const result = window.SenhaHubVibration.signalOnce?.(`${token}:${callIdentity}`)
+        || { reason: "unsupported" };
       if (["ok", "duplicate"].includes(result.reason)) {
         vibrationReady = true;
         updateVibrationControl();
@@ -161,6 +164,32 @@
         }
       });
     });
+
+    tickets.filter((ticket) => {
+      const ahead = Number(ticket?.ahead);
+      return !["chamado", "em_atendimento", "atendido", "cancelado", "expirado"].includes(ticket?.status)
+        && Number.isFinite(ahead)
+        && ahead > 0
+        && ahead <= 3;
+    }).forEach((ticket) => {
+      const ahead = Math.max(1, Math.round(Number(ticket.ahead)));
+      const nearIdentity = `${token}:near-three:${ticket.ticket || "ticket"}`;
+      const message = `Faltam ${ahead} ${ahead === 1 ? "senha" : "senhas"} para o seu atendimento.`;
+      window.SenhaHubVibration.signalOnce?.(nearIdentity);
+      void window.SenhaHubVibration.notifyOnce(nearIdentity, {
+        title: "Seu atendimento está próximo",
+        body: message
+      });
+      showQueueAlert(message);
+    });
+  }
+
+  function showQueueAlert(message) {
+    if (!callAlert || !callAlertMessage) return;
+    callAlert.hidden = false;
+    callAlert.dataset.state = "near";
+    callAlert.querySelector("strong").textContent = "Seu atendimento está próximo";
+    callAlertMessage.textContent = message;
   }
 
   function updateVibrationControl() {
@@ -190,6 +219,17 @@
     document.querySelector("#trackingStatusDot").dataset.state = statusTone(ticket.status);
     document.querySelector("#trackingMessage").textContent = trackingMessage(ticket);
     document.querySelector("#trackingUpdated").textContent = updatedLabel();
+    const isCalled = ["chamado", "em_atendimento"].includes(ticket.status);
+    if (callAlert && isCalled) {
+      callAlert.dataset.state = "called";
+      callAlert.querySelector("strong").textContent = "Sua senha foi chamada";
+    }
+    if (callAlert && !isCalled && Number(ticket.ahead) > 3) callAlert.hidden = true;
+    if (callAlertMessage && isCalled) {
+      callAlertMessage.textContent = ticket.counterLabel
+        ? `Dirija-se ao ${ticket.counterLabel}.`
+        : "Dirija-se ao balcão.";
+    }
   }
 
   function renderBundleTicket(ticket) {

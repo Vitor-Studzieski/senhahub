@@ -47,6 +47,42 @@
     }
   }
 
+  function playAlertTone() {
+    try {
+      const AudioContext = scope.AudioContext || scope.webkitAudioContext;
+      if (!AudioContext) return false;
+      const context = new AudioContext();
+      const now = context.currentTime;
+      [0, 0.22, 0.44].forEach((offset, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = index === 2 ? 880 : 660;
+        gain.gain.setValueAtTime(0.0001, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start(now + offset);
+        oscillator.stop(now + offset + 0.17);
+      });
+      window.setTimeout(() => context.close().catch(() => {}), 1200);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function signalOnce(identity) {
+    const key = `${STORAGE_PREFIX}signal:${String(identity || "").slice(0, 180)}`;
+    if (!identity) return { signaled: false, reason: "invalid" };
+    const store = storage();
+    if (store?.getItem(key) === "1") return { signaled: false, reason: "duplicate" };
+    const vibrated = activate();
+    const sounded = playAlertTone();
+    if (vibrated || sounded) store?.setItem(key, "1");
+    return { signaled: vibrated || sounded, vibrated, sounded, reason: vibrated || sounded ? "ok" : "blocked" };
+  }
+
   async function notifyOnce(identity, input = {}) {
     const key = `${STORAGE_PREFIX}notification:${String(identity || "").slice(0, 160)}`;
     if (!identity || scope.Notification?.permission !== "granted") {
@@ -78,5 +114,5 @@
     }
   }
 
-  scope.SenhaHubVibration = { activate, enable, notifyOnce, supported, vibrateOnce };
+  scope.SenhaHubVibration = { activate, enable, notifyOnce, playAlertTone, signalOnce, supported, vibrateOnce };
 })(window);

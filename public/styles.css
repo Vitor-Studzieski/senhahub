@@ -5546,6 +5546,51 @@ textarea:focus {
   font-size: .82rem;
 }
 
+.tracking-call-alert {
+  align-items: center;
+  background: #fff3c4;
+  border: 2px solid #f5c400;
+  border-radius: 18px;
+  color: #12325b;
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px 18px;
+}
+
+.tracking-call-alert[data-state="called"] {
+  animation: tracking-call-alert-pulse 1.4s ease-in-out 3;
+}
+
+.tracking-call-alert[data-state="near"] {
+  background: #e6f7f7;
+  border-color: #2eafb3;
+}
+
+.tracking-call-alert-icon {
+  font-size: 2rem;
+}
+
+.tracking-call-alert strong,
+.tracking-call-alert span:not(.tracking-call-alert-icon) {
+  display: block;
+}
+
+@keyframes tracking-call-alert-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+
+.tracking-call-alert strong {
+  font-size: 1.15rem;
+}
+
+.tracking-call-alert span:not(.tracking-call-alert-icon) {
+  color: #536b88;
+  font-size: 0.98rem;
+  margin-top: 4px;
+}
+
 .tracking-vibration button {
   flex: 0 0 auto;
   border: 0;
