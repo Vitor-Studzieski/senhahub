@@ -15,6 +15,9 @@
   const vibration = document.querySelector("#trackingVibration");
   const vibrationMessage = document.querySelector("#trackingVibrationMessage");
   const vibrationButton = document.querySelector("#trackingVibrationButton");
+  const alertPrompt = document.querySelector("#trackingAlertPrompt");
+  const alertPromptMessage = document.querySelector("#trackingAlertPromptMessage");
+  const alertPromptButton = document.querySelector("#trackingAlertPromptButton");
   const callAlert = document.querySelector("#trackingCallAlert");
   const callAlertMessage = document.querySelector("#trackingCallAlertMessage");
   const singleView = document.querySelector("#trackingSingleView");
@@ -28,6 +31,9 @@
   let vibrationReady = window.Notification?.permission === "granted";
 
   vibrationButton?.addEventListener("click", () => {
+    enableTrackingAlerts();
+  });
+  alertPromptButton?.addEventListener("click", () => {
     enableTrackingAlerts();
   });
 
@@ -138,10 +144,12 @@
   }
 
   async function enableTrackingAlerts() {
+    if (alertPromptButton) alertPromptButton.disabled = true;
     const result = await window.SenhaHubVibration?.enable?.();
     vibrationReady = Boolean(result?.vibrated || result?.permission === "granted");
     updateVibrationControl();
     if (vibrationReady) notifyTicketAlerts(currentTickets);
+    if (alertPromptButton) alertPromptButton.disabled = false;
   }
 
   function notifyTicketAlerts(tickets) {
@@ -195,6 +203,23 @@
   function updateVibrationControl() {
     const canVibrate = Boolean(window.SenhaHubVibration?.supported());
     const canNotify = typeof window.Notification !== "undefined";
+    if (alertPrompt) {
+      alertPrompt.hidden = false;
+      if (!canVibrate && !canNotify) {
+        alertPromptMessage.textContent = "Este navegador não oferece vibração ou notificações web. Abra o SenhaHub como aplicativo instalado para receber alertas do dispositivo.";
+        alertPromptButton.hidden = true;
+      } else if (vibrationReady) {
+        alertPromptMessage.textContent = canVibrate
+          ? "Alertas e vibração já estão ativados neste dispositivo."
+          : "Alertas já estão ativados neste dispositivo.";
+        alertPromptButton.hidden = true;
+      } else {
+        alertPromptMessage.textContent = canVibrate
+          ? "Toque no botão para autorizar notificação, som e vibração quando sua senha estiver próxima."
+          : "Toque no botão para autorizar a notificação e o som quando sua senha estiver próxima.";
+        alertPromptButton.hidden = false;
+      }
+    }
     if (!vibration || (!canVibrate && !canNotify)) return;
     vibration.hidden = false;
     if (vibrationReady) {

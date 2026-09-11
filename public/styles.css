@@ -5558,6 +5558,40 @@ textarea:focus {
   padding: 16px 18px;
 }
 
+.tracking-alert-prompt {
+  background: #e9f7f7;
+  border: 2px solid #2eafb3;
+  border-radius: 18px;
+  color: #12325b;
+  display: grid;
+  gap: 8px;
+  margin: 16px 18px 0;
+  padding: 16px 18px;
+}
+
+.tracking-alert-prompt span {
+  color: #536b88;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.tracking-alert-prompt button {
+  background: #0d4f7b;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  justify-self: start;
+  padding: 11px 16px;
+}
+
+.tracking-alert-prompt button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .tracking-call-alert[data-state="called"] {
   animation: tracking-call-alert-pulse 1.4s ease-in-out 3;
 }
