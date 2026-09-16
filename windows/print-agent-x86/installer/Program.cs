@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Reflection;
+using System.ServiceProcess;
 using System.Text;
 using System.Windows.Forms;
 
@@ -17,6 +18,11 @@ namespace SenhaHub.PrintAgent.Setup
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs error)
+            {
+                MessageBox.Show(error.Exception.Message, "Falha no instalador", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            };
             Application.Run(new InstallerForm());
         }
     }
@@ -189,7 +195,7 @@ namespace SenhaHub.PrintAgent.Setup
                 StopAndRemoveService();
                 RunSc("create \"" + ServiceName + "\" binPath= \"\\\"" + agentPath + "\\\" --service\" start= auto obj= LocalSystem DisplayName= \"" + ServiceDisplayName + "\"");
                 RunSc("description \"" + ServiceName + "\" \"Serviço de impressão do SenhaHub para Bematech MP-4200 TH\"");
-                RunSc("start \"" + ServiceName + "\"");
+                StartService();
                 RunIcacls(root);
 
                 SetStatus("Agente instalado e iniciado.", false);
@@ -219,6 +225,15 @@ namespace SenhaHub.PrintAgent.Setup
                 if (RunSc("query \"" + ServiceName + "\"", false).ExitCode != 0) return;
             }
             throw new InvalidOperationException("O serviço anterior ainda está sendo removido.");
+        }
+
+        private static void StartService()
+        {
+            using (var service = new ServiceController(ServiceName))
+            {
+                service.Start();
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+            }
         }
 
         private static ProcessResult RunSc(string arguments, bool failOnError = true)
