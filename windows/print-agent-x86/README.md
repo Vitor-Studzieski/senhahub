@@ -2,6 +2,12 @@
 
 Este agente é uma alternativa para o mini PC com Windows de 32 bits e processador baseado em x64. Ele não usa Node.js nem o pacote `serialport`: é um executável C# para .NET Framework 4.8, compilado com `PlatformTarget=x86`, e envia ESC/POS diretamente para a porta serial virtual da Bematech.
 
+## Versão homologada
+
+A versão `x86/1.0.0` desta pasta foi homologada no mini PC com Windows 10 de 32 bits e na Bematech MP-4200 TH identificada como `COM4`. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
+
+Use esta versão como base para os próximos tablets. Para cada tablet novo, gere um código de pareamento próprio no SenhaHub; o código usado no teste é temporário, de uso único e expira em dez minutos.
+
 ## Compilar
 
 Abra o projeto em um Windows com Visual Studio ou Build Tools instalados e compile a configuração `Release | x86`:
