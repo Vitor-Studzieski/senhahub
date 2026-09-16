@@ -23,21 +23,22 @@ namespace SenhaHub.PrintAgent.X86
 
         private static int Main(string[] args)
         {
-            Console.OutputEncoding = Encoding.UTF8;
-            Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e)
-            {
-                e.Cancel = true;
-                Stop.Cancel();
-            };
-
             try
             {
-                var config = AgentConfig.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.env"));
                 if (args.Any(a => string.Equals(a, "--service", StringComparison.OrdinalIgnoreCase)) || !Environment.UserInteractive)
                 {
-                    ServiceBase.Run(new PrintAgentService(config));
+                    ServiceBase.Run(new PrintAgentService(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.env")));
                     return 0;
                 }
+
+                Console.OutputEncoding = Encoding.UTF8;
+                Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e)
+                {
+                    e.Cancel = true;
+                    Stop.Cancel();
+                };
+
+                var config = AgentConfig.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.env"));
 
                 if (args.Any(a => string.Equals(a, "--list-ports", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -84,7 +85,7 @@ namespace SenhaHub.PrintAgent.X86
             });
 
             var failures = 0;
-            while (!Stop.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -145,13 +146,13 @@ namespace SenhaHub.PrintAgent.X86
 
     internal sealed class PrintAgentService : ServiceBase
     {
-        private readonly AgentConfig config;
+        private readonly string configPath;
         private readonly CancellationTokenSource stop = new CancellationTokenSource();
-        private Task workerTask;
+        private Thread workerThread;
 
-        public PrintAgentService(AgentConfig config)
+        public PrintAgentService(string configPath)
         {
-            this.config = config;
+            this.configPath = configPath;
             ServiceName = "SenhaHubPrintAgentX86";
             CanStop = true;
             CanShutdown = true;
@@ -160,23 +161,46 @@ namespace SenhaHub.PrintAgent.X86
 
         protected override void OnStart(string[] args)
         {
-            workerTask = Task.Run(() => Program.RunServiceAsync(config, stop.Token));
+            workerThread = new Thread(RunWorker);
+            workerThread.IsBackground = true;
+            workerThread.Start();
         }
 
         protected override void OnStop()
         {
             stop.Cancel();
-            if (workerTask != null)
-            {
-                try { workerTask.Wait(TimeSpan.FromSeconds(20)); }
-                catch (AggregateException) { }
-            }
+            if (workerThread != null && workerThread.IsAlive) workerThread.Join(TimeSpan.FromSeconds(20));
         }
 
         protected override void OnShutdown()
         {
             OnStop();
             base.OnShutdown();
+        }
+
+        private void RunWorker()
+        {
+            try
+            {
+                var config = AgentConfig.Load(configPath);
+                Program.RunServiceAsync(config, stop.Token).GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                try
+                {
+                    var directory = Path.GetDirectoryName(configPath);
+                    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                    File.AppendAllText(
+                        Path.Combine(directory ?? AppDomain.CurrentDomain.BaseDirectory, "service-startup.log"),
+                        DateTime.Now.ToString("o") + " " + error + Environment.NewLine,
+                        Encoding.UTF8);
+                }
+                catch
+                {
+                    // Preserve the service process even when startup diagnostics cannot be written.
+                }
+            }
         }
     }
 
