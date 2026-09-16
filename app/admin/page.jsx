@@ -5,7 +5,7 @@ export default function AdminPage() {
   return (
     <div className="manager-page">
       <HtmlTemplate fileName="admin.html" />
-      <Script src="/admin.js?v=20260906.1" strategy="afterInteractive" />
+      <Script src="/admin.js?v=20260916.1" strategy="afterInteractive" />
     </div>
   );
 }

@@ -1,12 +1,9 @@
 :root {
-  --pwa-blue: #06466f;
-  --pwa-blue-dark: #052e49;
-  --pwa-yellow: #ffca0a;
-  --pwa-teal: #087f8c;
-  --pwa-surface: #ffffff;
-  --pwa-border: #c9d7e4;
-  --pwa-text: #152238;
-  --pwa-muted: #617087;
+  --pwa-success: #237a35;
+  --pwa-surface: var(--vr-surface);
+  --pwa-border: var(--vr-border);
+  --pwa-text: var(--vr-text);
+  --pwa-muted: var(--vr-text);
   --pwa-danger: #b42318;
 }
 
@@ -22,7 +19,7 @@
   border-radius: 8px;
   background: var(--pwa-surface);
   color: var(--pwa-text);
-  box-shadow: 0 12px 32px rgb(5 46 73 / 18%);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--vr-heading) 18%, transparent);
 }
 
 .pwa-banner {
@@ -36,12 +33,12 @@
 }
 
 .pwa-banner[data-state="offline"] {
-  border-color: #efb5b0;
+  border-color: color-mix(in srgb, var(--pwa-danger) 34%, var(--vr-border));
   color: var(--pwa-danger);
 }
 
 .pwa-banner[data-state="reconnecting"] {
-  border-color: #e8c968;
+  border-color: var(--vr-amber);
 }
 
 .pwa-banner[hidden],
@@ -54,7 +51,7 @@
   height: 10px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--pwa-teal);
+  background: var(--pwa-success);
 }
 
 .pwa-banner[data-state="offline"] .pwa-status-dot {
@@ -62,7 +59,7 @@
 }
 
 .pwa-banner[data-state="reconnecting"] .pwa-status-dot {
-  background: #b98200;
+  background: var(--vr-amber);
 }
 
 .pwa-prompt {
@@ -91,31 +88,33 @@
 
 .pwa-button {
   min-height: 42px;
-  border: 1px solid var(--pwa-blue);
+  border: 1px solid var(--vr-orange-primary);
   border-radius: 6px;
   padding: 9px 14px;
-  background: var(--pwa-blue);
-  color: #fff;
+  background: var(--vr-orange-cta);
+  color: var(--vr-heading);
   font: inherit;
   font-weight: 800;
   cursor: pointer;
 }
 
 .pwa-button.secondary {
-  background: #fff;
-  color: var(--pwa-blue);
+  border-color: var(--vr-border);
+  background: var(--vr-surface-muted);
+  color: var(--vr-heading);
 }
 
 .pwa-button.warning {
   border-color: var(--pwa-danger);
-  background: #fff;
+  background: var(--vr-surface-muted);
   color: var(--pwa-danger);
 }
 
 .pwa-button:focus-visible,
 .pwa-switch input:focus-visible + span {
-  outline: 3px solid rgb(255 202 10 / 70%);
+  outline: 2px solid var(--vr-heading);
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--vr-orange-primary);
 }
 
 .pwa-button:disabled {
@@ -131,7 +130,7 @@
 
 .pwa-settings h3 {
   margin: 0;
-  color: var(--pwa-blue);
+  color: var(--vr-heading);
   font-size: 20px;
 }
 
@@ -140,14 +139,14 @@
   gap: 6px;
   margin: 12px 0;
   padding: 11px 12px;
-  border-left: 4px solid var(--pwa-teal);
-  background: #eef7f8;
+  border-left: 4px solid var(--pwa-success);
+  background: color-mix(in srgb, var(--pwa-success) 8%, var(--vr-surface));
   color: var(--pwa-text);
 }
 
 .pwa-settings-state[data-kind="error"] {
   border-left-color: var(--pwa-danger);
-  background: #fff1f0;
+  background: var(--vr-surface-muted);
 }
 
 .pwa-settings-state span {
@@ -174,7 +173,7 @@
 }
 
 .pwa-switch + .pwa-switch {
-  border-top: 1px solid #e7edf3;
+  border-top: 1px solid var(--vr-border);
 }
 
 .pwa-switch input {
@@ -189,7 +188,7 @@
   height: 24px;
   flex: 0 0 auto;
   border-radius: 12px;
-  background: #9eabb8;
+  background: var(--vr-orange-primary);
   transition: background 160ms ease;
 }
 
@@ -200,13 +199,13 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--vr-surface-muted);
   content: "";
   transition: transform 160ms ease;
 }
 
 .pwa-switch input:checked + span {
-  background: var(--pwa-teal);
+  background: var(--pwa-success);
 }
 
 .pwa-switch input:checked + span::after {
@@ -232,8 +231,8 @@
 .pwa-help {
   margin-top: 10px;
   padding: 10px 12px;
-  border-left: 4px solid var(--pwa-yellow);
-  background: #fff9df;
+  border-left: 4px solid var(--vr-amber);
+  background: color-mix(in srgb, var(--vr-amber) 12%, var(--vr-surface));
   color: var(--pwa-text);
   line-height: 1.45;
 }
@@ -250,7 +249,7 @@
   display: grid;
   place-items: center;
   padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
-  background: #f4f7fb;
+  background: var(--vr-surface-muted);
   color: var(--pwa-text);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
@@ -268,14 +267,14 @@
 
 .offline-eyebrow {
   margin: 16px 0 6px;
-  color: var(--pwa-teal);
+  color: var(--pwa-success);
   font-size: 13px;
   font-weight: 900;
 }
 
 .offline-shell h1 {
   margin: 0;
-  color: var(--pwa-blue-dark);
+  color: var(--vr-heading);
   font-size: clamp(28px, 7vw, 40px);
   letter-spacing: 0;
 }
@@ -293,8 +292,8 @@
   justify-content: center;
   border-radius: 6px;
   padding: 0 18px;
-  background: var(--pwa-blue);
-  color: #fff;
+  background: var(--vr-orange-cta);
+  color: var(--vr-heading);
   font-weight: 800;
   text-decoration: none;
 }

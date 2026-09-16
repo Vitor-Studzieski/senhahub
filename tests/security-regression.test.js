@@ -64,6 +64,29 @@ test("o runtime Supabase mantém tabelas e RPCs privilegiados em allowlists", ()
   assert.match(privilegeMigration, /revoke all on table[\s\S]*print_enrollments[\s\S]*maintenance_leases[\s\S]*from service_role/i);
 });
 
+test("reset do histórico fica limitado a gestores e senhas encerradas", () => {
+  const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  const route = fs.readFileSync(path.join(__dirname, "..", "app/api/local-postgres/tickets/history/reset/route.js"), "utf8");
+  const migration = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/20260916004407_reset_ticket_history.sql"), "utf8");
+  const printSafeMigration = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/20260916005405_reset_ticket_history_skip_unresolved_print_jobs.sql"), "utf8");
+  const printAuditMigration = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/20260916011059_reset_ticket_history_preserve_print_audit.sql"), "utf8");
+  assert.match(runtime, /reset_ticket_history/);
+  assert.match(runtime, /requireUser\(request, ADMIN_ROLES\)/);
+  assert.match(runtime, /verifyCsrf\(request, user\)/);
+  assert.match(route, /requireLocalUser\(request, \["manager", "admin"\]\)/);
+  assert.match(route, /requireCsrf\(request, user\.session\)/);
+  assert.match(migration, /p\.role in \('manager'::public\.user_role, 'admin'::public\.user_role\)/i);
+  assert.match(migration, /array\['atendido', 'cancelado', 'expirado'\]/i);
+  assert.match(migration, /revoke all on function public\.reset_ticket_history\(uuid\) from public, anon, authenticated/i);
+  assert.match(migration, /grant execute on function public\.reset_ticket_history\(uuid\) to service_role/i);
+  assert.match(printSafeMigration, /not exists[\s\S]*from public\.print_jobs[\s\S]*j\.status <> 'printed'[\s\S]*j\.resolved_at is null/i);
+  assert.match(printSafeMigration, /'skippedTickets'/);
+  assert.match(printAuditMigration, /create or replace function public\.protect_unresolved_print_ticket\(\)/i);
+  assert.match(printAuditMigration, /j\.status = 'failed'[\s\S]*coalesce\(j\.attempts, 0\) >= 5[\s\S]*j\.next_attempt_at is null[\s\S]*j\.send_started_at is null/i);
+  assert.match(printAuditMigration, /receipts are retained as audit rows/i);
+  assert.match(printAuditMigration, /revoke all on function public\.reset_ticket_history\(uuid\) from public, anon, authenticated/i);
+});
+
 test("tickets históricos da Pompeia são reclassificados para os setores da Loja 2", () => {
   const migration = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/20260910131734_reclassify_pompeia_physical_tickets_store_2.sql"), "utf8");
   assert.match(migration, /acougue-loja-1.*acougue-loja-2/s);

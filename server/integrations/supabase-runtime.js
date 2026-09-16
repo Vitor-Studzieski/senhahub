@@ -1,4 +1,5 @@
 const { createPrintV2Api } = require('../kiosk/print-v2-api');
+const { AsyncLocalStorage } = require("node:async_hooks");
 const crypto = require("node:crypto");
 const {
   DEFAULT_PREFERENCES,
@@ -34,12 +35,15 @@ const {
   durationMs,
   errorDetails,
   finishRequest,
+  loadTestLogFields,
   logStructured,
   summarizePrintAttempts
 } = require("../platform/observability");
 const { healthResponse } = require("../platform/production-readiness");
 const { fetchCurrentWeather } = require("./weather");
 const { fetchInstagramVideo } = require("./instagram-video");
+
+const requestContextStorage = new AsyncLocalStorage();
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "");
@@ -92,6 +96,7 @@ const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
   "record_print_device_session_v2",
   "recover_print_execution_v2",
   "release_maintenance_lease",
+  "reset_ticket_history",
   "renew_print_lease_v2",
   "resolve_print_job_v2",
   "start_print_job_v2",
@@ -132,7 +137,7 @@ const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
 const TABLET_ACCESS_ROLES = ["attendant", "tablet"];
 const ADMIN_ROLES = ["manager", "admin"];
-const DISPLAY_ROLES = ["tv"];
+const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
 const SKIP_REASONS = new Set(["cliente_ausente", "cancelamento", "erro_operacional"]);
 const PRIORITY_CATEGORIES = new Set([
   "deficiencia_ou_mobilidade_reduzida",
@@ -173,32 +178,39 @@ async function handleRequest(request) {
     path: url.pathname,
     headers: request.headers
   });
-  logStructured("info", "request.started", {
-    requestId: context.requestId,
-    method: context.method,
-    path: context.path
-  });
-  let response;
-  try {
-    response = isProductionHttpsRequest(request)
-      ? await handleRequestInternal(request, context)
-      : json({ error: "Esta API aceita somente conexoes HTTPS." }, 426, { "cache-control": "no-store" });
-  } catch (error) {
-    if (error?.code === "INVALID_JSON") {
-      response = json({ error: "O corpo da requisicao precisa ser um JSON valido." }, 400);
-    } else {
-      logStructured("error", "request.unhandled_error", {
-        requestId: context.requestId,
-        method: context.method,
-        path: context.path,
-        ...errorDetails(error)
-      });
-      response = json({ error: "Erro interno do servidor." }, 500);
+  const executeRequest = async () => {
+    logStructured("info", "request.started", {
+      requestId: context.requestId,
+      method: context.method,
+      path: context.path,
+      ...loadTestLogFields(context)
+    });
+    let response;
+    try {
+      response = isProductionHttpsRequest(request)
+        ? await handleRequestInternal(request, context)
+        : json({ error: "Esta API aceita somente conexoes HTTPS." }, 426, { "cache-control": "no-store" });
+    } catch (error) {
+      if (error?.code === "INVALID_JSON") {
+        response = json({ error: "O corpo da requisicao precisa ser um JSON valido." }, 400);
+      } else {
+        logStructured("error", "request.unhandled_error", {
+          requestId: context.requestId,
+          method: context.method,
+          path: context.path,
+          ...loadTestLogFields(context),
+          ...errorDetails(error)
+        });
+        response = json({ error: "Erro interno do servidor." }, 500);
+      }
     }
-  }
-  const decorated = withRequestId(response, context.requestId);
-  finishRequest(context, decorated.status);
-  return decorated;
+    const decorated = withRequestId(response, context.requestId);
+    finishRequest(context, decorated.status);
+    return decorated;
+  };
+  return context.loadTestRunId
+    ? requestContextStorage.run(context, executeRequest)
+    : executeRequest();
 }
 
 const printV2Api = createPrintV2Api({ rpc, select, supabaseFetch, log: logStructured,
@@ -277,6 +289,7 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "GET" && url.pathname === "/api/staff/state") return staffState(request);
     if (request.method === "GET" && url.pathname === "/api/display/state") return displayState(request);
     if (request.method === "GET" && url.pathname === "/api/metrics") return metrics(request);
+    if (request.method === "POST" && url.pathname === "/api/tickets/history/reset") return resetTicketHistoryRoute(request);
     if (request.method === "POST" && url.pathname === "/api/tickets") return createTicketRoute(request);
     if (request.method === "POST" && url.pathname === "/api/ratings") return rating(request);
     if (request.method === "GET" && url.pathname === "/api/users") return users(request);
@@ -302,6 +315,9 @@ async function handleRequestInternal(request, context = null) {
 
     const callNextMatch = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-next$/);
     if (request.method === "POST" && callNextMatch) return callNextRoute(request, callNextMatch[1]);
+
+    const callControlMatch = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-control$/);
+    if (request.method === "POST" && callControlMatch) return callControlRoute(request, callControlMatch[1]);
 
     const sectorMatch = url.pathname.match(/^\/api\/sectors\/([^/]+)$/);
     if (request.method === "PUT" && sectorMatch) return updateSectorRoute(request, sectorMatch[1]);
@@ -1099,6 +1115,8 @@ async function ticketTrackingRoute(request, token) {
   const rows = await select("tickets", `tracking_token=eq.${encodeURIComponent(token)}&limit=1`);
   const row = rows[0];
   if (!row) return json({ error: "QR Code invalido.", code: "QR_CODE_INVALID" }, 404);
+  const context = requestContextStorage.getStore();
+  if (context?.loadTestRunId) context.ticketId = String(row.id).slice(0, 128);
   if (row.status === "atendido") {
     return json({ error: "Este QR Code ja foi utilizado.", code: "QR_CODE_USED" }, 404);
   }
@@ -1448,7 +1466,12 @@ async function sessions(request) {
 async function state(request) {
   const user = await requireUser(request, CUSTOMER_ROLES);
   if (user.response) return user.response;
-  return json(await getCustomerState(user.customerId));
+  const customerState = await getCustomerState(user.customerId);
+  const context = requestContextStorage.getStore();
+  if (context?.loadTestRunId && customerState.tickets?.length === 1) {
+    context.ticketId = String(customerState.tickets[0].id).slice(0, 128);
+  }
+  return json(customerState);
 }
 
 async function tabletStatus(request) {
@@ -1653,6 +1676,19 @@ async function metrics(request) {
   return json(value);
 }
 
+async function resetTicketHistoryRoute(request) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) {
+    return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  }
+
+  const result = await rpc("reset_ticket_history", { p_actor_id: user.id });
+  if (result?.error) throw new Error(result.error);
+  metricsCache = null;
+  return json(result || { deletedTickets: 0, deletedRatings: 0, skippedTickets: 0 }, 200, { "cache-control": "no-store" });
+}
+
 async function createTicketRoute(request) {
   const user = await requireUser(request, CUSTOMER_ROLES);
   if (user.response) return user.response;
@@ -1703,7 +1739,18 @@ async function callNextRoute(request, sectorId) {
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
-  const result = await callNextTicket(sectorId);
+  let result = await callNextTicket(sectorId);
+  if (!result.ticket && !result.error) result = await callNextTicket(sectorId, { preferStandby: true });
+  return json(result, result.error ? 400 : 200);
+}
+
+async function callControlRoute(request, sectorId) {
+  const user = await requireUser(request, STAFF_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
+  const body = await readJson(request);
+  const result = await callControlTicket(sectorId, body?.action);
   return json(result, result.error ? 400 : 200);
 }
 
@@ -1955,6 +2002,61 @@ async function callNextTicket(sectorId, options = {}) {
   return { ticket: null, message: "Nenhuma senha elegivel para chamada." };
 }
 
+async function callControlTicket(sectorId, action) {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!["previous", "again", "next"].includes(normalizedAction)) return fail("Ação de chamada inválida.");
+  if (normalizedAction === "next") {
+    let result = await callNextTicket(sectorId);
+    if (!result.ticket && !result.error) result = await callNextTicket(sectorId, { preferStandby: true });
+    return result;
+  }
+
+  const sector = await getSector(sectorId);
+  if (!sector) return fail("Setor nao encontrado.");
+  if (sector.status !== "open") return fail("Setor fechado.");
+  const { start, end } = businessDayBounds(businessDateFor());
+  const calls = await select(
+    "calls",
+    `sector_id=eq.${encodeURIComponent(sectorId)}&action=eq.senha_chamada&created_at=gte.${encodeURIComponent(start)}&created_at=lt.${encodeURIComponent(end)}&select=ticket_id,created_at&order=created_at.desc&limit=100`
+  );
+  const latest = calls[0];
+  const target = normalizedAction === "again"
+    ? latest
+    : calls.find((call) => call.ticket_id !== latest?.ticket_id);
+  if (!target?.ticket_id) {
+    return {
+      ticket: null,
+      message: normalizedAction === "again" ? "Nenhuma senha chamada para repetir." : "Nenhuma senha anterior disponível."
+    };
+  }
+
+  const ticket = await getTicket(target.ticket_id);
+  if (!ticket) return fail("Senha nao encontrada.");
+  const now = isoNow();
+  if (["aguardando", "proximo", "standby"].includes(ticket.status)) {
+    await updateTicketIfStatus(ticket.id, [ticket.status], {
+      status: "chamado",
+      called_at: now,
+      standby_started_at: null,
+      standby_expires_at: null,
+      updated_at: now
+    });
+  }
+  await insert("calls", {
+    ticket_id: ticket.id,
+    sector_id: sectorId,
+    action: "senha_chamada",
+    created_at: now
+  }, false);
+  await registerEvent("senha_chamada", "ticket", ticket.id, ticket.customer_id, sectorId, {
+    code: ticket.code,
+    controlAction: normalizedAction
+  });
+  const refreshed = await getTicket(ticket.id);
+  await dispatchTicketPush(refreshed, "queue_recalled", `control-${normalizedAction}`);
+  return { ticket: await safeTicketDto(refreshed) };
+}
+
 async function confirmTicket(ticketId) {
   const updated = await rpc("confirm_ticket", { p_ticket_id: ticketId });
   if (!updated || updated.error) return fail("A senha nao esta mais disponivel para iniciar atendimento. Atualize a fila.");
@@ -1967,12 +2069,11 @@ async function finishTicket(ticketId) {
   if (!finished || finished.error) return fail("A senha nao esta mais em atendimento. Atualize a fila.");
   await registerEvent("pedido_finalizado", "ticket", finished.id, finished.customer_id, finished.sector_id, { code: finished.code });
   const released = await releaseSmartWaitTicket(finished.customer_id);
-  const nextInSector = await callNextTicket(finished.sector_id, { preferStandby: true });
   await notifyQueueMilestones(finished.sector_id);
   return {
     finishedTicket: await safeTicketDto(finished),
     releasedTicket: released ? await safeTicketDto(released) : null,
-    nextTicket: nextInSector?.ticket || null
+    nextTicket: null
   };
 }
 
@@ -2020,9 +2121,8 @@ async function skipTicket(ticketId, body = {}) {
     await dispatchTicketPush(skipped, "queue_changed", `skipped-${reason}`);
   }
   const released = CALL_BLOCKING_STATUSES.includes(ticket.status) ? await releaseSmartWaitTicket(ticket.customer_id) : null;
-  const nextInSector = CALL_BLOCKING_STATUSES.includes(ticket.status) ? await callNextTicket(ticket.sector_id) : null;
   await notifyQueueMilestones(ticket.sector_id);
-  return { skippedTicket: await safeTicketDto(skipped), releasedTicket: released ? await safeTicketDto(released) : null, nextTicket: nextInSector?.ticket || null };
+  return { skippedTicket: await safeTicketDto(skipped), releasedTicket: released ? await safeTicketDto(released) : null, nextTicket: null };
 }
 
 async function cancelTicket(ticketId, customerId) {
@@ -2064,7 +2164,6 @@ async function releaseSmartWaitTicket(customerId) {
   if (!updated) return null;
   await registerEvent("espera_inteligente_liberada", "ticket", next.id, next.customer_id, next.sector_id, { code: next.code });
   await dispatchTicketPush(updated, "queue_changed", "smart-wait-released");
-  await callNextTicket(next.sector_id, { preferStandby: true });
   await notifyQueueMilestones(next.sector_id);
   return getTicket(next.id);
 }
@@ -2159,6 +2258,7 @@ async function getMetrics(metricsDate = businessDateFor()) {
       finished,
       abandoned,
       avgServiceSeconds: average(serviceRows.map((row) => secondsBetween(row.service_started_at, row.finished_at))),
+      serviceSamples: serviceRows.length,
       avgSmartWaitSeconds: average(smartWaitRows.map((row) => secondsBetween(row.smart_wait_since, row.called_at || isoNow())))
     };
   });
@@ -2223,8 +2323,9 @@ async function staffAverageStats(sectorIds) {
 
 async function staffRecentCalls(sectorIds) {
   const map = new Map(sectorIds.map((sectorId) => [sectorId, []]));
+  const { start, end } = businessDayBounds(businessDateFor());
   const callsBySector = await Promise.all(sectorIds.map(async (sectorId) => {
-    const calls = await select("calls", `sector_id=eq.${encodeURIComponent(sectorId)}&select=action,created_at,ticket_id&order=created_at.desc&limit=6`);
+    const calls = await select("calls", `sector_id=eq.${encodeURIComponent(sectorId)}&created_at=gte.${encodeURIComponent(start)}&created_at=lt.${encodeURIComponent(end)}&select=action,created_at,ticket_id&order=created_at.desc&limit=6`);
     return [sectorId, calls];
   }));
   const ticketIds = [...new Set(callsBySector.flatMap(([, calls]) => calls.map((call) => call.ticket_id).filter(Boolean)))];
@@ -2360,8 +2461,8 @@ function activeServiceDelayFromTicket(active, averageSeconds) {
 }
 
 function currentCodeFromCounter(sector, counter) {
-  const currentNumber = counter?.business_date === businessDateFor() ? Number(counter.last_number) : TICKET_MIN_NUMBER;
-  return formatTicket(sector.prefix, currentNumber);
+  if (!counter || counter.business_date !== businessDateFor()) return null;
+  return formatTicket(sector.prefix, Number(counter.last_number));
 }
 
 function groupBy(rows, key) {
@@ -2806,8 +2907,8 @@ async function currentCode(sector, activeTicket = null) {
   const active = activeTicket || await getActiveSectorTicket(sector.id);
   if (active) return active.code;
   const counter = (await select("ticket_counters", `sector_id=eq.${encodeURIComponent(sector.id)}&limit=1`))[0];
-  const currentNumber = counter?.business_date === businessDateFor() ? Number(counter.last_number) : TICKET_MIN_NUMBER;
-  return formatTicket(sector.prefix, currentNumber);
+  if (!counter || counter.business_date !== businessDateFor()) return null;
+  return formatTicket(sector.prefix, Number(counter.last_number));
 }
 
 async function recentSectorCalls(sectorId) {
@@ -2940,6 +3041,8 @@ async function revokeAuthSessionsForUser(userId) {
 async function requireUser(request, roles) {
   const user = await getAuthUser(request);
   if (!user) return { response: json({ error: "Autenticacao necessaria." }, 401) };
+  const context = requestContextStorage.getStore();
+  if (context?.loadTestRunId) context.testUserId = String(user.id || user.customerId || context.testUserId || "").slice(0, 128) || null;
   if (!hasAnyRole(user, roles)) return { response: json({ error: "Acesso negado." }, 403) };
   return user;
 }
@@ -3109,7 +3212,12 @@ async function clearLoginFailures(key) {
 
 async function registerEvent(type, entityType, entityId, customerId, sectorId, payload = {}) {
   try {
-    await insert("events", { type, entity_type: entityType, entity_id: String(entityId), customer_id: customerId, sector_id: sectorId, payload, created_at: isoNow() }, false);
+    const context = requestContextStorage.getStore();
+    const taggedPayload = context?.loadTestRunId
+      ? { ...payload, load_test_run_id: context.loadTestRunId }
+      : payload;
+    if (context?.loadTestRunId && entityType === "ticket" && !context.ticketId) context.ticketId = String(entityId).slice(0, 128);
+    await insert("events", { type, entity_type: entityType, entity_id: String(entityId), customer_id: customerId, sector_id: sectorId, payload: taggedPayload, created_at: isoNow() }, false);
   } catch (error) {
     console.error("event_register_failed", error);
   }
@@ -3201,24 +3309,78 @@ function assertServiceRoleTable(table) {
 }
 
 async function supabaseFetch(pathname, options = {}) {
+  const method = options.method || "GET";
+  const requestBody = options.body ? JSON.stringify(options.body) : undefined;
+  const context = requestContextStorage.getStore();
+  const startedAt = Date.now();
+  const operation = supabaseOperationName(pathname);
   const headers = {
     "content-type": "application/json",
     apikey: options.apiKey || SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${options.bearer || SUPABASE_SERVICE_ROLE_KEY}`,
     ...(options.headers || {})
   };
-  const response = await fetch(`${SUPABASE_URL}${pathname}`, {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const text = await response.text();
-  const payload = parseSupabasePayload(text);
-  if (options.raw) {
-    return { payload, count: response.headers.get("content-range")?.split("/")?.[1] };
+  try {
+    const response = await fetch(`${SUPABASE_URL}${pathname}`, {
+      method,
+      headers,
+      body: requestBody
+    });
+    const text = await response.text();
+    if (context?.loadTestRunId) {
+      logStructured("info", "supabase.request.finished", {
+        requestId: context.requestId,
+        method,
+        operation,
+        operationType: supabaseOperationType(operation),
+        status: response.status,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        requestBytes: requestBody ? Buffer.byteLength(requestBody) : 0,
+        responseBytes: Buffer.byteLength(text),
+        ...loadTestLogFields(context)
+      });
+    }
+    const payload = parseSupabasePayload(text);
+    if (options.raw) {
+      return { payload, count: response.headers.get("content-range")?.split("/")?.[1] };
+    }
+    if (!response.ok) return { error: supabaseErrorMessage(payload, response), status: response.status };
+    return payload;
+  } catch (error) {
+    if (context?.loadTestRunId) {
+      logStructured("warn", "supabase.request.finished", {
+        requestId: context.requestId,
+        method,
+        operation,
+        operationType: supabaseOperationType(operation),
+        status: 0,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        requestBytes: requestBody ? Buffer.byteLength(requestBody) : 0,
+        responseBytes: 0,
+        errorCode: error?.code || "SUPABASE_NETWORK_ERROR",
+        ...loadTestLogFields(context)
+      });
+    }
+    throw error;
   }
-  if (!response.ok) return { error: supabaseErrorMessage(payload, response), status: response.status };
-  return payload;
+}
+
+function supabaseOperationName(pathname) {
+  return String(pathname || "")
+    .split("?", 1)[0]
+    .replace(/\/[0-9a-f-]{36}(?=\/|$)/gi, "/:id")
+    .replace(/\/[A-Za-z0-9_-]{48,}(?=\/|$)/g, "/:token")
+    .slice(0, 200);
+}
+
+function supabaseOperationType(operation) {
+  if (operation.startsWith("/auth/v1/")) return "auth";
+  if (operation.startsWith("/rest/v1/rpc/")) return "postgrest_rpc";
+  if (operation.startsWith("/rest/v1/")) return "postgrest";
+  if (operation.startsWith("/storage/v1/")) return "storage";
+  if (operation.startsWith("/functions/v1/")) return "edge_function";
+  if (operation.startsWith("/realtime/v1/")) return "realtime";
+  return "other";
 }
 
 async function supabaseAuthFetch(pathname, options = {}) {

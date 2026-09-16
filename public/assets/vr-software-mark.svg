@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 72" fill="none">
+  <defs>
+    <linearGradient id="vr-mark-fill" x1="15" y1="4" x2="109" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD44B" />
+      <stop offset="0.52" stop-color="#FF9E01" />
+      <stop offset="1" stop-color="#FF7200" />
+    </linearGradient>
+    <linearGradient id="vr-mark-fold" x1="69" y1="9" x2="111" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9E01" />
+      <stop offset="1" stop-color="#FF6600" />
+    </linearGradient>
+  </defs>
+  <path d="M2 2h15.2l5.1 10.8-15.4 1.4L2 2Z" fill="url(#vr-mark-fill)" />
+  <path d="m19.3 12.1 78.1-4.4c3.8-.2 6.1 1.6 7.2 5.1l9.1 28.4c1.3 4.1-.1 6.7-4.1 8.2L59 67.1c-5.3 1.9-9.9-.1-12-4.8L19.3 12.1Z" fill="url(#vr-mark-fill)" />
+  <path d="m68.5 9.3 28.9-1.6c3.8-.2 6.1 1.6 7.2 5.1l9.1 28.4c1.3 4.1-.1 6.7-4.1 8.2l-13.8 5L68.5 9.3Z" fill="url(#vr-mark-fold)" opacity=".72" />
+</svg>

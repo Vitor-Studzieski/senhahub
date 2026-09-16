@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const user = await requireLocalUser(request, ["tv"]);
+  const user = await requireLocalUser(request, ["tv", "attendant", "manager", "admin"]);
   if (user.response) return user.response;
 
   try {

@@ -94,7 +94,22 @@ function renderAttendant() {
     const waiting = (sector.tickets || []).filter((ticket) => ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status));
     const recentCalls = sector.recentCalls || [];
     const latestCall = latestRecentCall(recentCalls);
-    const callHighlight = isCallHighlightActive(latestCall) ? latestCall : null;
+    const activeTicket = latestActiveTicket(sector.tickets || []);
+    const recentCallHighlight = isCallHighlightActive(latestCall) ? latestCall : null;
+    const callHighlight = activeTicket
+      ? {
+          ...activeTicket,
+          action: "senha_chamada",
+          createdAt: activeTicket.serviceStartedAt || activeTicket.calledAt || activeTicket.createdAt
+        }
+      : recentCallHighlight;
+    const callLabel = activeTicket?.status === "em_atendimento"
+      ? "Em atendimento"
+      : activeTicket
+        ? "Chamada ativa"
+        : callHighlight
+          ? "Última chamada"
+          : "Próxima chamada";
     const isCallingNext = callNextInFlight.has(sector.id);
     const canCallNext = sector.status === "open" && waiting.length > 0 && !isCallingNext;
     const callNextLabel = isCallingNext
@@ -112,21 +127,19 @@ function renderAttendant() {
         </div>
         <div class="ops-call-panel ${callHighlight ? "call-highlight" : ""} ${callHighlight?.priority ? "priority-current" : ""}">
           <div class="ops-call-panel-topline">
-            <span>${callHighlight ? "Última senha chamada" : "Próxima chamada"}</span>
-            <b>${waiting.length} ${waiting.length === 1 ? "senha na fila" : "senhas na fila"}</b>
+            <span>${callLabel}</span>
+            ${callHighlight ? "" : `<b>${waiting.length} na fila</b>`}
           </div>
           <div class="ops-call-main">
             <strong>${escapeHtml(callHighlight ? supportCode(callHighlight) : "--")}</strong>
-            <div>
-              <b>${escapeHtml(callHighlight ? displayCustomerName(callHighlight) : "Nenhuma senha em destaque")}</b>
-              <small>${escapeHtml(callHighlight ? `Chamada registrada às ${formatClock(callHighlight.createdAt)}` : "A fila está pronta para a próxima chamada")}</small>
+            <div class="ops-call-details">
+              <b>${escapeHtml(callHighlight ? displayCustomerName(callHighlight) : waiting.length ? "Aguardando chamada" : "Fila vazia")}</b>
+              ${callHighlight ? ticketTypeBadgeMarkup(callHighlight) : ""}
             </div>
           </div>
-          ${callHighlight ? ticketTypeBadgeMarkup(callHighlight, "priority-large") : ""}
         </div>
         <button class="blue-action ops-call-button" data-call-next="${escapeHtml(sector.id)}" data-online-required ${canCallNext ? "" : "disabled"}>${callNextLabel}</button>
-        ${!waiting.length ? `<p class="ops-call-note">Nenhuma senha aguardando neste setor.</p>` : ""}
-        ${feedback ? `<p class="ops-action-feedback" role="alert">${escapeHtml(feedback)}</p>` : ""}
+        <div class="ops-feedback-slot">${feedback ? `<p class="ops-action-feedback" role="alert">${escapeHtml(feedback)}</p>` : ""}</div>
         ${ticketSection("Fila", waiting, "ops-queue-section")}
         ${callHistory(recentCalls)}
       </article>
@@ -156,9 +169,10 @@ function ticketRow(ticket) {
     <div class="ops-ticket-row ${ticket.priority ? "priority-ticket" : ""}">
       <div>
         <strong>${escapeHtml(displayCustomerName(ticket))}</strong>
-        ${ticketTypeBadgeMarkup(ticket)}
-        <span>${escapeHtml(ticket.sector)} - ${escapeHtml(supportCode(ticket))}</span>
-        <small>${escapeHtml(ticketDetailLine(ticket))}</small>
+        <div class="ops-ticket-meta">
+          <span class="ops-ticket-code">${escapeHtml(supportCode(ticket))}</span>
+          ${ticketTypeBadgeMarkup(ticket)}
+        </div>
       </div>
       ${ticketActions(ticket)}
     </div>
@@ -168,12 +182,6 @@ function ticketRow(ticket) {
 function ticketActions(ticket) {
   if (!ticket?.id || !["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)) return "";
   return `<div class="ops-ticket-actions"><button type="button" class="danger-action" data-skip-ticket="${escapeHtml(ticket.id)}">Pular senha</button></div>`;
-}
-
-function ticketDetailLine(ticket) {
-  if (ticket.status === "standby") return `Standby por ausencia - ${formatStandbyTime(ticket)} restantes`;
-  if (ticket.position === 1) return "Proxima senha da fila";
-  return `${ticket.ahead} pessoas na frente - estimativa ${formatEstimateMinutes(ticket.secondsToCall)}`;
 }
 
 function displayCustomerName(ticket) {
@@ -200,39 +208,19 @@ function formatEstimateMinutes(totalSeconds) {
   return `${minutes} min`;
 }
 
-function formatStandbyTime(ticket) {
-  const seconds = Math.max(0, Number(ticket.standbySecondsRemaining) || 0);
-  const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const rest = String(seconds % 60).padStart(2, "0");
-  return `${minutes}:${rest}`;
-}
-
 function callHistory(items) {
+  const calls = items.filter((item) => item.action === "senha_chamada");
   return `
     <section class="ops-ticket-section ops-call-history">
       <h2>Últimas chamadas</h2>
-      ${items.length ? items.map((item) => `
+      ${calls.length ? calls.map((item) => `
         <div class="history-row">
-          <span>${escapeHtml(item.customerName || "Cliente")} - ${escapeHtml(supportCode(item))} - ${escapeHtml(callActionLabel(item.action))} ${item.action === "senha_chamada" ? escapeHtml(item.priority ? "· preferencial" : "· comum") : ""}</span>
+          <span>${escapeHtml(displayCustomerName(item))} · ${escapeHtml(supportCode(item))} · ${item.priority ? "preferencial" : "comum"}</span>
           <b>${escapeHtml(formatClock(item.createdAt))}</b>
         </div>
       `).join("") : `<p class="ops-empty">Nenhum registro recente.</p>`}
     </section>
   `;
-}
-
-function callActionLabel(action) {
-  if (action === "senha_chamada") return "chamada";
-  if (action?.startsWith("senha_pulada:")) return `pulada - ${skipReasonLabel(action.split(":")[1])}`;
-  return action || "registro";
-}
-
-function skipReasonLabel(reason) {
-  return {
-    cliente_ausente: "cliente ausente",
-    cancelamento: "cancelamento",
-    erro_operacional: "erro operacional"
-  }[reason] || reason;
 }
 
 function priorityIcon() {
@@ -258,6 +246,16 @@ function ticketTypeBadgeMarkup(ticket, extraClass = "") {
 
 function latestRecentCall(items) {
   return items.find((item) => item.action === "senha_chamada") || null;
+}
+
+function latestActiveTicket(tickets) {
+  return tickets
+    .filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.serviceStartedAt || left.calledAt || left.createdAt || "") || 0;
+      const rightTime = Date.parse(right.serviceStartedAt || right.calledAt || right.createdAt || "") || 0;
+      return rightTime - leftTime;
+    })[0] || null;
 }
 
 function isCallHighlightActive(item) {

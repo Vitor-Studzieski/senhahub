@@ -1,5 +1,5 @@
 (function initializeButcherDisplay() {
-  const POLL_INTERVAL_MS = 2000;
+  const POLL_INTERVAL_MS = 5000;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
   const WAITING_STATUSES = new Set(["aguardando", "proximo", "espera_inteligente", "standby"]);
@@ -38,6 +38,9 @@
   };
   const state = {
     lastCall: "",
+    userRole: "",
+    sectorId: "",
+    actionInFlight: false,
     timer: null,
     requestInFlight: false,
     weatherTimer: null,
@@ -65,6 +68,8 @@
     currentStatus: document.querySelector("#tvCurrentStatus"),
     currentTicket: document.querySelector("#tvCurrentTicket"),
     currentCustomer: document.querySelector("#tvCurrentCustomer"),
+    callControlsStatus: document.querySelector("#tvCallControlsStatus"),
+    callActionButtons: [...document.querySelectorAll("[data-tv-call-action]")],
     feedback: document.querySelector("#tvFeedback"),
     videoStage: document.querySelector("#tvVideoStage"),
     video: document.querySelector("#tvPlaylistVideo"),
@@ -84,7 +89,11 @@
     elements.video.addEventListener("error", handleVideoError);
     elements.video.addEventListener("loadeddata", handleVideoReady);
   }
+  elements.callActionButtons.forEach((button) => {
+    button.addEventListener("click", () => executeCallAction(button.dataset.tvCallAction));
+  });
   window.setInterval(updateClock, 1000);
+  loadSession();
   loadState();
   state.timer = window.setInterval(loadState, POLL_INTERVAL_MS);
   state.weatherTimer = window.setInterval(loadWeather, WEATHER_REFRESH_MS);
@@ -98,12 +107,68 @@
       const payload = await api("/api/display/state");
       const sector = payload.sectors?.[0];
       if (!sector) throw new Error("A fila deste atendimento ainda não está disponível.");
+      state.sectorId = sector.id || "acougue";
+      updateCallControls();
       renderQueue(sector);
       if (elements.feedback) elements.feedback.textContent = "";
     } catch (error) {
       if (elements.feedback) elements.feedback.textContent = error.message || "Não foi possível atualizar a fila.";
     } finally {
       state.requestInFlight = false;
+    }
+  }
+
+  async function loadSession() {
+    try {
+      const payload = await api("/api/auth/me");
+      state.userRole = String(payload.user?.role || "").toLowerCase();
+    } catch {
+      state.userRole = "";
+    }
+    updateCallControls();
+  }
+
+  function updateCallControls() {
+    const canControl = ["attendant", "manager", "admin"].includes(state.userRole);
+    elements.callActionButtons.forEach((button) => {
+      button.disabled = !canControl || !state.sectorId || state.actionInFlight;
+      button.setAttribute("aria-disabled", String(button.disabled));
+    });
+    if (!elements.callControlsStatus) return;
+    if (state.actionInFlight) {
+      elements.callControlsStatus.textContent = "Processando chamada...";
+    } else if (canControl) {
+      elements.callControlsStatus.textContent = "Ações liberadas para este colaborador";
+    } else {
+      elements.callControlsStatus.textContent = "Entre como colaborador para usar";
+    }
+  }
+
+  async function executeCallAction(action) {
+    if (!["previous", "again", "next"].includes(action) || state.actionInFlight) return;
+    if (!["attendant", "manager", "admin"].includes(state.userRole)) {
+      if (elements.feedback) elements.feedback.textContent = "Somente colaboradores podem controlar as chamadas.";
+      return;
+    }
+    state.actionInFlight = true;
+    updateCallControls();
+    const labels = {
+      previous: "Senha anterior chamada.",
+      again: "Senha chamada novamente.",
+      next: "Próxima senha chamada."
+    };
+    try {
+      const result = await api(`/api/sectors/${encodeURIComponent(state.sectorId)}/call-control`, {
+        method: "POST",
+        body: { action }
+      });
+      await loadState();
+      if (elements.feedback) elements.feedback.textContent = result.ticket ? labels[action] : (result.message || "Nenhuma senha disponível para esta ação.");
+    } catch (error) {
+      if (elements.feedback) elements.feedback.textContent = error.message || "Não foi possível executar a chamada.";
+    } finally {
+      state.actionInFlight = false;
+      updateCallControls();
     }
   }
 
@@ -114,8 +179,9 @@
     const recentCalls = [...(sector.recentCalls || [])]
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
-    const currentTicket = sector.current || recentCalls[0]?.ticket || "--";
-    const active = (sector.tickets || []).find((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
+    const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
+    const active = activeTickets.find((ticket) => ticket.ticket === recentCalls[0]?.ticket) || activeTickets[0];
+    const currentTicket = recentCalls[0]?.ticket || active?.ticket || (recentCalls.length ? sector.current : "--");
     const latestCall = recentCalls[0]?.ticket || "";
     const changed = Boolean(latestCall && latestCall !== state.lastCall);
 
@@ -333,11 +399,35 @@
     return `/api/instagram/video?url=${encodeURIComponent(item.src)}`;
   }
 
-  async function api(url) {
-    const response = await fetch(url, { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
+  async function api(url, options = {}) {
+    const method = options.method || "GET";
+    const response = await fetch(url, {
+      method,
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        ...(method === "GET" ? {} : { "content-type": "application/json" }),
+        ...csrfHeader()
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
     const payload = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+      throw new Error("Login necessário.");
+    }
     if (!response.ok || payload.error) throw new Error(payload.error || "Falha ao consultar a fila.");
     return payload;
+  }
+
+  function csrfHeader() {
+    const token = document.cookie
+      .split(";")
+      .map((item) => item.trim())
+      .find((item) => item.startsWith("senhahub_csrf="))
+      ?.split("=")[1];
+    return token ? { "x-csrf-token": decodeURIComponent(token) } : {};
   }
 
   function formatTicket(value, prefix = "A") {

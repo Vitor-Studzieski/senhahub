@@ -117,7 +117,7 @@ function renderStatus() {
   elements.result.hidden = true;
   resetOperation();
   clearInterval(state.refreshTimer);
-  state.refreshTimer = setInterval(refreshStatus, 2000);
+  state.refreshTimer = setInterval(refreshStatus, 5000);
 }
 
 async function refreshStatus() {

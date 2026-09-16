@@ -4,57 +4,57 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Operação - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260916.4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
         <div class="manager-brand">
-          <div class="manager-brand-mark">SH</div>
+          <img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" />
           <div><strong>SenhaHub</strong><span>Painel do gestor</span></div>
         </div>
-        <nav class="manager-nav" aria-label="Navegação do gestor">
-          <a href="/admin"><span>Visão geral</span><small>01</small></a>
-          <a class="active" href="/admin/operacao"><span>Operação</span><small>02</small></a>
-          <a href="/admin/setores"><span>Setores</span><small>03</small></a>
-          <a href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><span>Usuários</span><small>05</small></a>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a class="active" href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
-        <div class="manager-sidebar-note">Acompanhe as filas, chamadas e setores em tempo real.</div>
+        <div class="manager-sidebar-note">Acompanhe o andamento das senhas e a capacidade de cada setor.</div>
       </aside>
 
       <main class="manager-main">
         <header class="manager-topbar">
           <div>
-            <p class="manager-eyebrow">Monitoramento</p>
+            <p class="manager-eyebrow">Monitoramento em tempo real</p>
             <h1>Operação</h1>
-            <p>Acompanhe a fila atual, as chamadas e a saúde de cada setor.</p>
+            <p>Consulte as senhas ativas, as chamadas e a disponibilidade dos setores.</p>
           </div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização automática</span></span>
-            <a class="manager-button secondary" href="/admin">Visão geral</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Sair</button>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
+            <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
           </div>
         </header>
 
         <section class="manager-section-title">
           <div>
-            <p class="manager-eyebrow">Agora</p>
-            <h2>Fila em andamento</h2>
-            <p>As chamadas ativas aparecem primeiro; depois, as senhas por prioridade e posição.</p>
+            <p class="manager-eyebrow">Acompanhamento da fila</p>
+            <h2>Atendimentos em andamento</h2>
+            <p>Localize rapidamente uma senha por setor ou situação.</p>
           </div>
           <div class="manager-toolbar">
             <label>Setor
-              <select id="sectorFilter"><option value="">Todos os setores</option></select>
+              <select id="sectorFilter" aria-label="Filtrar por setor"><option value="">Todos os setores</option></select>
             </label>
-            <label>Status
-              <select id="statusFilter">
-                <option value="">Todos os status</option>
+            <label>Situação
+              <select id="statusFilter" aria-label="Filtrar por situação">
+                <option value="">Todas as situações</option>
                 <option value="aguardando">Aguardando</option>
                 <option value="proximo">Próximo</option>
                 <option value="chamado">Chamado</option>
                 <option value="em_atendimento">Em atendimento</option>
-                <option value="standby">Standby</option>
+                <option value="standby">Em espera</option>
                 <option value="espera_inteligente">Espera inteligente</option>
               </select>
             </label>
@@ -64,25 +64,25 @@
         <section class="manager-content-grid">
           <article class="manager-panel">
             <div class="manager-panel-header">
-              <div><h3>Fila operacional</h3><p>Clientes aguardando, chamados e atendimentos em andamento.</p></div>
-              <span class="manager-badge neutral" id="queueCount">0 registros</span>
+              <div><h3>Senhas na fila</h3><p>Aguardando, chamadas e atendimentos ativos.</p></div>
+              <span class="manager-badge neutral" id="queueCount">0 senhas</span>
             </div>
             <div class="manager-table-wrap">
               <table class="manager-table">
-                <thead><tr><th>Cliente</th><th>Setor</th><th>Senha</th><th>Status</th><th>Modalidade</th><th>Posição</th></tr></thead>
-                <tbody id="queueTable"></tbody>
+                <thead><tr><th>Cliente</th><th>Setor</th><th>Senha</th><th>Situação</th><th>Prioridade</th><th>Posição</th></tr></thead>
+                <tbody id="queueTable"><tr><td colspan="6" class="manager-empty-cell">Carregando a fila de atendimento…</td></tr></tbody>
               </table>
             </div>
           </article>
           <article class="manager-panel">
             <div class="manager-panel-header">
-              <div><h3>Saúde por setor</h3><p>Fila atual, ocupação e tempo médio de atendimento.</p></div>
+              <div><h3>Resumo por setor</h3><p>Volume da fila e tempo médio de atendimento em cada área.</p></div>
             </div>
-            <div class="manager-panel-body" id="dashboardOperations"></div>
+            <div class="manager-panel-body" id="dashboardOperations"><p class="manager-empty" role="status">Carregando o resumo dos setores…</p></div>
           </article>
         </section>
       </main>
     </div>
-    <script src="admin.js"></script>
+    <script src="admin.js?v=20260916.4"></script>
   </body>
 </html>

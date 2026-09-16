@@ -10,6 +10,7 @@ const ACTIVE_STATUSES = [
   "espera_inteligente",
   "standby"
 ];
+const TERMINAL_STATUSES = ["atendido", "cancelado", "expirado"];
 
 const USER_ROLES = new Set(["customer", "attendant", "manager", "admin", "tablet", "tv"]);
 const SECTOR_STATUSES = new Set(["open", "paused", "closed"]);
@@ -133,6 +134,92 @@ async function getLocalMetrics(metricsDate = null) {
     },
     generatedAt: new Date().toISOString()
   };
+}
+
+async function resetLocalTicketHistory(actorId) {
+  const normalizedActorId = String(actorId || "").trim();
+  if (!normalizedActorId) throw new Error("Acesso negado.");
+
+  return withTransaction(async (client) => {
+    const actorResult = await client.query(
+      `
+        SELECT id
+        FROM public.profiles
+        WHERE id = $1
+          AND status = 'active'::public.user_status
+          AND role = ANY($2::public.user_role[])
+        LIMIT 1
+      `,
+      [normalizedActorId, ["manager", "admin"]]
+    );
+    if (!actorResult.rows.length) throw new Error("Acesso negado.");
+
+    const candidateTicketResult = await client.query(
+      `
+        SELECT id
+        FROM public.tickets
+        WHERE status = ANY($1::public.ticket_status[])
+        FOR UPDATE
+      `,
+      [TERMINAL_STATUSES]
+    );
+    const candidateTicketIds = candidateTicketResult.rows.map((row) => row.id);
+    const ticketResult = candidateTicketIds.length
+      ? await client.query(
+          `
+            SELECT t.id
+            FROM public.tickets t
+            WHERE t.id = ANY($1::uuid[])
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.print_jobs j
+                WHERE (j.ticket_id = t.id OR j.payload->'ticketIds' @> to_jsonb(ARRAY[t.id::text]))
+                  AND j.status <> 'printed'
+                  AND j.resolved_at IS NULL
+                  AND NOT (
+                    j.status = 'failed'
+                    AND j.attempts >= 5
+                    AND j.next_attempt_at IS NULL
+                    AND j.send_started_at IS NULL
+                  )
+              )
+          `,
+          [candidateTicketIds]
+        )
+      : { rows: [] };
+    const ticketIds = ticketResult.rows.map((row) => row.id);
+    const skippedTickets = candidateTicketIds.length - ticketIds.length;
+    let deletedRatings = 0;
+    let deletedTickets = 0;
+
+    if (ticketIds.length) {
+      const ratingsResult = await client.query(
+        "DELETE FROM public.ratings WHERE ticket_id = ANY($1::uuid[]) RETURNING id",
+        [ticketIds]
+      );
+      deletedRatings = ratingsResult.rowCount;
+
+      const deletedResult = await client.query(
+        "DELETE FROM public.tickets WHERE id = ANY($1::uuid[]) RETURNING id",
+        [ticketIds]
+      );
+      deletedTickets = deletedResult.rowCount;
+    }
+
+    await client.query(
+      `
+        INSERT INTO public.events (
+          id, type, entity_type, entity_id, customer_id, sector_id, payload, created_at
+        ) VALUES (
+          gen_random_uuid(), 'ticket_history_reset', 'admin_action', $1, $1, null,
+          jsonb_build_object('deleted_tickets', $2, 'deleted_ratings', $3, 'skipped_tickets', $4), now()
+        )
+      `,
+      [normalizedActorId, deletedTickets, deletedRatings, skippedTickets]
+    );
+
+    return { deletedTickets, deletedRatings, skippedTickets };
+  });
 }
 
 async function createLocalRating(customerId, body = {}) {
@@ -361,5 +448,6 @@ module.exports = {
   getLocalCustomerHistory,
   getLocalMetrics,
   listLocalUsers,
+  resetLocalTicketHistory,
   updateLocalSector
 };

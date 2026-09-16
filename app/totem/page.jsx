@@ -6,7 +6,7 @@ export const metadata = {
   description: "Emissao de senhas fisicas do SenhaHub."
 };
 
-const TOTEM_ASSET_VERSION = "2026.09.08.1";
+const TOTEM_ASSET_VERSION = "2026.09.15.2";
 
 export default function TotemPage() {
   return (

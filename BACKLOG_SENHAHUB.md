@@ -1,6 +1,6 @@
 # Backlog centralizado — SenhaHub
 
-Atualizado em: 19/08/2026
+Atualizado em: 11/09/2026
 
 Este é o único documento para acompanhar tarefas do projeto. Use `[ ]` para pendente e `[x]` para concluído. Os demais documentos descrevem funcionamento, decisões e procedimentos; eles não devem receber novos checklists de tarefas.
 
@@ -85,6 +85,29 @@ Objetivo: construir e validar uma arquitetura híbrida para o SenhaHub, conectan
 - [x] Criar template de TV de atendimento, com senhas reais em tempo real, clima local, playlist de vídeos configurável e credenciais com acesso restrito à página `/tv/acougue`, sem produtos ou ofertas simuladas.
 - [x] Ajustar a padronização visual do Totem, incluindo alinhamento, posicionamento, cores, setas e QR Code.
 - [x] Remodelar o fluxo do Totem: atendimento normal ou preferencial vem primeiro; categorias preferenciais e setores vêm depois; a seleção de um ou mais setores leva diretamente à emissão, sem retornar ao tipo de senha.
+- [ ] **VR Software — substituir a identidade azul pela identidade laranja em todo o SenhaHub.** Considerar concluído somente quando não houver azul visual associado à marca em nenhuma tela, estado ou instalação do sistema.
+- [ ] Fazer um inventário completo das referências azuis no código, separando cores de identidade visual de cores técnicas ou semânticas. Registrar os arquivos, componentes e telas que precisam de alteração antes de iniciar a troca.
+- [ ] Definir e aprovar a paleta oficial do VR Software: laranja principal, laranja escuro para hover/active, laranja claro para fundos, borda, foco, estado desabilitado e versões para texto. Registrar também quais cores de sucesso, alerta, erro e informação permanecem independentes da marca.
+- [ ] Criar ou consolidar os tokens de cor em um único bloco de design system, evitando que a nova paleta fique espalhada em valores hexadecimais diferentes ou em regras duplicadas.
+- [ ] Montar um mapa de substituição das cores atuais, contemplando `--blue`, `--blue-dark`, fundos azulados, bordas, sombras, gradientes, `stroke`, `accent-color` e textos que hoje usam azul.
+- [ ] Atualizar o CSS principal em `public/styles.css`, incluindo os dois conjuntos de variáveis existentes e os componentes de cliente, Totem, atendente, gestor, TV, login, acompanhamento e dashboard.
+- [ ] Revisar os estados visuais dos componentes no CSS principal: normal, hover, foco por teclado, ativo, selecionado, desabilitado, carregando, vazio, sucesso, erro e aviso. Garantir que a mudança não deixe texto branco ilegível sobre laranja claro ou texto escuro com pouco contraste.
+- [ ] Atualizar o PWA em `public/pwa.css`, trocando tokens e usos azuis da tela de instalação, aviso de atualização, notificações, botões, links, bordas e mensagens de estado.
+- [ ] Atualizar a identidade do aplicativo em `app/manifest.js`, `app/layout.jsx` e `public/offline.html`, incluindo `theme_color`, `background_color`, metadados, tela offline e cores exibidas durante a abertura do PWA.
+- [ ] Revisar as referências com nome `.blue-action` em `public/index.html` e `public/attendant.js`; renomear para uma classe neutra ou alinhada ao laranja, mantendo todos os comportamentos, seletores JavaScript e testes funcionando.
+- [ ] Procurar cores azuis fora do CSS, incluindo estilos inline, SVGs, atributos `stroke`/`fill`, scripts, componentes React/Next.js, páginas HTML e configurações de tema. Corrigir cada ocorrência visual sem alterar códigos, tokens ou nomes técnicos que não representem cor.
+- [ ] Revisar a jornada do cliente em `public/index.html`, `public/acompanhar.html`/`public/acompanhar.js` e `public/tablet.html`/`public/tablet.js`: seleção de setor, emissão, acompanhamento, confirmação, avaliação, mensagens, links, botões e estados de fila.
+- [ ] Revisar a jornada do Totem em `public/totem.html` e `public/totem.js`: tela inicial, escolha de atendimento, categorias preferenciais, setores, confirmação, emissão, QR Code, retorno, espera e mensagens de indisponibilidade.
+- [ ] Revisar a operação interna em `public/attendant.html`/`public/attendant.js`, `public/admin.html`/`public/admin.js`, `public/admin-operacao.html`, `public/admin-setores.html`, `public/admin-usuarios.html` e `public/admin-totens.html`, incluindo navegação, filtros, tabelas, cards, indicadores e ações administrativas.
+- [ ] Revisar login, recuperação de senha, instalação e modo offline em `public/login.html`, `public/login.js`, `public/install.html`, `public/install.js` e `public/offline.html`, garantindo que a experiência de autenticação também siga a identidade do VR Software.
+- [ ] Revisar a TV de atendimento em `public/tv-acougue.html` e `public/tv-acougue.js`, sem alterar as cores próprias de alertas operacionais, clima, status da fila ou conteúdos promocionais que tenham significado específico.
+- [ ] Revisar logos, favicon, ícones PWA, imagens de marca e demais arquivos em `public/assets` e `public/icons`. Substituir ou exportar versões laranja quando o azul estiver gravado na imagem, preservando tamanhos, transparência, proporções e legibilidade em fundo claro e escuro.
+- [ ] Conferir se a impressão física, o QR Code e os elementos em preto e branco continuam corretos; não aplicar laranja em elementos que dependam de contraste térmico ou que não sejam exibidos na interface digital.
+- [ ] Validar todas as telas em desktop, celular, tablet, orientação retrato/paisagem e tamanhos usados no Totem e na TV. Registrar capturas antes/depois para comparar alinhamento, contraste, espaçamento e hierarquia visual.
+- [ ] Executar uma revisão de acessibilidade focada em contraste WCAG, foco visível, leitura por teclado, estados sem depender apenas da cor e diferenciação entre laranja de marca e cores semânticas.
+- [ ] Adicionar uma checagem automatizada ou checklist de revisão que detecte novas referências a tokens/classes azuis e valores azuis conhecidos, evitando que a identidade antiga volte em alterações futuras.
+- [ ] Limpar e atualizar os caches do Service Worker/PWA, testar instalação nova e atualização de uma instalação existente, publicar a nova identidade no ambiente de produção e validar que usuários antigos não continuem vendo o tema azul.
+- [ ] Fazer a validação final ponta a ponta no ambiente publicado: abrir cada perfil de acesso, emitir e acompanhar uma senha, chamar no atendente, exibir na TV, acessar o Totem, instalar o PWA e testar o modo offline. Registrar pendências residuais antes de marcar a tarefa principal como concluída.
 - [ ] Trocar as logos do atendimento preferencial no Totem pelas versões corretas, mantendo a identificação visual clara e consistente.
 - [ ] Validar a acessibilidade do Totem em todas as etapas.
 - [ ] Validar o fluxo completo Central e Específico com usuários reais.
@@ -154,3 +177,44 @@ Objetivo: construir e validar uma arquitetura híbrida para o SenhaHub, conectan
 ## Regra de manutenção
 
 Toda nova tarefa deve ser adicionada aqui. Antes de criar uma tarefa, procurar neste arquivo para evitar duplicidade. Ao concluir uma tarefa, marcar somente o checkbox correspondente e registrar detalhes técnicos no documento de referência apropriado.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Detalhei as pendências em etapas menores e verificáveis, incluindo:
+
+- Inventário das referências azuis.
+- Definição da paleta oficial laranja.
+- Criação dos tokens de cor.
+- Atualização do CSS, PWA, manifesto e telas.
+- Revisão de todos os fluxos: cliente, Totem, atendente, gestor, login e TV.
+- Revisão de logos, ícones e imagens.
+- Validação de contraste e acessibilidade.
+- Testes em desktop, celular, tablet, Totem e TV.
+- Atualização do cache e validação em produção.
+- Checagem final ponta a ponta.

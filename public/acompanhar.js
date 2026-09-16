@@ -1,5 +1,6 @@
 (function initializeTracking() {
   const SUCCESS_MESSAGE_MS = 5000;
+  const TRACKING_POLL_INTERVAL_MS = 5000;
   const token = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
   const AUTO_RETURN_SECONDS = 12;
   const loading = document.querySelector("#trackingLoading");
@@ -12,6 +13,9 @@
   const feedbackMessage = document.querySelector("#trackingFeedbackMessage");
   const retryButton = document.querySelector("#trackingRetry");
   const autoReturn = document.querySelector("#trackingAutoReturn");
+  const vibration = document.querySelector("#trackingVibration");
+  const vibrationMessage = document.querySelector("#trackingVibrationMessage");
+  const vibrationButton = document.querySelector("#trackingVibrationButton");
   const singleView = document.querySelector("#trackingSingleView");
   const ticketsList = document.querySelector("#trackingTicketsList");
   let timer = null;
@@ -20,6 +24,16 @@
   let successTimer = null;
   let retryInFlight = false;
   let currentTickets = [];
+  let vibrationReady = false;
+
+  vibrationButton?.addEventListener("click", () => {
+    const result = window.SenhaHubVibration?.activate();
+    vibrationReady = result === true;
+    updateVibrationControl();
+    if (vibrationReady) vibrateCalledTickets(currentTickets);
+  });
+
+  updateVibrationControl();
 
   const FEEDBACK_STATES = {
     invalid: {
@@ -75,7 +89,8 @@
         return;
       }
       render(tickets);
-      if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, 5000);
+      vibrateCalledTickets(tickets);
+      if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, TRACKING_POLL_INTERVAL_MS);
     } catch (error) {
       showFeedback(errorState(error));
     }
@@ -122,6 +137,30 @@
     ticketsList.hidden = true;
     ticketsList.innerHTML = "";
     renderSingle(currentTickets[0]);
+  }
+
+  function vibrateCalledTickets(tickets) {
+    if (!window.SenhaHubVibration?.supported()) return;
+    tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket?.status)).forEach((ticket) => {
+      const callIdentity = ticket.calledAt || `${ticket.ticket || "ticket"}:${ticket.status}`;
+      const result = window.SenhaHubVibration.vibrateOnce(`${token}:${callIdentity}`);
+      if (["ok", "duplicate"].includes(result.reason)) {
+        vibrationReady = true;
+        updateVibrationControl();
+      }
+    });
+  }
+
+  function updateVibrationControl() {
+    if (!vibration || !window.SenhaHubVibration?.supported()) return;
+    vibration.hidden = false;
+    if (vibrationReady) {
+      vibrationMessage.textContent = "Vibração ativada neste dispositivo.";
+      vibrationButton.hidden = true;
+      return;
+    }
+    vibrationMessage.textContent = "Seu celular vibrará quando sua senha for chamada.";
+    vibrationButton.hidden = false;
   }
 
   function renderSingle(ticket) {
