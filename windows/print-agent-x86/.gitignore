@@ -1,0 +1,7 @@
+bin/
+obj/
+agent.env
+data/
+installer/bin/
+installer/obj/
+installer/payload/
