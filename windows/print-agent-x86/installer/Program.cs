@@ -56,6 +56,7 @@ namespace SenhaHub.PrintAgent.Setup
 
             AddLabel("Código de pareamento", 20, 78);
             enrollmentCode.SetBounds(20, 100, 575, 25);
+            enrollmentCode.Text = "IYICETg9w8O4LoL5s9Qu9xa4FltRzl4i";
             Controls.Add(enrollmentCode);
 
             AddLabel("Porta da Bematech", 20, 136);
