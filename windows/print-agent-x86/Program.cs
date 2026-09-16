@@ -33,7 +33,7 @@ namespace SenhaHub.PrintAgent.X86
             try
             {
                 var config = AgentConfig.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.env"));
-                if (args.Any(a => string.Equals(a, "--service", StringComparison.OrdinalIgnoreCase)))
+                if (args.Any(a => string.Equals(a, "--service", StringComparison.OrdinalIgnoreCase)) || !Environment.UserInteractive)
                 {
                     ServiceBase.Run(new PrintAgentService(config));
                     return 0;
