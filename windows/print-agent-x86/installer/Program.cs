@@ -253,6 +253,7 @@ namespace SenhaHub.PrintAgent.Setup
             {
                 FileName = fileName,
                 Arguments = arguments,
+                WorkingDirectory = Path.GetDirectoryName(fileName),
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
