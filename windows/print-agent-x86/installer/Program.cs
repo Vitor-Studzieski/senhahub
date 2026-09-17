@@ -266,7 +266,14 @@ namespace SenhaHub.PrintAgent.Setup
 
         private static byte[] DiagnosticReceipt()
         {
-            return Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n");
+            var output = new System.Collections.Generic.List<byte>();
+            output.AddRange(new byte[] { 0x1b, 0x40 });
+            // Use the same command-mode switch as the real SenhaHub receipt.
+            output.AddRange(new byte[] { 0x1d, 0xf9, 0x20, 0x01 });
+            output.AddRange(new byte[] { 0x1b, 0x61, 0x01, 0x1b, 0x45, 0x01 });
+            output.AddRange(Encoding.ASCII.GetBytes("SenhaHub\r\nTeste de comunicacao\r\n"));
+            output.AddRange(new byte[] { 0x1b, 0x64, 0x03, 0x1d, 0x56, 0x42, 0x04 });
+            return output.ToArray();
         }
 
         private static bool ConfirmPhysicalPrint(string printerName)
