@@ -326,17 +326,35 @@ foreach ($printer in $printers) {
   Remove-Printer -Name $printer.Name -Confirm:$false -ErrorAction Stop
 }
 Start-Sleep -Milliseconds 700
+$spooler = Get-Service -Name Spooler -ErrorAction Stop
+Stop-Service -Name Spooler -Force -ErrorAction Stop
+$spooler.WaitForStatus('Stopped', '00:00:20')
+Start-Service -Name Spooler -ErrorAction Stop
+$spooler.WaitForStatus('Running', '00:00:20')
 $drivers = @(Get-PrinterDriver | Where-Object {
   $_.Name -match '(?i)Bematech|MP[- ]?4200'
 })
 foreach ($driver in $drivers) {
-  try {
-    Remove-PrinterDriver -Name $driver.Name -RemoveFromDriverStore -Confirm:$false -ErrorAction Stop
-    Write-Output ('Driver removido da loja: ' + $driver.Name)
-  } catch {
-    Remove-PrinterDriver -Name $driver.Name -Confirm:$false -ErrorAction Stop
-    Write-Output ('Driver removido: ' + $driver.Name)
+  $removed = $false
+  for ($attempt = 1; $attempt -le 3 -and -not $removed; $attempt++) {
+    try {
+      Remove-PrinterDriver -Name $driver.Name -RemoveFromDriverStore -Confirm:$false -ErrorAction Stop
+      Write-Output ('Driver removido da loja: ' + $driver.Name)
+      $removed = $true
+    } catch {
+      try {
+        Remove-PrinterDriver -Name $driver.Name -Confirm:$false -ErrorAction Stop
+        Write-Output ('Driver removido: ' + $driver.Name)
+        $removed = $true
+      } catch {
+        if ($attempt -lt 3) {
+          Restart-Service -Name Spooler -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Milliseconds 700
+        }
+      }
+    }
   }
+  if (-not $removed) { throw ('Não foi possível remover o driver: ' + $driver.Name) }
 }
 ";
             var result = RunPowerShell(script);
