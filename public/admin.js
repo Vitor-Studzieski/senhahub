@@ -851,6 +851,8 @@ function initials(value) {
 async function api(path, options = {}) {
   const method = options.method || "GET";
   const mutation = method !== "GET";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   if (mutation) notifyPwa("markCriticalOperation", true);
   try {
     const response = await fetch(path, {
@@ -859,7 +861,8 @@ async function api(path, options = {}) {
         "content-type": "application/json",
         ...csrfHeader()
       },
-      body: options.body ? JSON.stringify(options.body) : undefined
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal || controller.signal
     });
     const payload = await parseApiPayload(response);
     notifyPwa("reportNetworkSuccess");
@@ -867,8 +870,12 @@ async function api(path, options = {}) {
     return payload;
   } catch (error) {
     notifyPwa("reportNetworkFailure");
+    if (error?.name === "AbortError") {
+      throw new Error("O servidor demorou mais de 15 segundos para responder. Atualize a página e tente novamente.");
+    }
     throw error;
   } finally {
+    clearTimeout(timeoutId);
     if (mutation) notifyPwa("markCriticalOperation", false);
   }
 }
@@ -963,7 +970,7 @@ async function loadPrintReview() {
           <label>Decisão <select name="action"><option value="confirm_printed">O cupom foi impresso</option><option value="resolve_failed">Encerrar sem reimprimir</option><option value="reprint">Autorizar uma reimpressão</option></select></label>
           <label>Motivo <input name="reason" required minlength="5" maxlength="500"></label>
           <label><input name="writerStopped" type="checkbox" required> Parei o agente anterior e conferi o papel.</label>
-          <button class="manager-button" type="submit" ${currentUser?.role==='admin'?'':'disabled'}>Registrar decisão</button>
+          <button class="manager-button" type="submit" ${['admin','manager'].includes(currentUser?.role)?'':'disabled'}>Registrar decisão</button>
           <p data-print-feedback></p>
     </div>
   </form>`).join('') : '<p class="manager-empty">Tudo em ordem — não há impressões aguardando revisão.</p>';
