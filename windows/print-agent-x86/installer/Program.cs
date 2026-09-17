@@ -81,9 +81,9 @@ namespace SenhaHub.PrintAgent.Setup
             testButton.Click += delegate { TestPrinter(); };
             Controls.Add(testButton);
 
-            installButton.Text = "Instalar e iniciar agente";
+            installButton.Text = "Instalar driver + agente";
             installButton.SetBounds(180, 235, 190, 32);
-            installButton.Click += delegate { InstallAgent(); };
+            installButton.Click += delegate { RepairAndInstallAgent(); };
             Controls.Add(installButton);
 
             log.Multiline = true;
@@ -210,6 +210,111 @@ namespace SenhaHub.PrintAgent.Setup
             }
         }
 
+        private void RepairAndInstallAgent()
+        {
+            var url = apiUrl.Text.Trim().TrimEnd('/');
+            var code = enrollmentCode.Text.Trim();
+            if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                SetStatus("O servidor precisa usar HTTPS.", true);
+                return;
+            }
+            if (code.Length == 0)
+            {
+                SetStatus("Informe o código de pareamento.", true);
+                return;
+            }
+
+            try
+            {
+                SetBusy(true);
+                SetStatus("Instalando o driver oficial da Bematech...", false);
+                var driverPath = ExtractDriverPayload();
+                var driverResult = RunExternalInstaller(driverPath);
+                if (driverResult != 0 && driverResult != 3010)
+                    throw new InvalidOperationException("O instalador do driver terminou com o código " + driverResult + ".");
+
+                LoadPorts();
+                var port = printerPort.Text.Trim();
+                if (port.Length == 0)
+                    throw new InvalidOperationException("O driver foi instalado, mas nenhuma porta da Bematech apareceu. Desligue e ligue a impressora e clique em Atualizar portas.");
+
+                SetStatus("Testando a Bematech em " + port + "...", false);
+                NativeSerialProbe.Send(port, Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n"));
+                WriteLog("Teste nativo enviado para " + port + ".");
+
+                StopAndRemoveService();
+                InstallAgentFiles(url, code, port);
+                SetStatus("Driver testado e agente instalado.", false);
+                WriteLog("Driver Bematech e agente instalados em C:\\ProgramData\\SenhaHub\\PrintAgentX86.");
+            }
+            catch (Exception error)
+            {
+                SetStatus("Falha na instalação: " + error.Message, true);
+                WriteLog("Erro: " + error);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
+        private void InstallAgentFiles(string url, string code, string port)
+        {
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SenhaHub", "PrintAgentX86");
+            var state = Path.Combine(root, "data", "print-agent-x86");
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(state);
+            var agentPath = Path.Combine(root, "SenhaHub.PrintAgent.X86.exe");
+            using (var source = OpenAgentPayload())
+            using (var target = File.Create(agentPath)) source.CopyTo(target);
+
+            var env = new StringBuilder()
+                .AppendLine("PRINT_API_URL=" + url)
+                .AppendLine("PRINT_ENROLLMENT_CODE=" + code)
+                .AppendLine("KIOSK_PRINTER_MODE=native-serial")
+                .AppendLine("KIOSK_PRINTER_PORT=" + port)
+                .AppendLine("PRINT_SERIAL_BAUD_RATE=115200")
+                .AppendLine("PRINT_SERIAL_DATA_BITS=8")
+                .AppendLine("PRINT_SERIAL_PARITY=none")
+                .AppendLine("PRINT_SERIAL_STOP_BITS=1")
+                .AppendLine("PRINT_SERIAL_RTSCTS=0")
+                .AppendLine("PRINT_POLL_INTERVAL_MS=5000")
+                .AppendLine("PRINT_AGENT_STATE_DIR=" + state)
+                .ToString();
+            File.WriteAllText(Path.Combine(root, "agent.env"), env, new UTF8Encoding(false));
+
+            RunSc("create \"" + ServiceName + "\" binPath= \"\\\"" + agentPath + "\\\" --service\" start= auto obj= LocalSystem DisplayName= \"" + ServiceDisplayName + "\"");
+            RunSc("description \"" + ServiceName + "\" \"Serviço de impressão do SenhaHub para Bematech MP-4200 TH\"");
+            StartService();
+            RunIcacls(root);
+        }
+
+        private string ExtractDriverPayload()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "SenhaHubBematechDriver");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "Bematech_USBCOM_v4.0.2_2018-09-05.exe");
+            using (var source = OpenDriverPayload())
+            using (var target = File.Create(path)) source.CopyTo(target);
+            return path;
+        }
+
+        private static int RunExternalInstaller(string path)
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = path,
+                WorkingDirectory = Path.GetDirectoryName(path),
+                UseShellExecute = true
+            };
+            using (var process = Process.Start(info))
+            {
+                process.WaitForExit();
+                return process.ExitCode;
+            }
+        }
+
         private void StopAndRemoveService()
         {
             var query = RunSc("query \"" + ServiceName + "\"", false);
@@ -272,6 +377,16 @@ namespace SenhaHub.PrintAgent.Setup
             if (name == null) throw new InvalidOperationException("O executável do agente não foi incluído neste instalador.");
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
             if (stream == null) throw new InvalidOperationException("Não foi possível ler o executável do agente.");
+            return stream;
+        }
+
+        private static Stream OpenDriverPayload()
+        {
+            var name = Assembly.GetExecutingAssembly().GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith(".Bematech_USBCOM_v4.0.2_2018-09-05.exe", StringComparison.OrdinalIgnoreCase));
+            if (name == null) throw new InvalidOperationException("O driver da Bematech não foi incluído neste instalador.");
+            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+            if (stream == null) throw new InvalidOperationException("Não foi possível ler o driver da Bematech.");
             return stream;
         }
 
