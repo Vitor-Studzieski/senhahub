@@ -302,7 +302,7 @@ namespace SenhaHub.PrintAgent.Setup
             DeleteOwnedFile(Path.Combine(staging, "Bematech_USBCOM_v4.0.2_2018-09-05.exe"));
             DeleteOwnedFile(Path.Combine(staging, "BematechSpoolerDrivers_x86_v5.0.0.4.exe"));
             RemoveBematechPrintComponents();
-            WriteLog("Limpeza concluída: serviço, agente, fila, driver de impressão e cache temporário antigos removidos; pareamento preservado.");
+            WriteLog("Limpeza concluída: serviço, agente, fila e cache temporário antigos tratados; pareamento preservado.");
         }
 
         private static void DeleteOwnedFile(string path)
@@ -317,6 +317,12 @@ namespace SenhaHub.PrintAgent.Setup
             var script = @"
 $ErrorActionPreference = 'Stop'
 Import-Module PrintManagement
+$drivers = @(Get-PrinterDriver | Where-Object {
+  $_.Name -match '(?i)Bematech|MP[- ]?4200'
+})
+foreach ($driver in $drivers) {
+  Write-Output ('DRIVER|' + $driver.Name)
+}
 $printers = @(Get-Printer | Where-Object {
   $_.Name -match '(?i)Bematech|MP[- ]?4200' -or
   $_.DriverName -match '(?i)Bematech|MP[- ]?4200'
@@ -325,43 +331,124 @@ foreach ($printer in $printers) {
   Write-Output ('Fila removida: ' + $printer.Name)
   Remove-Printer -Name $printer.Name -Confirm:$false -ErrorAction Stop
 }
-Start-Sleep -Milliseconds 700
-$spooler = Get-Service -Name Spooler -ErrorAction Stop
-Stop-Service -Name Spooler -Force -ErrorAction Stop
-$spooler.WaitForStatus('Stopped', '00:00:20')
-Start-Service -Name Spooler -ErrorAction Stop
-$spooler.WaitForStatus('Running', '00:00:20')
-$drivers = @(Get-PrinterDriver | Where-Object {
-  $_.Name -match '(?i)Bematech|MP[- ]?4200'
-})
-foreach ($driver in $drivers) {
-  $removed = $false
-  for ($attempt = 1; $attempt -le 3 -and -not $removed; $attempt++) {
-    try {
-      Remove-PrinterDriver -Name $driver.Name -RemoveFromDriverStore -Confirm:$false -ErrorAction Stop
-      Write-Output ('Driver removido da loja: ' + $driver.Name)
-      $removed = $true
-    } catch {
-      try {
-        Remove-PrinterDriver -Name $driver.Name -Confirm:$false -ErrorAction Stop
-        Write-Output ('Driver removido: ' + $driver.Name)
-        $removed = $true
-      } catch {
-        if ($attempt -lt 3) {
-          Restart-Service -Name Spooler -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Milliseconds 700
-        }
-      }
-    }
-  }
-  if (-not $removed) { throw ('Não foi possível remover o driver: ' + $driver.Name) }
-}
 ";
             var result = RunPowerShell(script);
             var output = (result.Output + Environment.NewLine + result.Error).Trim();
             if (output.Length > 0) WriteLog(output);
             if (result.ExitCode != 0)
-                throw new InvalidOperationException("Não foi possível remover completamente o driver Bematech. " + output);
+                throw new InvalidOperationException("Não foi possível preparar a remoção do driver Bematech. " + output);
+
+            var driverNames = TaggedLines(result.Output, "DRIVER|");
+            if (driverNames.Length == 0)
+            {
+                WriteLog("Nenhum driver Bematech/MP-4200 antigo foi encontrado no Spooler.");
+                return;
+            }
+
+            // DeletePrinterDriverEx is the Windows spooler API intended for this
+            // operation. It must run after the queues have been deleted.
+            RestartPrintSpooler();
+            foreach (var driverName in driverNames)
+            {
+                string nativeError;
+                if (NativePrinterDriverCleanup.TryDelete(driverName, out nativeError))
+                    WriteLog("Driver removido pela API do Windows: " + driverName);
+                else
+                    WriteLog("A API do Windows ainda manteve o driver " + driverName + ": " + nativeError);
+            }
+
+            // Keep the PowerShell path as a fallback for Windows versions whose
+            // spooler does not remove the driver through DeletePrinterDriverEx.
+            var fallbackScript = @"
+$ErrorActionPreference = 'Continue'
+Import-Module PrintManagement
+$drivers = @(Get-PrinterDriver | Where-Object {
+  $_.Name -match '(?i)Bematech|MP[- ]?4200'
+})
+foreach ($driver in $drivers) {
+  try {
+    Remove-PrinterDriver -Name $driver.Name -RemoveFromDriverStore -Confirm:$false -ErrorAction Stop
+    Write-Output ('Driver removido pelo PrintManagement: ' + $driver.Name)
+  } catch {
+    try {
+      Remove-PrinterDriver -Name $driver.Name -Confirm:$false -ErrorAction Stop
+      Write-Output ('Driver removido pelo PrintManagement: ' + $driver.Name)
+    } catch {
+      Write-Output ('FALLBACK_ERROR|' + $driver.Name + '|' + $_.Exception.Message)
+    }
+  }
+}
+
+# Remove only exact Bematech/MP-4200 printer packages found in the print-driver registry.
+$roots = @(
+  'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows NT x86\Drivers\Version-3',
+  'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows NT x64\Drivers\Version-3',
+  'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3'
+)
+$infs = @()
+foreach ($root in $roots) {
+  if (Test-Path $root) {
+    foreach ($key in @(Get-ChildItem $root -ErrorAction SilentlyContinue | Where-Object {
+      $_.PSChildName -match '(?i)Bematech|MP[- ]?4200'
+    })) {
+      $properties = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
+      if ($properties.InfPath -match '^oem\d+\.inf$') { $infs += $properties.InfPath }
+    }
+  }
+}
+$pnputil = Join-Path $env:windir 'System32\pnputil.exe'
+foreach ($inf in @($infs | Sort-Object -Unique)) {
+  if (Test-Path $pnputil) {
+    & $pnputil /delete-driver $inf /uninstall /force 2>&1 | ForEach-Object { Write-Output $_ }
+    Write-Output ('PNPUTIL|' + $inf + '|' + $LASTEXITCODE)
+  }
+}
+
+$remaining = @(Get-PrinterDriver | Where-Object {
+  $_.Name -match '(?i)Bematech|MP[- ]?4200'
+})
+foreach ($driver in $remaining) { Write-Output ('REMAINING|' + $driver.Name) }
+exit 0
+";
+            var fallback = RunPowerShell(fallbackScript);
+            var fallbackOutput = (fallback.Output + Environment.NewLine + fallback.Error).Trim();
+            if (fallbackOutput.Length > 0) WriteLog(fallbackOutput);
+
+            var remainingDrivers = TaggedLines(fallback.Output, "REMAINING|");
+            if (remainingDrivers.Length > 0)
+            {
+                // A locked package can be scheduled for deletion by Windows. It
+                // must not prevent the official installer from replacing it.
+                WriteLog("Aviso: o Windows ainda mantém o registro do driver; a instalação continuará e tentará substituí-lo.");
+                foreach (var remaining in remainingDrivers) WriteLog("Driver pendente: " + remaining);
+            }
+        }
+
+        private static string[] TaggedLines(string output, string tag)
+        {
+            return (output ?? "")
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(line => line.StartsWith(tag, StringComparison.OrdinalIgnoreCase))
+                .Select(line => line.Substring(tag.Length).Trim())
+                .Where(line => line.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static void RestartPrintSpooler()
+        {
+            RunSc("stop Spooler", false);
+            using (var service = new ServiceController("Spooler"))
+                service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
+
+            // PrintIsolationHost can keep an old Bematech DLL loaded after the
+            // Spooler stops. It is safe to terminate this print-only host; Windows
+            // recreates it when the Spooler starts again.
+            RunPowerShell("Get-Process -Name PrintIsolationHost -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
+
+            RunSc("start Spooler", false);
+            using (var service = new ServiceController("Spooler"))
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
         }
 
         private void ConfirmFullCleanup()
@@ -700,6 +787,56 @@ foreach ($driver in $drivers) {
             }
             return "";
         }
+    }
+
+    internal static class NativePrinterDriverCleanup
+    {
+        private const uint DpdDeleteUnusedFiles = 0x00000001;
+        private const int ErrorUnknownPrinterDriver = 1797;
+
+        public static bool TryDelete(string driverName, out string error)
+        {
+            var environment = "Windows NT x86";
+            if (DeletePrinterDriverEx(null, environment, driverName, DpdDeleteUnusedFiles, 0))
+            {
+                error = "";
+                return true;
+            }
+
+            var code = Marshal.GetLastWin32Error();
+            if (code == ErrorUnknownPrinterDriver)
+            {
+                error = "o driver já não está registrado";
+                return true;
+            }
+
+            var firstError = new Win32Exception(code);
+            // Passing NULL for the environment makes winspool use the calling
+            // process environment. This helps on machines with a localized or
+            // unusual print-environment name.
+            if (DeletePrinterDriverEx(null, null, driverName, DpdDeleteUnusedFiles, 0))
+            {
+                error = "";
+                return true;
+            }
+
+            code = Marshal.GetLastWin32Error();
+            error = firstError.Message + " (código " + firstError.NativeErrorCode + ")";
+            if (code != firstError.NativeErrorCode)
+            {
+                error += "; segunda tentativa: " + new Win32Exception(code).Message + " (código " + code + ")";
+            }
+            return false;
+        }
+
+        [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeletePrinterDriverEx(
+            string serverName,
+            string environment,
+            string driverName,
+            uint deleteFlags,
+            uint versionNumber);
     }
 
     internal static class NativeSpoolerProbe
