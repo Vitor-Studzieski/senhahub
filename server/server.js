@@ -1573,11 +1573,6 @@ async function handleLocalPostgresAppAlias(req, res, url) {
     routeFile = "app/api/local-postgres/tablet/print-job/route.js";
   }
 
-  const tabletRawbtPrintMatch = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)\/rawbt$/);
-  if (req.method === "POST" && tabletRawbtPrintMatch) {
-    routeFile = "app/api/local-postgres/tablet/print-job/route.js";
-  }
-
   const printFinishMatch = url.pathname.match(/^\/api\/print\/jobs\/([^/]+)\/finish$/);
   if (req.method === "POST" && printFinishMatch) {
     routeFile = "app/api/local-postgres/print/jobs/finish/route.js";

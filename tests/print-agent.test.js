@@ -6,7 +6,6 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { buildTicketReceipt } = require("../server/kiosk/escpos-receipt");
-const { rawbtUrlForPrintJob } = require("../server/kiosk/rawbt-print");
 const {
   loadKioskConfiguration,
   loadTabletPrinterConfiguration,
@@ -70,22 +69,6 @@ test("gera duas senhas no mesmo cupom mantendo um unico QR Code", () => {
   assert.equal(receipt.includes(Buffer.from("------------------------------", "ascii")), false);
   assert.equal(countBuffer(receipt, Buffer.from([0x1d, 0x28, 0x6b, 4, 0, 49, 65, 50, 0])), 1);
   assert.ok(receipt.includes(Buffer.from([0x1d, 0x56, 66, 4])));
-});
-
-test("gera um link RawBT com a mesma senha do trabalho de impressao", () => {
-  const rawbtUrl = rawbtUrlForPrintJob({
-    payload: {
-      ticketCode: "A042",
-      sectorName: "Acougue",
-      issuedAt: "2026-07-29T20:00:00.000Z",
-      trackUrl: "https://senhahub.vercel.app/acompanhar/token-de-teste-1234567890"
-    }
-  });
-
-  assert.match(rawbtUrl, /^rawbt:base64,[A-Za-z0-9+/]+=*$/);
-  const receipt = Buffer.from(rawbtUrl.slice("rawbt:base64,".length), "base64");
-  assert.ok(receipt.includes(Buffer.from("A042", "ascii")));
-  assert.equal(receipt.includes(Buffer.from([0x1d, 0xf9, 0x20, 0x01])), false);
 });
 
 test("totem exibe o QR geral separado do QR individual da senha", () => {
@@ -322,18 +305,18 @@ test("mantem o totem Pompeia na Loja 2 mesmo com configuracao antiga", () => {
   assert.equal(configuration.storeCode, "loja-2");
 });
 
-test("configura a impressora Bluetooth do tablet somente para o Acougue da Loja 2", () => {
+test("configura a Bematech dos mini PCs somente para o Acougue da Loja 2", () => {
   const configuration = loadTabletPrinterConfiguration({});
   assert.equal(configuration.id, "tablet-pompeia-01");
   assert.equal(configuration.mode, "sector");
   assert.equal(configuration.sectorId, "acougue-loja-2");
   assert.equal(configuration.storeCode, "loja-2");
-  assert.equal(configuration.printerName, "POS-5890A-L");
-  assert.equal(configuration.printerPort, "BLUETOOTH");
-  assert.equal(configuration.paperWidthMm, 58);
+  assert.equal(configuration.printerName, "Bematech MP - 4200 TH");
+  assert.equal(configuration.printerPort, "COM4");
+  assert.equal(configuration.paperWidthMm, 80);
 });
 
-test("aceita tokens separados para o totem e a impressora Bluetooth do tablet", () => {
+test("aceita tokens separados para o totem e a Bematech do mini PC", () => {
   const tabletToken = "tablet-token-abcdefghijklmnopqrstuvwxyz-1234567890";
   const result = verifyPrintAgentRequest(
     new Headers({
@@ -347,6 +330,12 @@ test("aceita tokens separados para o totem e a impressora Bluetooth do tablet", 
     }
   );
   assert.deepEqual(result, { ok: true, kioskId: "tablet-pompeia-01" });
+});
+
+test("o tablet usa a fila do agente e não abre um aplicativo de impressão", () => {
+  const script = fs.readFileSync(path.resolve(__dirname, "../public/tablet.js"), "utf8");
+  assert.match(script, /pollPrintJobs/);
+  assert.doesNotMatch(script, /RawBT|rawbt|window\.location\.href/);
 });
 
 test("usa a porta configurada pelo agente ao criar a impressora", () => {

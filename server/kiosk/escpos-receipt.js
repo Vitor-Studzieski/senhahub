@@ -2,7 +2,7 @@ const ESC = 0x1b;
 const GS = 0x1d;
 const LF = 0x0a;
 
-function buildTicketReceipt(payload = {}, options = {}) {
+function buildTicketReceipt(payload = {}) {
   const tickets = normalizeReceiptTickets(payload);
   const trackingUrl = cleanUrl(payload.trackUrl);
   const ticketBlocks = tickets.flatMap((ticket) => [
@@ -19,7 +19,7 @@ function buildTicketReceipt(payload = {}, options = {}) {
     command(ESC, 0x40),
     // A MP-4200 TH pode iniciar em ESC/Bematech; selecione ESC/POS
     // temporariamente para que fonte, corte e QR Code sejam interpretados.
-    ...(options.transport === "rawbt" ? [] : [command(GS, 0xf9, 0x20, 0x01)]),
+    command(GS, 0xf9, 0x20, 0x01),
     command(ESC, 0x61, 1),
     command(ESC, 0x45, 1),
     command(GS, 0x21, 0x01),

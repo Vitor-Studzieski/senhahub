@@ -2,7 +2,7 @@
 
 > A operação atual está em [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md). Este arquivo preserva o contexto histórico do totem e dos parâmetros físicos; os tokens v1, polling e endpoints antigos abaixo não são instruções para um novo pareamento.
 
-O totem emite senhas fisicas na mesma fila usada pelo aplicativo. A emissao cria, em uma unica transacao no Supabase, a senha e um trabalho de impressao. O agente Windows consome essa fila e envia o recibo em ESC/POS para a Bematech MP-4200 TH pela porta serial.
+O totem e os antigos tablets, agora mini PCs Windows, emitem senhas fisicas por filas próprias. A emissao cria, em uma unica transacao no Supabase, a senha e um trabalho de impressao. O agente Windows consome a fila do seu destino e envia o recibo em ESC/POS para a Bematech MP-4200 TH pela porta serial.
 
 ## Componentes entregues
 
@@ -137,11 +137,11 @@ O papel impresso segue esta ordem: `SUPERMERCADO POMPEIA`, `SenhaHub`, setor, `S
 
 O agente registra localmente cada trabalho enviado antes de confirma-lo na API. Se a internet cair apos a impressao, uma nova tentativa confirma o mesmo trabalho sem imprimir novamente. Uma queda de energia exatamente entre o corte do papel e esse registro ainda pode gerar uma segunda via, limitacao inerente a impressoras sem confirmacao transacional.
 
-## Impressora RawBT dos tablets — Açougue da Loja 2
+## Bematech do mini PC do tablet — Açougue da Loja 2
 
-A impressora dos tablets usa uma fila própria, `tablet-pompeia-01`, restrita ao setor `acougue-loja-2`. Ela não deve ser configurada no agente Windows do totem nem no agente Android próprio do projeto.
+A Bematech do mini PC usa uma fila própria, `tablet-pompeia-01`, restrita ao setor `acougue-loja-2`. Ela deve ser configurada em um agente Windows x86 próprio; não compartilhe o mesmo agente ou a mesma porta serial com outro equipamento.
 
-O tablet em que o RawBT está instalado recebe o cupom ESC/POS pelo link `rawbt:base64,...`. O SenhaHub gera o cupom a partir do mesmo trabalho que criou a senha e confirma o envio ao RawBT. Os demais tablets podem emitir normalmente; o tablet de impressão precisa estar com o RawBT configurado e ativo.
+O `/tablet` apenas cria o trabalho e acompanha o status. O agente x86 pareado ao destino `tablet-pompeia-01` reivindica a senha, envia os bytes ESC/POS para a Bematech local e confirma o resultado. Os demais mini PCs devem usar seus próprios destinos e agentes, cada um com uma impressora física diferente.
 
 Variáveis adicionais do backend:
 
@@ -150,9 +150,9 @@ TABLET_PRINTER_KIOSK_ID=tablet-pompeia-01
 TABLET_PRINTER_MODE=sector
 TABLET_PRINTER_SECTOR_ID=acougue-loja-2
 TABLET_PRINTER_STORE_CODE=loja-2
-TABLET_PRINTER_NAME=POS-5890A-L
-TABLET_PRINTER_PORT=BLUETOOTH
-TABLET_PAPER_WIDTH_MM=58
+TABLET_PRINTER_NAME=Bematech MP - 4200 TH
+TABLET_PRINTER_PORT=COM4
+TABLET_PAPER_WIDTH_MM=80
 ```
 
-No RawBT, selecione a impressora nova e faça primeiro um teste de impressão pelo próprio aplicativo. Depois abra `/tablet` no navegador Android e solicite uma senha. O botão de nova impressão reenvia a mesma senha, sem criar outra senha na fila.
+No mini PC, instale o agente em `windows/print-agent-x86`, confirme a porta real da Bematech (`COM4` no equipamento homologado), faça primeiro o teste físico e só então abra `/tablet` para emitir uma senha. O agente confirma a impressão na fila; em caso de resultado físico incerto, a reimpressão exige resolução administrativa.

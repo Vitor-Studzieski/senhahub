@@ -28,7 +28,6 @@ const {
   isStrongPassword,
   passwordPolicyError
 } = require("../auth/password-policy");
-const { withRawbtUrl } = require("../kiosk/rawbt-print");
 const {
   createRequestContext,
   dispatchObservabilityAlert,
@@ -266,8 +265,6 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "POST" && url.pathname === "/api/tablet/tickets") return tabletTickets(request);
     const tabletPrintJob = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)$/);
     if (request.method === "GET" && tabletPrintJob) return tabletPrintJobRoute(request, decodeURIComponent(tabletPrintJob[1]));
-    const tabletRawbt = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)\/rawbt$/);
-    if (request.method === "POST" && tabletRawbt) return tabletRawbtPrint(request, decodeURIComponent(tabletRawbt[1]));
     if (request.method === "GET" && url.pathname === "/api/kiosk/status") return kioskStatusRoute(request);
     const trackedTicket = url.pathname.match(/^\/api\/tickets\/track\/([A-Za-z0-9_-]{20,100})$/);
     if (request.method === "GET" && trackedTicket) return ticketTrackingRoute(request, decodeURIComponent(trackedTicket[1]));
@@ -1565,7 +1562,7 @@ async function tabletTickets(request) {
     source: "supabase",
     ticket,
     tickets: [ticket],
-    printJob: withRawbtUrl(printJobDto(result.printJob)),
+    printJob: printJobDto(result.printJob),
     alreadyExists: Boolean(result.alreadyExists)
   }, 201);
 }
@@ -1580,72 +1577,7 @@ async function tabletPrintJobRoute(request, jobId) {
   const ticket = (await select("tickets", `id=eq.${encodeURIComponent(job.ticket_id)}&source=eq.physical&limit=1`))[0];
   if (!ticket || !canAccessSectorSync(user, ticket.sector_id)) return json({ error: "Acesso negado." }, 403);
 
-  return json({ job: withRawbtUrl(printJobDto(job)) }, 200, { "cache-control": "no-store" });
-}
-
-async function tabletRawbtPrint(request, jobId) {
-  const user = await requireUser(request, TABLET_ACCESS_ROLES);
-  if (user.response) return user.response;
-  if (!(await verifyCsrf(request, user))) {
-    return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
-  }
-  if (!isUuid(jobId)) return json({ error: "Trabalho de impressão inválido." }, 400);
-
-  const configuredKiosk = await ensureTabletPrinterKiosk();
-  if (!configuredKiosk || !configuredKiosk.active) {
-    return json({ error: "A impressora dos tablets ainda nao esta configurada." }, 503);
-  }
-
-  const job = (await select(
-    "print_jobs",
-    `id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&limit=1`
-  ))[0];
-  const ticket = job?.ticket_id
-    ? (await select("tickets", `id=eq.${encodeURIComponent(job.ticket_id)}&source=eq.physical&limit=1`))[0]
-    : null;
-  if (!job || !ticket || !canAccessSectorSync(user, ticket.sector_id)) {
-    return json({ error: "Trabalho de impressão não encontrado." }, 404);
-  }
-
-  if (job.status === "printed") {
-    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(job)) }, 200, { "cache-control": "no-store" });
-  }
-  if (job.status !== "pending") {
-    return json({ error: "Este trabalho de impressão já está sendo processado." }, 409);
-  }
-
-  const now = isoNow();
-  const updated = await supabaseFetch(
-    `/rest/v1/print_jobs?id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&status=eq.pending&select=*`,
-    {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: {
-        status: "printed",
-        printed_at: now,
-        failed_at: null,
-        last_error: null,
-        updated_at: now
-      }
-    }
-  );
-  if (updated?.error) {
-    console.error("tablet_rawbt_print_update_failed", updated.error);
-    return json({ error: "Não foi possível registrar a impressão." }, 500);
-  }
-  const updatedJob = Array.isArray(updated) ? updated[0] : null;
-  if (updatedJob) {
-    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(updatedJob)) }, 200, { "cache-control": "no-store" });
-  }
-
-  const current = (await select(
-    "print_jobs",
-    `id=eq.${encodeURIComponent(jobId)}&kiosk_id=eq.${encodeURIComponent(configuredKiosk.id)}&limit=1`
-  ))[0];
-  if (current?.status === "printed") {
-    return json({ transport: "rawbt", job: withRawbtUrl(printJobDto(current)) }, 200, { "cache-control": "no-store" });
-  }
-  return json({ error: "Este trabalho de impressão já está sendo processado." }, 409);
+  return json({ job: printJobDto(job) }, 200, { "cache-control": "no-store" });
 }
 
 async function history(request) {

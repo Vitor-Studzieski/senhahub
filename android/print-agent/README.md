@@ -1,10 +1,10 @@
-# Agente Android da POS-5890A-L
+# Agente Android legado
 
-> Esta ponte Android é mantida como alternativa para conexão Bluetooth direta. O fluxo ativo dos tablets usa o RawBT; nesse caso, não inicie este agente no tablet de impressão.
+> Esta ponte é mantida como alternativa para hardware Android/Bluetooth. Os equipamentos que substituíram os tablets são mini PCs Windows e devem usar o agente x86 da Bematech.
 
 > O protocolo atual, provisionamento, journal, recuperação e limitações de hardware estão em [docs/IMPRESSAO_V2.md](../../docs/IMPRESSAO_V2.md).
 
-Este aplicativo é uma ponte Bluetooth alternativa para a impressora dedicada ao Açougue da Loja 2. Quando a operação usar o RawBT, o tablet deve manter o RawBT configurado e este agente não deve ser iniciado. Os demais tablets apenas emitem a senha no SenhaHub; o trabalho entra na fila `tablet-pompeia-01`.
+Este aplicativo não participa do fluxo dos mini PCs Windows. Para a operação atual do Açougue da Loja 2, o trabalho entra na fila `tablet-pompeia-01` e é consumido pelo agente Windows x86 ligado à Bematech local.
 
 A POS-5890A é uma impressora ESC/POS de 58 mm com USB e Bluetooth. O navegador do tablet não deve ser responsável pela impressão: o Web Bluetooth atende periféricos BLE/GATT, enquanto as impressoras térmicas desse tipo normalmente usam Bluetooth clássico/RFCOMM. O agente usa o socket Bluetooth clássico do Android e envia os mesmos bytes ESC/POS usados pelo totem.
 
