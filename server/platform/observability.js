@@ -1,6 +1,8 @@
 const crypto = require("node:crypto");
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const LOAD_TEST_RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const LOAD_TEST_USER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
 
 function headerValue(headers, name) {
   if (!headers) return "";
@@ -19,11 +21,36 @@ function createRequestId(headers) {
 }
 
 function createRequestContext({ method, path, headers } = {}) {
+  const loadTestRunId = headerValue(headers, "x-load-test-run-id").trim();
+  const requestedTestUserId = headerValue(headers, "x-load-test-user-id").trim();
+  const loadTestInstrumentationEnabled = process.env.LOAD_TEST_INSTRUMENTATION_ENABLED === "1";
   return {
     requestId: createRequestId(headers),
     method: String(method || "GET"),
     path: String(path || ""),
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    loadTestRunId: loadTestInstrumentationEnabled && LOAD_TEST_RUN_ID_PATTERN.test(loadTestRunId) ? loadTestRunId : null,
+    testUserId: loadTestInstrumentationEnabled && LOAD_TEST_USER_ID_PATTERN.test(requestedTestUserId) ? requestedTestUserId : null,
+    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+    runtime: process.env.NEXT_RUNTIME || "nodejs",
+    region: process.env.VERCEL_REGION || null,
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_URL || null,
+    commitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
+    ticketId: null
+  };
+}
+
+function loadTestLogFields(context) {
+  if (!context?.loadTestRunId) return {};
+  return {
+    load_test_run_id: context.loadTestRunId,
+    test_user_id: context.testUserId || null,
+    ticket_id: context.ticketId || null,
+    environment: context.environment,
+    runtime: context.runtime,
+    region: context.region,
+    deployment_id: context.deploymentId,
+    commit_sha: context.commitSha
   };
 }
 
@@ -48,6 +75,7 @@ function finishRequest(context, status, extra = {}) {
     path: context.path,
     status,
     durationMs,
+    ...loadTestLogFields(context),
     ...extra
   });
 }
@@ -152,6 +180,7 @@ module.exports = {
   durationMs,
   errorDetails,
   finishRequest,
+  loadTestLogFields,
   logStructured,
   summarizePrintAttempts
 };

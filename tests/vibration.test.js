@@ -36,3 +36,20 @@ test("não marca a chamada como entregue quando o navegador bloqueia vibração"
   assert.equal(vibration.vibrateOnce("token:blocked").reason, "blocked");
   assert.equal(calls, 2);
 });
+
+test("continua vibrando quando o armazenamento local está bloqueado", () => {
+  let calls = 0;
+  const context = {
+    window: {
+      navigator: { vibrate: () => { calls += 1; return true; } },
+      localStorage: {
+        getItem: () => { throw new Error("storage blocked"); },
+        setItem: () => { throw new Error("storage blocked"); }
+      }
+    }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "public", "vibration.js"), "utf8"), context);
+  const vibration = context.window.SenhaHubVibration;
+  assert.equal(vibration.vibrateOnce("token:storage-blocked").reason, "ok");
+  assert.equal(calls, 1);
+});

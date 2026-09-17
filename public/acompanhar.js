@@ -1,5 +1,6 @@
 (function initializeTracking() {
   const SUCCESS_MESSAGE_MS = 5000;
+  const TRACKING_POLL_INTERVAL_MS = 5000;
   const token = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
   const AUTO_RETURN_SECONDS = 12;
   const loading = document.querySelector("#trackingLoading");
@@ -108,7 +109,7 @@
       }
       render(tickets);
       notifyTicketAlerts(tickets);
-      if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, 5000);
+      if (tickets.some((ticket) => !isFinished(ticket))) timer = setTimeout(loadTicket, TRACKING_POLL_INTERVAL_MS);
     } catch (error) {
       showFeedback(errorState(error));
     }

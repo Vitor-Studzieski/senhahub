@@ -33,14 +33,30 @@
     };
   }
 
+  function wasSent(store, key) {
+    try {
+      return store?.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function markSent(store, key) {
+    try {
+      store?.setItem(key, "1");
+    } catch {
+      // A vibração não deve falhar só porque o armazenamento está bloqueado.
+    }
+  }
+
   function vibrateOnce(identity, pattern = [220, 90, 220, 90, 420]) {
     const key = `${STORAGE_PREFIX}${String(identity || "").slice(0, 180)}`;
     if (!identity || !supported()) return { vibrated: false, reason: "unsupported" };
     const store = storage();
-    if (store?.getItem(key) === "1") return { vibrated: false, reason: "duplicate" };
+    if (wasSent(store, key)) return { vibrated: false, reason: "duplicate" };
     try {
       const result = scope.navigator.vibrate(pattern);
-      if (result !== false) store?.setItem(key, "1");
+      if (result !== false) markSent(store, key);
       return { vibrated: result !== false, reason: result === false ? "blocked" : "ok" };
     } catch {
       return { vibrated: false, reason: "blocked" };

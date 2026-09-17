@@ -4,17 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Painel do Atendente - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20260904.19" />
+    <link rel="stylesheet" href="styles.css?v=20260915.30" />
   </head>
   <body class="attendant-page">
     <main class="ops-stage">
       <section class="ops-shell">
-        <header class="ops-header">
-          <div>
-            <span>Fila de atendimento</span>
-            <h1>Painel do atendente</h1>
+        <header class="ops-header attendant-header">
+          <div class="ops-header-brand">
+            <img src="/assets/vr-software-mark.svg" alt="" aria-hidden="true" />
+            <strong>VR Software</strong>
           </div>
-          <nav>
+          <div class="ops-header-copy">
+            <h1>FILA DE ATENDIMENTO</h1>
+          </div>
+          <nav aria-label="Ações da sessão">
             <button id="logoutButton">Sair</button>
           </nav>
         </header>
@@ -34,6 +37,6 @@
         </form>
       </div>
     </main>
-    <script src="attendant.js?v=20260908.3"></script>
+    <script src="attendant.js?v=20260915.3"></script>
   </body>
 </html>

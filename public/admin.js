@@ -1,16 +1,22 @@
 let adminState = { sectors: [] };
 let adminUsers = [];
+let adminUsersLoaded = false;
+let adminUsersLoading = false;
+let selectedUserSectorId = null;
 let adminMetrics = { sectors: [], satisfaction: { count: 0, average: 0 } };
 let currentUser = null;
 let adminRefreshTimer = null;
 let adminRefreshInFlight = null;
-const ADMIN_REFRESH_INTERVAL_MS = 12000;
+const ADMIN_REFRESH_INTERVAL_MS = 30000;
+const MANAGER_SECTOR_TONE_COUNT = 5;
+const managerSectorToneAssignments = new Map();
 
 initAdmin();
 
 async function initAdmin() {
   currentUser = await requireSession(["manager", "admin"]);
   document.querySelector("#logoutButton")?.addEventListener("click", logout);
+  document.querySelector("#resetTicketHistoryButton")?.addEventListener("click", resetTicketHistory);
   document.querySelectorAll(".manager-nav a").forEach((link) => {
     link.addEventListener("click", () => {
       document.querySelectorAll(".manager-nav a").forEach((item) => item.classList.remove("active"));
@@ -19,16 +25,29 @@ async function initAdmin() {
   });
   document.querySelector("#userForm")?.addEventListener("submit", createUser);
   document.querySelector("#userRole")?.addEventListener("change", updateUserRoleFields);
+  document.querySelector("#toggleAdminUsers")?.addEventListener("click", toggleUserDirectory);
+  document.querySelector("#adminUserSectorList")?.addEventListener("click", selectUserSector);
   updateUserRoleFields();
   document.querySelector("#refreshPrintReview")?.addEventListener("click", loadPrintReview);
   if(document.querySelector("#printReviewList")) await loadPrintReview();
   document.querySelector("#sectorFilter")?.addEventListener("change", renderQueueTable);
   document.querySelector("#statusFilter")?.addEventListener("change", renderQueueTable);
-  document.querySelector("#refreshDashboardButton")?.addEventListener("click", () => {
-    refreshDashboard().catch((error) => {
+  document.querySelector("#refreshDashboardButton")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Atualizando…";
+    try {
+      await refreshDashboard();
+    } catch (error) {
       const alerts = document.querySelector("#dashboardAlerts");
       if (alerts) alerts.innerHTML = `<div class="manager-alert manager-alert-attention"><span class="manager-alert-mark">!</span><div><strong>Não foi possível atualizar o painel</strong><p>${escapeHtml(error.message || "Erro de comunicação")}</p></div></div>`;
-    });
+    } finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.textContent = "Atualizar agora";
+    }
   });
   const metricsDateInput = document.querySelector("#metricsDate");
   if (metricsDateInput) {
@@ -37,14 +56,21 @@ async function initAdmin() {
   }
   try {
     const requests = [];
-    if (needsAdminState()) requests.push(loadAdminState());
+    if (needsAdminState() || document.querySelector("#adminUsers")) requests.push(loadAdminState());
     if (needsAdminMetrics()) requests.push(loadMetrics());
-    if (document.querySelector("#adminUsers")) requests.push(loadUsers());
     await Promise.all(requests);
   } catch (error) {
     const alerts = document.querySelector("#dashboardAlerts");
     if (alerts) {
       alerts.innerHTML = `<div class="manager-alert manager-alert-attention"><span class="manager-alert-mark">!</span><div><strong>Não foi possível carregar todos os dados</strong><p>Tente atualizar o painel novamente. ${escapeHtml(error.message || "Erro de comunicação")}</p></div></div>`;
+    }
+    const sectors = document.querySelector("#adminSectors");
+    if (sectors && !adminState.sectors.length) {
+      sectors.innerHTML = `<div class="manager-empty" role="status"><strong>Não foi possível carregar os setores</strong><p>Atualize a página para tentar novamente.</p></div>`;
+    }
+    const queue = document.querySelector("#queueTable");
+    if (queue && !adminState.sectors.length) {
+      queue.innerHTML = `<tr><td colspan="6" class="manager-empty-cell">Não foi possível carregar a fila. Atualize a página para tentar novamente.</td></tr>`;
     }
   }
   startAdminPolling();
@@ -79,13 +105,14 @@ function needsAdminState() {
 }
 
 function needsAdminMetrics() {
-  return Boolean(document.querySelector("#dashboardKpis"));
+  return Boolean(document.querySelector("#dashboardKpis, #dashboardOperations, #adminSectors"));
 }
 
 async function loadAdminState() {
   adminState = await api("/api/staff/state");
   renderAdmin();
   renderDashboard();
+  if (adminUsersLoaded) renderUsers();
 }
 
 async function loadUsers() {
@@ -94,9 +121,62 @@ async function loadUsers() {
     document.querySelector("#usuarios")?.closest(".manager-section-title")?.setAttribute("hidden", "");
     return;
   }
-  const result = await api("/api/users");
-  adminUsers = result.users;
+  const status = document.querySelector("#adminUserDirectoryStatus");
+  const directory = document.querySelector("#adminUsersBrowser");
+  const count = document.querySelector("[data-users-count]");
+  directory?.setAttribute("aria-busy", "true");
+  if (status) {
+    status.dataset.state = "loading";
+    status.textContent = "Carregando contas e permissões…";
+  }
+  if (count) count.textContent = "Carregando contas…";
+  try {
+    const result = await api("/api/users");
+    adminUsers = result.users;
+    adminUsersLoaded = true;
+    renderUsers();
+  } catch (error) {
+    if (status) {
+      status.dataset.state = "error";
+      status.textContent = `Não foi possível carregar as contas. Tente novamente mais tarde. ${error.message || ""}`;
+    }
+    if (count) count.textContent = "Falha ao carregar";
+    throw error;
+  } finally {
+    directory?.removeAttribute("aria-busy");
+  }
+}
+
+function toggleUserDirectory(event) {
+  const button = event.currentTarget;
+  const directory = document.querySelector("#adminUsersBrowser");
+  if (!button || !directory) return;
+  const expanded = button.getAttribute("aria-expanded") !== "true";
+  button.setAttribute("aria-expanded", String(expanded));
+  directory.hidden = !expanded;
+  const label = button.querySelector("[data-users-toggle-label]");
+  if (label) label.textContent = expanded ? (adminUsersLoaded ? "Ocultar contas" : "Carregando contas…") : "Consultar contas por setor";
+  if (!expanded || adminUsersLoaded || adminUsersLoading) return;
+  adminUsersLoading = true;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  loadUsers().catch(() => {
+    if (label) label.textContent = button.getAttribute("aria-expanded") === "true" ? "Ocultar contas" : "Consultar contas por setor";
+  }).finally(() => {
+    adminUsersLoading = false;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  });
+}
+
+function selectUserSector(event) {
+  const button = event.target.closest("button[data-user-sector]");
+  if (!button) return;
+  selectedUserSectorId = button.dataset.userSector;
   renderUsers();
+  [...document.querySelectorAll("#adminUserSectorList button")]
+    .find((item) => item.dataset.userSector === selectedUserSectorId)
+    ?.focus();
 }
 
 async function loadMetrics() {
@@ -106,17 +186,70 @@ async function loadMetrics() {
   renderDashboard();
 }
 
+async function resetTicketHistory(event) {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  const confirmed = window.confirm(
+    "Isso apagará permanentemente as senhas encerradas, canceladas ou expiradas e as avaliações vinculadas. Senhas com tentativas de impressão esgotadas também serão apagadas; os registros dessas tentativas continuarão guardados para auditoria. Senhas em atendimento, impressões pendentes ou em revisão e a numeração atual serão mantidas. Deseja continuar?"
+  );
+  if (!confirmed) return;
+
+  const status = document.querySelector("#resetTicketHistoryStatus");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Limpando…";
+  if (status) status.hidden = true;
+
+  try {
+    const result = await api("/api/tickets/history/reset", { method: "POST" });
+    const ticketCount = Number(result.deletedTickets || 0);
+    const ratingCount = Number(result.deletedRatings || 0);
+    const skippedTicketCount = Number(result.skippedTickets || 0);
+    if (status) {
+      if (ticketCount || skippedTicketCount) {
+        status.textContent = ticketCount
+          ? `Histórico limpo: ${ticketCount} senha(s) e ${ratingCount} avaliação(ões) removidas.`
+          : "Nenhuma senha foi removida.";
+        if (skippedTicketCount) {
+          status.textContent += ` ${skippedTicketCount} senha(s) foram preservadas por terem impressão pendente ou em revisão.`;
+        }
+      } else {
+        status.textContent = "O histórico já estava vazio. As métricas continuam prontas para os atendimentos reais.";
+      }
+      status.hidden = false;
+    }
+    try {
+      const requests = [];
+      if (needsAdminState()) requests.push(loadAdminState());
+      if (needsAdminMetrics()) requests.push(loadMetrics());
+      await Promise.all(requests);
+    } catch {
+      if (status) status.textContent += " Atualize o painel para recarregar os indicadores.";
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message || "Não foi possível limpar o histórico de senhas.";
+      status.hidden = false;
+    }
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Limpar histórico";
+  }
+}
+
 function renderAdmin() {
   renderSectorFilter();
   renderQueueTable();
   const sectorGrid = document.querySelector("#adminSectors");
   if (!sectorGrid) return;
-  sectorGrid.innerHTML = adminState.sectors.map((sector) => {
+  sectorGrid.innerHTML = adminState.sectors.length ? adminState.sectors.map((sector) => {
     const snapshot = sectorSnapshot(sector);
     const metric = snapshot.metric;
     const settings = timeParts(sector.averageServiceSeconds);
+    const averageClass = Number(metric.serviceSamples || 0) > 0 ? "" : " manager-no-data-value";
     return `
-      <article class="manager-sector-card">
+      <article class="manager-sector-card" data-sector-tone="${sectorToneIndex(sector)}">
         <div class="manager-sector-head">
           <div>
             <strong>${escapeHtml(sector.name)}</strong>
@@ -125,24 +258,24 @@ function renderAdmin() {
           <b class="manager-badge ${sector.status === "open" ? "success" : sector.status === "paused" ? "warn" : "danger"}">${escapeHtml(statusLabel(sector.status))}</b>
         </div>
         <div class="manager-sector-metrics">
-          <div><span>Fila</span><strong>${escapeHtml(snapshot.waiting.length)}</strong></div>
-          <div><span>Atual</span><strong>${escapeHtml(snapshot.currentTicket ? supportCode(snapshot.currentTicket).replace("Senha ", "") : "--")}</strong></div>
-          <div><span>Atendimento médio</span><strong>${escapeHtml(formatMinutesSeconds(metric.avgServiceSeconds || sector.averageServiceSeconds))}</strong></div>
+          <div><span>Aguardando</span><strong>${escapeHtml(snapshot.waiting.length)}</strong></div>
+          <div><span>Senha atual</span><strong>${escapeHtml(snapshot.currentTicket ? supportCode(snapshot.currentTicket).replace("Senha ", "") : "--")}</strong></div>
+          <div><span>Tempo médio</span><strong class="${averageClass.trim()}"${Number(metric.serviceSamples || 0) > 0 ? "" : ' title="Sem atendimentos concluídos na data consultada"'}>${escapeHtml(serviceAverageLabel(metric))}</strong></div>
         </div>
         <div class="manager-progress" aria-label="${escapeHtml(snapshot.load)}% da capacidade ocupada"><span style="width:${escapeHtml(snapshot.load)}%"></span></div>
-        <div class="manager-sector-load"><span>${escapeHtml(snapshot.load)}% da capacidade da fila</span><b>${escapeHtml(snapshot.waiting.length)} aguardando</b></div>
-        <p class="manager-sector-current">${escapeHtml(snapshot.currentTicket ? `${displayCustomerName(snapshot.currentTicket)} - ${ticketStatus(snapshot.currentTicket)}` : "Nenhuma chamada ativa")}</p>
+        <div class="manager-sector-load"><span>${escapeHtml(snapshot.load)}% da capacidade definida</span><b>${escapeHtml(snapshot.waiting.length)} aguardando</b></div>
+        <p class="manager-sector-current">${escapeHtml(snapshot.currentTicket ? `${displayCustomerName(snapshot.currentTicket)} · ${ticketStatus(snapshot.currentTicket)}` : "Nenhum atendimento ativo")}</p>
         <details class="manager-sector-settings">
-          <summary>Editar configuração</summary>
+          <summary>Ajustar setor</summary>
           <form class="manager-form" data-sector-form="${escapeHtml(sector.id)}" data-online-required>
-            <label>Nome do setor<input name="name" value="${escapeHtml(sector.name)}" /></label>
-            <label>Balcão<input name="counterLabel" value="${escapeHtml(sector.counterLabel)}" /></label>
-            <label>Descrição<input name="serviceLabel" value="${escapeHtml(sector.serviceLabel)}" /></label>
+            <label>Nome exibido<input name="name" value="${escapeHtml(sector.name)}" /></label>
+            <label>Balcão de atendimento<input name="counterLabel" value="${escapeHtml(sector.counterLabel)}" /></label>
+            <label>Descrição do atendimento<input name="serviceLabel" value="${escapeHtml(sector.serviceLabel)}" /></label>
             <div class="manager-form-row">
-              <label>Fila base<input type="number" name="queueSize" min="1" value="${escapeHtml(sector.queueSize)}" /></label>
-              <label>Tempo médio (min)<input type="number" name="averageServiceMinutes" min="0" value="${escapeHtml(settings.minutes)}" /></label>
-              <label>Tempo médio (seg)<input type="number" name="averageServiceRestSeconds" min="0" max="59" value="${escapeHtml(settings.seconds)}" /></label>
-              <label>Capacidade<input type="number" name="capacity" min="1" value="${escapeHtml(sector.capacity)}" /></label>
+              <label>Tamanho inicial da fila<input type="number" name="queueSize" min="1" value="${escapeHtml(sector.queueSize)}" /></label>
+              <label>Estimativa (min)<input type="number" name="averageServiceMinutes" min="0" value="${escapeHtml(settings.minutes)}" /></label>
+              <label>Estimativa (seg)<input type="number" name="averageServiceRestSeconds" min="0" max="59" value="${escapeHtml(settings.seconds)}" /></label>
+              <label>Capacidade de atendimento<input type="number" name="capacity" min="1" value="${escapeHtml(sector.capacity)}" /></label>
             </div>
             <label>Status
               <select name="status">
@@ -151,13 +284,13 @@ function renderAdmin() {
                 <option value="closed" ${sector.status === "closed" ? "selected" : ""}>Fechado</option>
               </select>
             </label>
-            <button class="manager-button" type="submit">Salvar setor</button>
+            <button class="manager-button" type="submit">Salvar alterações</button>
             <p class="manager-form-feedback" data-sector-feedback role="status" aria-live="polite"></p>
           </form>
         </details>
       </article>
     `;
-  }).join("");
+  }).join("") : `<div class="manager-empty" role="status"><strong>Nenhum setor disponível</strong><p>Os setores cadastrados serão exibidos aqui para acompanhamento e configuração.</p></div>`;
 
   document.querySelectorAll("[data-sector-form]").forEach((form) => {
     form.addEventListener("submit", saveSector);
@@ -181,7 +314,12 @@ function renderQueueTable() {
   const sectorFilter = document.querySelector("#sectorFilter")?.value || "";
   const statusFilter = document.querySelector("#statusFilter")?.value || "";
   const rows = adminState.sectors
-    .flatMap((sector) => (sector.tickets || []).map((ticket) => ({ ...ticket, sectorId: sector.id, sectorName: sector.name })))
+    .flatMap((sector) => (sector.tickets || []).map((ticket) => ({
+      ...ticket,
+      sectorId: sector.id,
+      sectorName: sector.name,
+      sectorTone: sectorToneIndex(sector)
+    })))
     .filter((ticket) => !sectorFilter || ticket.sectorId === sectorFilter)
     .filter((ticket) => !statusFilter || ticket.status === statusFilter);
   const statusOrder = { chamado: 0, em_atendimento: 1, proximo: 2, aguardando: 3, standby: 4, espera_inteligente: 5 };
@@ -190,7 +328,7 @@ function renderQueueTable() {
     || Number(left.position || 999) - Number(right.position || 999));
   document.querySelector("#queueCount").textContent = `${rows.length} ${rows.length === 1 ? "registro" : "registros"}`;
   table.innerHTML = rows.length ? rows.map(queueRow).join("") : `
-    <tr><td colspan="6" class="manager-empty-cell">Nenhuma senha ativa com os filtros selecionados.</td></tr>
+    <tr><td colspan="6" class="manager-empty-cell">Nenhuma senha corresponde aos filtros selecionados.</td></tr>
   `;
 }
 
@@ -198,7 +336,7 @@ function queueRow(ticket) {
   return `
     <tr>
       <td><div class="manager-person"><span>${escapeHtml(initials(displayCustomerName(ticket)))}</span><div><strong>${escapeHtml(displayCustomerName(ticket))}</strong><small>${escapeHtml(ticket.priority ? "Atendimento preferencial" : "Cliente")}</small></div></div></td>
-      <td>${escapeHtml(ticket.sectorName || ticket.sector)}</td>
+      <td><span class="manager-sector-tag" data-sector-tone="${escapeHtml(ticket.sectorTone ?? 0)}">${escapeHtml(ticket.sectorName || ticket.sector)}</span></td>
       <td>${escapeHtml(supportCode(ticket))}</td>
       <td><span class="manager-badge ${ticket.status === "em_atendimento" ? "success" : ticket.status === "standby" ? "warn" : "neutral"}">${escapeHtml(ticketStatus(ticket))}</span></td>
       <td>${ticket.priority ? `<span class="manager-badge danger">Preferencial</span><small class="manager-cell-note">${escapeHtml(priorityReasonLabel(ticket.priorityReason))}</small>` : `<span class="manager-badge neutral">Normal</span>`}</td>
@@ -255,36 +393,52 @@ function priorityBadgeMarkup(extraClass = "") {
 }
 
 function renderDashboard() {
-  if (!document.querySelector("#dashboardKpis")) return;
+  const dashboardKpis = document.querySelector("#dashboardKpis");
+  const dashboardOperations = document.querySelector("#dashboardOperations");
+  if (!dashboardKpis && !dashboardOperations) return;
   const summary = dashboardSummary();
   const health = dashboardHealth(summary);
   const openSectors = adminState.sectors.filter((sector) => sector.status === "open").length;
 
   setText("#heroOpenSectors", openSectors);
   setText("#heroActiveCalls", summary.called);
-  setText("#heroCriticalSector", summary.criticalSector || "nenhum");
+  setText("#heroCriticalSector", summary.criticalSector || "nenhuma");
   setText("#heroHeadline", health.headline);
   setText("#heroDescription", health.detail);
   setText("#heroStatus", health.label);
-  setText("#heroAverageTime", formatMinutesSeconds(summary.avgServiceSeconds));
+  setText("#heroAverageTime", summary.serviceSamples ? formatMinutesSeconds(summary.avgServiceSeconds) : "Sem dados");
   setText("#heroWaitingCustomers", summary.waiting);
   setText("#heroSyncTime", new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
-  document.querySelector("#healthDot")?.classList.toggle("attention", health.status === "attention");
+  const healthDot = document.querySelector("#healthDot");
+  healthDot?.classList.toggle("attention", health.status === "attention");
+  healthDot?.classList.toggle("neutral", health.status === "neutral");
+  const criticalSector = adminState.sectors.find((sector) => sector.name === summary.criticalSector);
+  const criticalSectorChip = document.querySelector("#heroCriticalSector")?.closest("span");
+  if (criticalSector && criticalSectorChip) {
+    criticalSectorChip.dataset.sectorTone = String(sectorToneIndex(criticalSector));
+  } else {
+    criticalSectorChip?.removeAttribute("data-sector-tone");
+  }
 
-  document.querySelector("#dashboardKpis").innerHTML = [
-    dashboardKpi("Fila atual", summary.waiting, "senhas aguardando", summary.overloaded.length ? "atenção" : "normal"),
-    dashboardKpi("Em atendimento", summary.called, "chamadas ativas", summary.called ? "agora" : "livre"),
-    dashboardKpi("Senhas do dia", summary.issued, "emitidas na data", adminMetrics.date || "hoje"),
-    dashboardKpi("Tempo de atendimento", formatMinutesSeconds(summary.avgServiceSeconds), "média registrada", "histórico"),
-    dashboardKpi("Satisfação", satisfactionValue(), `${adminMetrics.satisfaction.count || 0} avaliações`, "experiência")
-  ].join("");
+  if (dashboardKpis) {
+    dashboardKpis.innerHTML = [
+      dashboardKpi("Aguardando atendimento", summary.waiting, "senhas na fila", summary.overloaded.length ? "atenção" : "normal"),
+      dashboardKpi("Em atendimento", summary.called, "chamadas ativas", summary.called ? "em andamento" : "sem chamadas"),
+      dashboardKpi("Senhas emitidas", summary.issued, "total na data selecionada", adminMetrics.date || "hoje"),
+      dashboardKpi("Tempo médio", summary.serviceSamples ? formatMinutesSeconds(summary.avgServiceSeconds) : "Sem dados", summary.serviceSamples ? "duração dos atendimentos" : "sem atendimentos concluídos", "no período"),
+      dashboardKpi("Avaliação média", satisfactionValue(), `${adminMetrics.satisfaction.count || 0} respostas`, "satisfação")
+    ].join("");
+  }
 
-  document.querySelector("#dashboardAlerts").innerHTML = operationalAlerts(summary);
+  const dashboardAlerts = document.querySelector("#dashboardAlerts");
+  if (dashboardAlerts) dashboardAlerts.innerHTML = operationalAlerts(summary);
 
-  const sectorRows = adminState.sectors.map(sectorSnapshot).sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length);
-  document.querySelector("#dashboardOperations").innerHTML = sectorRows.length
-    ? sectorRows.map((sector) => operationBar(sector)).join("")
-    : `<p class="manager-empty">Aguardando dados dos setores.</p>`;
+  if (dashboardOperations) {
+    const sectorRows = adminState.sectors.map(sectorSnapshot).sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length);
+    dashboardOperations.innerHTML = sectorRows.length
+      ? sectorRows.map((sector) => operationBar(sector)).join("")
+      : `<p class="manager-empty">Nenhum setor disponível para exibir.</p>`;
+  }
 }
 
 function dashboardSummary() {
@@ -294,7 +448,9 @@ function dashboardSummary() {
   const issued = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.issued || 0), 0);
   const finished = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.finished || 0), 0);
   const abandoned = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.abandoned || 0), 0);
-  const avgServiceSeconds = averageNumber(adminMetrics.sectors.map((sector) => Number(sector.avgServiceSeconds || 0)));
+  const sectorsWithSamples = adminMetrics.sectors.filter((sector) => Number(sector.serviceSamples || 0) > 0);
+  const serviceSamples = sectorsWithSamples.reduce((sum, sector) => sum + Number(sector.serviceSamples || 0), 0);
+  const avgServiceSeconds = averageNumber(sectorsWithSamples.map((sector) => Number(sector.avgServiceSeconds || 0)));
   const sectors = adminState.sectors.map(sectorSnapshot);
   const overloaded = sectors.filter((sector) => sector.load >= 100 || (sector.status === "open" && sector.waiting.length > 8));
   const critical = [...sectors].sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length)[0];
@@ -305,18 +461,28 @@ function dashboardSummary() {
     finished,
     abandoned,
     avgServiceSeconds,
+    serviceSamples,
     overloaded,
     criticalSector: critical?.name || ""
   };
 }
 
 function dashboardHealth(summary) {
+  if (!adminState.sectors.length) {
+    return {
+      label: "Aguardando configuração",
+      status: "neutral",
+      headline: "Configure os setores para iniciar o acompanhamento.",
+      detail: "Quando os setores estiverem disponíveis, as filas e os indicadores serão exibidos aqui."
+    };
+  }
   if (summary.overloaded.length) {
+    const sectorNames = summary.overloaded.map((sector) => sector.name).join(", ");
     return {
       label: "Atenção operacional",
       status: "attention",
-      headline: "Há setores pedindo atenção.",
-      detail: `${summary.overloaded.map((sector) => sector.name).join(", ")} está com a fila acima do nível recomendado.`
+      headline: "Alguns setores precisam de atenção.",
+      detail: `${sectorNames} ${summary.overloaded.length > 1 ? "estão com filas acima dos níveis recomendados" : "está com a fila acima do nível recomendado"}.`
     };
   }
   if (summary.called || summary.waiting) {
@@ -324,14 +490,14 @@ function dashboardHealth(summary) {
       label: "Operação estável",
       status: "good",
       headline: "A operação está em andamento.",
-      detail: "As filas estão sendo acompanhadas e os atendimentos ativos aparecem na sequência operacional."
+      detail: "As filas estão sob acompanhamento e os atendimentos ativos aparecem na sequência operacional."
     };
   }
   return {
     label: "Aguardando movimento",
     status: "neutral",
-    headline: "A operação está tranquila.",
-    detail: "Ainda não há senhas ativas. Os indicadores serão atualizados quando a fila receber movimento."
+      headline: "A operação está tranquila.",
+      detail: "Não há senhas ativas neste momento. Os indicadores serão atualizados quando a fila receber movimento."
   };
 }
 
@@ -346,18 +512,24 @@ function dashboardKpi(label, value, detail, trend = "") {
 }
 
 function operationBar(sector) {
-  const value = Number(sector.metric.avgServiceSeconds || sector.averageServiceSeconds || 0);
+  const averageLabel = serviceAverageLabel(sector.metric);
   const width = Math.max(4, Math.min(100, Math.round(sector.load)));
   return `
-    <article class="manager-bar-row">
+    <article class="manager-bar-row" data-sector-tone="${sectorToneIndex(sector)}">
       <div>
         <strong>${escapeHtml(sector.name)}</strong>
         <span>${escapeHtml(sector.waiting.length)} aguardando · ${escapeHtml(sector.currentTicket ? `atual ${supportCode(sector.currentTicket).replace("Senha ", "")}` : "sem chamada")}</span>
       </div>
-      <b>${escapeHtml(formatMinutesSeconds(value))}</b>
+      <b>${escapeHtml(averageLabel)}</b>
       <i><em style="width:${escapeHtml(width)}%"></em></i>
     </article>
   `;
+}
+
+function serviceAverageLabel(metric) {
+  return Number(metric?.serviceSamples || 0) > 0
+    ? formatMinutesSeconds(metric.avgServiceSeconds)
+    : "Sem dados";
 }
 
 function sectorSnapshot(sector) {
@@ -371,11 +543,32 @@ function sectorSnapshot(sector) {
   return { ...sector, tickets, waiting, called, currentTicket, metric, capacity, load };
 }
 
+function sectorToneIndex(sector) {
+  const keyFor = (item) => String(item?.id || item?.name || "");
+  const key = keyFor(sector);
+  if (!key) return 0;
+
+  [...adminState.sectors]
+    .sort((left, right) => keyFor(left).localeCompare(keyFor(right)))
+    .forEach((item) => {
+      const itemKey = keyFor(item);
+      if (itemKey && !managerSectorToneAssignments.has(itemKey)) {
+        managerSectorToneAssignments.set(itemKey, managerSectorToneAssignments.size % MANAGER_SECTOR_TONE_COUNT);
+      }
+    });
+
+  if (!managerSectorToneAssignments.has(key)) {
+    managerSectorToneAssignments.set(key, managerSectorToneAssignments.size % MANAGER_SECTOR_TONE_COUNT);
+  }
+  return managerSectorToneAssignments.get(key);
+}
+
 function operationalAlerts(summary) {
   const alerts = [];
   summary.overloaded.forEach((sector) => {
     alerts.push({
       tone: "attention",
+      sectorTone: sectorToneIndex(sector),
       title: `${sector.name}: fila acima do recomendado`,
       detail: `${sector.waiting.length} senhas aguardando para uma capacidade configurada de ${sector.capacity}.`
     });
@@ -383,15 +576,19 @@ function operationalAlerts(summary) {
   adminState.sectors.filter((sector) => sector.status !== "open").forEach((sector) => {
     alerts.push({
       tone: sector.status === "paused" ? "warning" : "neutral",
+      sectorTone: sectorToneIndex(sector),
       title: `${sector.name}: setor ${statusLabel(sector.status).toLowerCase()}`,
       detail: "Confira a configuração do setor antes de liberar novas senhas."
     });
   });
   if (!alerts.length) {
-    return `<div class="manager-alert manager-alert-good"><span class="manager-alert-mark">✓</span><div><strong>Nenhum alerta operacional</strong><p>Não há filas acima do nível configurado neste momento.</p></div></div>`;
+    if (!adminState.sectors.length) {
+      return `<div class="manager-alert manager-alert-neutral"><span class="manager-alert-mark" aria-hidden="true">i</span><div><strong>Sem dados para análise</strong><p>Os alertas serão exibidos quando houver setores configurados.</p></div></div>`;
+    }
+    return `<div class="manager-alert manager-alert-good"><span class="manager-alert-mark" aria-hidden="true">✓</span><div><strong>Tudo em ordem</strong><p>Não há filas acima dos níveis recomendados neste momento.</p></div></div>`;
   }
   return alerts.slice(0, 4).map((alert) => `
-    <div class="manager-alert manager-alert-${escapeHtml(alert.tone)}">
+    <div class="manager-alert manager-alert-${escapeHtml(alert.tone)}"${Number.isInteger(alert.sectorTone) ? ` data-sector-tone="${escapeHtml(alert.sectorTone)}"` : ""}>
       <span class="manager-alert-mark">!</span>
       <div><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.detail)}</p></div>
     </div>
@@ -427,15 +624,75 @@ function timeParts(totalSeconds) {
 }
 
 function renderUsers() {
-  if (!document.querySelector("#adminUsers")) return;
-  document.querySelector("#adminUsers").innerHTML = adminUsers.map((user) => `
+  const results = document.querySelector("#adminUsers");
+  if (!results || !adminUsersLoaded) return;
+  const toggle = document.querySelector("#toggleAdminUsers");
+  const count = document.querySelector("[data-users-count]");
+  const status = document.querySelector("#adminUserDirectoryStatus");
+  const sectorList = document.querySelector("#adminUserSectorList");
+  if (toggle) toggle.disabled = false;
+  const toggleLabel = toggle?.querySelector("[data-users-toggle-label]");
+  if (toggleLabel) toggleLabel.textContent = toggle.getAttribute("aria-expanded") === "true" ? "Ocultar contas" : "Consultar contas por setor";
+  if (count) count.textContent = `${adminUsers.length} ${adminUsers.length === 1 ? "conta" : "contas"}`;
+
+  const normalizedUsers = adminUsers.map((user) => ({
+    ...user,
+    sectorIds: Array.isArray(user.sectorIds) ? user.sectorIds.map(String) : []
+  }));
+  const knownSectors = Array.isArray(adminState.sectors) ? adminState.sectors : [];
+  const knownSectorIds = new Set(knownSectors.map((sector) => String(sector.id)));
+  const assignedSectorIds = [...new Set(normalizedUsers.flatMap((user) => user.sectorIds))];
+  const unknownSectorIds = assignedSectorIds.filter((id) => !knownSectorIds.has(id));
+  const groups = [
+    ...knownSectors.map((sector) => ({ id: String(sector.id), name: sector.name })),
+    ...unknownSectorIds.map((id) => ({ id, name: id })),
+    ...(normalizedUsers.some((user) => !user.sectorIds.length)
+      ? [{ id: "__global__", name: "Acesso global ou sem setor" }]
+      : [])
+  ].map((group) => ({
+    ...group,
+    users: group.id === "__global__"
+      ? normalizedUsers.filter((user) => !user.sectorIds.length)
+      : normalizedUsers.filter((user) => user.sectorIds.includes(group.id))
+  }));
+
+  if (!groups.some((group) => group.id === selectedUserSectorId)) selectedUserSectorId = null;
+  if (sectorList) {
+    sectorList.innerHTML = groups.map((group) => `
+      <button class="manager-user-sector${group.id === selectedUserSectorId ? " is-selected" : ""}" type="button" data-user-sector="${escapeHtml(group.id)}" aria-pressed="${group.id === selectedUserSectorId}">
+        <span>${escapeHtml(group.name)}</span><b>${group.users.length}</b>
+      </button>
+    `).join("");
+  }
+
+  const selectedGroup = groups.find((group) => group.id === selectedUserSectorId);
+  results.hidden = false;
+  if (status) {
+    status.removeAttribute("data-state");
+    status.textContent = selectedGroup
+      ? `${selectedGroup.name}: ${selectedGroup.users.length} ${selectedGroup.users.length === 1 ? "conta" : "contas"}.`
+      : adminUsers.length
+        ? "Escolha um setor para consultar somente as contas vinculadas a ele."
+      : "Nenhuma conta cadastrada. As novas contas aparecerão aqui após o cadastro.";
+  }
+  if (!selectedGroup) {
+    results.innerHTML = adminUsers.length
+      ? `<p class="manager-users-empty">Selecione um setor para consultar somente as contas vinculadas a ele.</p>`
+      : `<p class="manager-users-empty">Nenhuma conta cadastrada no momento.</p>`;
+    return;
+  }
+  if (!selectedGroup.users.length) {
+    results.innerHTML = `<p class="manager-users-empty">Nenhuma conta vinculada a este setor.</p>`;
+    return;
+  }
+  results.innerHTML = selectedGroup.users.map((user) => `
     <article class="manager-user-row">
       <div class="manager-person">
         <span>${escapeHtml(initials(user.name))}</span>
         <div>
           <strong>${escapeHtml(user.name)}</strong>
           <small>${escapeHtml(user.email)}</small>
-          <small>${user.sectorIds.length ? `Setores: ${escapeHtml(user.sectorIds.join(", "))}` : "Acesso global ou sem setor específico."}</small>
+          <small>${selectedGroup.id === "__global__" ? "Acesso global ou sem setor específico." : `Setor: ${escapeHtml(selectedGroup.name)}`}</small>
         </div>
       </div>
       <b class="manager-badge neutral">${escapeHtml(roleLabel(user.role))}</b>
@@ -464,11 +721,12 @@ async function saveSector(event) {
   form.dataset.submitting = "true";
   if (button) {
     button.disabled = true;
-    button.textContent = "Salvando…";
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Salvando alterações…";
   }
   if (feedback) {
     feedback.className = "manager-form-feedback";
-    feedback.textContent = "Salvando configuração…";
+    feedback.textContent = "Salvando alterações…";
   }
   const data = Object.fromEntries(new FormData(form).entries());
   data.queueSize = Number(data.queueSize);
@@ -486,7 +744,7 @@ async function saveSector(event) {
     await Promise.all(requests);
     if (feedback) {
       feedback.className = "manager-form-feedback success";
-      feedback.textContent = "Setor atualizado com sucesso.";
+      feedback.textContent = "Alterações salvas com sucesso.";
     }
   } catch (error) {
     if (feedback) {
@@ -497,7 +755,8 @@ async function saveSector(event) {
     form.dataset.submitting = "false";
     if (button) {
       button.disabled = false;
-      button.textContent = "Salvar setor";
+      button.removeAttribute("aria-busy");
+      button.textContent = "Salvar alterações";
     }
   }
 }
@@ -509,10 +768,14 @@ async function createUser(event) {
   const feedback = form.querySelector("[data-user-feedback]");
   if (form.dataset.submitting === "true") return;
   form.dataset.submitting = "true";
-  if (button) button.disabled = true;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Criando conta…";
+  }
   if (feedback) {
     feedback.className = "manager-form-feedback";
-    feedback.textContent = "Criando usuário…";
+    feedback.textContent = "Criando conta…";
   }
   const data = Object.fromEntries(new FormData(form).entries());
   data.sectorIds = new FormData(form).getAll("sectorIds");
@@ -523,10 +786,10 @@ async function createUser(event) {
     });
     form.reset();
     updateUserRoleFields();
-    await loadUsers();
+    if (adminUsersLoaded) await loadUsers();
     if (feedback) {
       feedback.className = "manager-form-feedback success";
-      feedback.textContent = "Usuário criado com sucesso.";
+      feedback.textContent = "Conta criada com sucesso.";
     }
   } catch (error) {
     if (feedback) {
@@ -535,7 +798,11 @@ async function createUser(event) {
     }
   } finally {
     form.dataset.submitting = "false";
-    if (button) button.disabled = false;
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.textContent = "Criar conta";
+    }
   }
 }
 
@@ -545,12 +812,12 @@ function statusLabel(status) {
 
 function ticketStatus(ticket) {
   const labels = {
-    aguardando: "aguardando",
-    proximo: "proxima",
-    chamado: "chamada",
-    em_atendimento: "em atendimento",
-    standby: "standby",
-    espera_inteligente: "espera inteligente"
+    aguardando: "Aguardando",
+    proximo: "Próximo",
+    chamado: "Chamado",
+    em_atendimento: "Em atendimento",
+    standby: "Em espera",
+    espera_inteligente: "Espera inteligente"
   };
   return labels[ticket.status] || ticket.status;
 }
@@ -682,6 +949,10 @@ async function logout() {
 async function loadPrintReview() {
   const container=document.querySelector('#printReviewList');
   if(!container)return;
+  const refreshButton=document.querySelector('#refreshPrintReview');
+  if(refreshButton){refreshButton.disabled=true;refreshButton.setAttribute('aria-busy','true');refreshButton.textContent='Consultando…';}
+  container.setAttribute('aria-busy','true');
+  container.innerHTML='<p class="manager-empty">Consultando ocorrências de impressão…</p>';
   try {
     const metrics=await api('/api/observability');
     const rows=metrics.printing?.reviewJobs || [];
@@ -694,8 +965,8 @@ async function loadPrintReview() {
           <label><input name="writerStopped" type="checkbox" required> Parei o agente anterior e conferi o papel.</label>
           <button class="manager-button" type="submit" ${currentUser?.role==='admin'?'':'disabled'}>Registrar decisão</button>
           <p data-print-feedback></p>
-        </div>
-      </form>`).join('') : '<p>Nenhuma impressão com resultado incerto.</p>';
+    </div>
+  </form>`).join('') : '<p class="manager-empty">Tudo em ordem — não há impressões aguardando revisão.</p>';
     for(const form of container.querySelectorAll('[data-print-review]'))form.addEventListener('submit',async event=>{
       event.preventDefault();const button=form.querySelector('button');button.disabled=true;
       // Preserve request identity across a lost acknowledgement while this form is displayed.
@@ -706,5 +977,6 @@ async function loadPrintReview() {
         await loadPrintReview();
       }catch(error){form.querySelector('[data-print-feedback]').textContent=error.message;button.disabled=false;}
     });
-  }catch(error){container.textContent='Consulta das impressões indisponível: '+error.message;}
+  }catch(error){container.innerHTML=`<p class="manager-empty" role="status">Não foi possível consultar as impressões. ${escapeHtml(error.message)}</p>`;}
+  finally{container.removeAttribute('aria-busy');if(refreshButton){refreshButton.disabled=false;refreshButton.removeAttribute('aria-busy');refreshButton.textContent='Atualizar lista';}}
 }

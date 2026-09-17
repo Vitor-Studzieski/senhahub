@@ -65,12 +65,13 @@ let activeQueues = {};
 let sectors = {};
 let stateSource = null;
 let pollingTimer = null;
+let stateRequestInFlight = null;
 let previousTicketStatuses = new Map();
 let countdownTimer = null;
 let activeJoinSector = null;
 let selectedSectorIds = new Set();
 let ticketRequestInFlight = false;
-const STATE_POLL_INTERVAL_MS = 12000;
+const STATE_POLL_INTERVAL_MS = 5000;
 let queueAlertHistory = new Set();
 let visibleQueueAlert = null;
 
@@ -165,8 +166,13 @@ async function syncSession() {
 }
 
 async function loadState() {
-  const state = await api(`/api/state?customer_id=${encodeURIComponent(identity.customerId)}`);
-  applyState(state);
+  if (stateRequestInFlight) return stateRequestInFlight;
+  stateRequestInFlight = api(`/api/state?customer_id=${encodeURIComponent(identity.customerId)}`)
+    .then(applyState)
+    .finally(() => {
+      stateRequestInFlight = null;
+    });
+  return stateRequestInFlight;
 }
 
 function connectRealtime() {
@@ -370,10 +376,112 @@ function roleLabel(role) {
 }
 
 function updateTabs(screen) {
-  document.querySelectorAll(".tabbar button").forEach((button) => {
+  let activeIndex = 0;
+  const buttons = document.querySelectorAll(".tabbar button[data-tab]");
+  buttons.forEach((button, index) => {
     const tab = button.dataset.tab;
-    button.classList.toggle("on", tab === screen || (tab === "sectors" && ["sectors", "ticket", "status", "done", "rating"].includes(screen)));
+    const isActive = tab === screen || (tab === "sectors" && ["sectors", "ticket", "status", "done", "rating"].includes(screen));
+    button.classList.toggle("on", isActive);
+    if (isActive) {
+      activeIndex = index;
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
   });
+  const tabbar = document.querySelector(".tabbar");
+  tabbar?.style.setProperty("--active-tab-x", `${activeIndex * 100}%`);
+  tabbar?.setAttribute("data-active-index", String(activeIndex));
+}
+
+function bindTabbarInteractions() {
+  const tabbar = document.querySelector(".tabbar");
+  if (!tabbar) return;
+
+  let pointer = null;
+  let suppressNextClick = false;
+
+  tabbar.addEventListener("click", (event) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const button = event.target instanceof Element ? event.target.closest("button[data-tab]") : null;
+    if (!button || !tabbar.contains(button)) return;
+    navigate(button.dataset.tab);
+  });
+
+  tabbar.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    const activeButton = event.target instanceof Element ? event.target.closest("button[data-tab].on") : null;
+    if (!activeButton || !tabbar.contains(activeButton)) return;
+
+    pointer = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startIndex: Number(tabbar.dataset.activeIndex) || 0,
+      position: Number(tabbar.dataset.activeIndex) || 0,
+      dragging: false
+    };
+  });
+
+  tabbar.addEventListener("pointermove", (event) => {
+    if (!pointer || event.pointerId !== pointer.id) return;
+
+    const deltaX = event.clientX - pointer.startX;
+    const deltaY = event.clientY - pointer.startY;
+    if (!pointer.dragging) {
+      if (Math.abs(deltaX) < 8 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+      pointer.dragging = true;
+      tabbar.classList.add("is-dragging");
+      try {
+        tabbar.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is an enhancement; movement still works without it.
+      }
+    }
+
+    event.preventDefault();
+    const buttons = [...tabbar.querySelectorAll("button[data-tab]")];
+    if (buttons.length < 2) return;
+    const centers = buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.left + rect.width / 2;
+    });
+    const step = centers[1] - centers[0];
+    if (!step) return;
+    const position = Math.max(0, Math.min(buttons.length - 1, (event.clientX - centers[0]) / step));
+    pointer.position = position;
+    tabbar.style.setProperty("--active-tab-x", `${position * 100}%`);
+  });
+
+  const finishPointer = (event, cancelled = false) => {
+    if (!pointer || event.pointerId !== pointer.id) return;
+    const completedPointer = pointer;
+    pointer = null;
+    tabbar.classList.remove("is-dragging");
+    if (tabbar.hasPointerCapture?.(event.pointerId)) tabbar.releasePointerCapture(event.pointerId);
+
+    if (!completedPointer.dragging || cancelled) {
+      tabbar.style.setProperty("--active-tab-x", `${completedPointer.startIndex * 100}%`);
+      return;
+    }
+
+    const buttons = [...tabbar.querySelectorAll("button[data-tab]")];
+    const targetIndex = Math.max(0, Math.min(buttons.length - 1, Math.round(completedPointer.position)));
+    suppressNextClick = true;
+    window.setTimeout(() => {
+      suppressNextClick = false;
+    }, 0);
+    navigate(buttons[targetIndex]?.dataset.tab);
+  };
+
+  tabbar.addEventListener("pointerup", (event) => finishPointer(event));
+  tabbar.addEventListener("pointercancel", (event) => finishPointer(event, true));
 }
 
 async function joinQueue(sectorId) {
@@ -504,15 +612,9 @@ function priorityPayload() {
 }
 
 function syncQueue() {
-  const activeCount = Object.keys(activeQueues).length;
   const data = getCurrentQueueData();
   const serviceSector = getServiceInProgressSector();
   const hasQueue = Boolean(data);
-
-  document.querySelector("#queueBanner").classList.toggle("visible", hasQueue);
-  document.querySelector("#bannerTicket").textContent = hasQueue ? displayCustomerName(data) : "";
-  document.querySelector("#bannerText").textContent = hasQueue ? bannerText(data, activeCount) : "";
-  document.querySelector("#bannerProgress").style.width = hasQueue ? `${data.progress}%` : "0%";
 
   document.querySelector("#ticketNumber").textContent = hasQueue ? displayCustomerName(data) : "--";
   document.querySelector("#ticketSupportCode").textContent = hasQueue ? supportCode(data) : "Código --";
@@ -525,7 +627,6 @@ function syncQueue() {
     : "Voce sera avisado quando estiver proximo.";
   renderPriorityBadge(document.querySelector("#ticketPriorityBadge"), data);
 
-  document.querySelector("#statusSector").textContent = hasQueue ? `${data.sector} · ${data.counterLabel}` : "Nenhuma senha ativa";
   document.querySelector("#statusCurrentTicket").textContent = hasQueue ? data.current || "--" : "--";
   document.querySelector("#statusYourTicket").textContent = hasQueue ? data.ticket || "--" : "--";
   updateQueueAlert(data);
@@ -563,14 +664,12 @@ function getCurrentQueueData() {
 function renderStatusTicketBundle() {
   const mainCard = document.querySelector(".status-ticket-card");
   const bundle = document.querySelector("#statusTicketBundle");
-  const sectorLabel = document.querySelector("#statusSector");
   const priorityBadge = document.querySelector("#statusPriorityBadge");
   if (!mainCard || !bundle) return;
 
   const entries = Object.entries(activeQueues);
   const showBundle = entries.length > 1;
   mainCard.hidden = showBundle;
-  if (sectorLabel) sectorLabel.hidden = showBundle;
   if (priorityBadge) priorityBadge.hidden = showBundle || !getCurrentQueueData()?.priority;
   bundle.hidden = !showBundle;
 
@@ -631,12 +730,6 @@ async function cancelCurrentTicket(ticketId = null) {
   }
 }
 
-function getNextSmartWaitSector() {
-  return Object.entries(activeQueues)
-    .filter(([, data]) => data.status === SMART_WAIT_STATUS)
-    .sort(([, a], [, b]) => new Date(a.createdAt) - new Date(b.createdAt))[0]?.[0] || null;
-}
-
 async function confirmCall() {
   const data = getCurrentQueueData();
   if (!data || data.status !== "chamado") return;
@@ -690,32 +783,20 @@ function renderServiceScreen() {
   const serviceSector = getServiceInProgressSector();
   if (serviceSector) currentSector = serviceSector;
 
-  const current = serviceSector ? activeQueues[serviceSector] : null;
-  const smartWaitSector = getNextSmartWaitSector();
-  const smartWait = smartWaitSector ? activeQueues[smartWaitSector] : null;
-  const waitingCount = Object.values(activeQueues).filter((item) => item.status === SMART_WAIT_STATUS).length;
-
-  if (!current) {
+  if (!serviceSector) {
     document.querySelector("#serviceTitle").textContent = "Atendimento finalizado";
     document.querySelector("#serviceMessage").textContent = "Não há pedido em atendimento neste momento.";
-    document.querySelector("#serviceCurrent").textContent = "Atendimento atual: --";
-    document.querySelector("#serviceNext").textContent = hasActiveQueues() ? "Você ainda possui senhas ativas." : "Nenhuma senha ativa.";
-    document.querySelector("#completeServiceButton").textContent = hasActiveQueues() ? "Voltar para minhas senhas" : "Ir para avaliação";
+    document.querySelector("#completeServiceButton").textContent = hasActiveQueues() ? "Acompanhar minhas senhas" : "Voltar ao início";
     return;
   }
 
-  document.querySelector("#serviceTitle").textContent = "Pedido em atendimento";
-  document.querySelector("#serviceMessage").textContent =
-    "Quando o pedido terminar, informe no app para liberar a próxima senha protegida.";
-  document.querySelector("#serviceCurrent").textContent = `Atendimento atual: ${displayCustomerName(current)} - ${supportCode(current)} - ${current.sector}`;
-  document.querySelector("#serviceNext").textContent = smartWait
-    ? `Próxima protegida: ${displayCustomerName(smartWait)} - ${supportCode(smartWait)} - ${smartWait.sector}.`
-    : waitingCount > 1
-      ? `${waitingCount} senhas estão protegidas para chamada em sequência.`
-      : "Nenhuma senha protegida no momento.";
-  document.querySelector("#completeServiceButton").textContent = smartWait
-    ? "Informar fim e chamar próxima senha"
-    : "Informar fim do pedido";
+  document.querySelector("#serviceTitle").textContent = "Chegada informada";
+  document.querySelector("#serviceMessage").textContent = "Seu aviso foi enviado ao colaborador. Aguarde as orientações dele para o atendimento.";
+  document.querySelector("#completeServiceButton").textContent = "Acompanhar minhas senhas";
+}
+
+function leaveServiceScreen() {
+  navigate(hasActiveQueues() ? "status" : "home");
 }
 
 function statusText(data) {
@@ -727,11 +808,6 @@ function statusText(data) {
   if (hasLiveCountdown(data)) return `Chamada em ${formatTimer(data.secondsToCall)}`;
   if (data.position === 1) return "Aguardando chamada";
   return `Previsão: ${formatTimer(data.secondsToCall)}`;
-}
-
-function bannerText(data, activeCount) {
-  const prefix = activeCount > 1 ? `${activeCount} senhas ativas` : data.sector;
-  return `${prefix} - ${statusText(data)}`;
 }
 
 function formatStandbyTime(data) {
@@ -1095,7 +1171,7 @@ async function logoutAccount() {
 
 function bindEvents() {
   document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.go)));
-  document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.tab)));
+  bindTabbarInteractions();
   document.querySelector("#homeQueueAction")?.addEventListener("click", () => navigate("sectors"));
   document.querySelectorAll("[data-join]").forEach((button) => button.addEventListener("click", () => joinQueue(button.dataset.join)));
   document.querySelectorAll("[data-quick-join]").forEach((button) => button.addEventListener("click", () => joinQueue(button.dataset.quickJoin)));
@@ -1107,7 +1183,7 @@ function bindEvents() {
   document.querySelector("#confirmCall").addEventListener("click", confirmCall);
   document.querySelector("#ticketCancelButton").addEventListener("click", () => cancelCurrentTicket());
   document.querySelector("#statusCancelButton").addEventListener("click", () => cancelCurrentTicket());
-  document.querySelector("#completeServiceButton").addEventListener("click", finishCurrentService);
+  document.querySelector("#completeServiceButton").addEventListener("click", leaveServiceScreen);
   document.querySelector("#statusFinishButton").addEventListener("click", finishCurrentService);
   document.querySelector("#floatingFinishButton").addEventListener("click", finishCurrentService);
   document.querySelector("#queueHelpButton")?.addEventListener("click", () => openQueueTutorial());

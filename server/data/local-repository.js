@@ -233,10 +233,12 @@ async function getLocalStaffState(user = null) {
         FROM public.calls c
         JOIN public.tickets t ON t.id = c.ticket_id
         WHERE c.sector_id = ANY($1::text[])
+          AND c.created_at >= (((now() AT TIME ZONE $2)::date)::timestamp AT TIME ZONE $2)
+          AND c.created_at < ((((now() AT TIME ZONE $2)::date + 1)::timestamp) AT TIME ZONE $2)
         ORDER BY c.created_at DESC
         LIMIT 100
       `,
-      [sectorIds]
+      [sectorIds, BUSINESS_TIME_ZONE]
     ),
     query("SELECT (now() AT TIME ZONE $1)::date AS business_date", [BUSINESS_TIME_ZONE])
   ]);
@@ -284,7 +286,7 @@ async function getLocalStaffState(user = null) {
   };
 }
 
-async function callNextLocalTicket(sectorId, user = null) {
+async function callNextLocalTicket(sectorId, user = null, options = {}) {
   const normalizedSectorId = normalizeRequiredId(sectorId, "sectorId");
   if (!canAccessLocalSector(user, normalizedSectorId)) {
     throw new Error("Usuário sem permissão para este setor.");
@@ -304,16 +306,17 @@ async function callNextLocalTicket(sectorId, user = null) {
       [normalizedSectorId]
     );
     const preferentialStreak = Number(counterResult.rows[0]?.preferential_streak || 0);
+    const eligibleStatuses = options.preferStandby ? CALL_ELIGIBLE_STATUSES : CALL_ELIGIBLE_STATUSES.filter((status) => status !== "standby");
     const queueResult = await client.query(
       `
         SELECT *
         FROM public.tickets
         WHERE sector_id = $1
           AND status = ANY($2::public.ticket_status[])
-        ORDER BY queue_order ASC, created_at ASC
+        ORDER BY ${options.preferStandby ? "CASE WHEN status = 'standby' THEN 0 ELSE 1 END, " : ""}queue_order ASC, created_at ASC
         FOR UPDATE SKIP LOCKED
       `,
-      [normalizedSectorId, CALL_ELIGIBLE_STATUSES.filter((status) => status !== "standby")]
+      [normalizedSectorId, eligibleStatuses]
     );
 
     const preferentialQueue = queueResult.rows.filter((ticket) => ticket.priority);
@@ -410,6 +413,99 @@ async function callNextLocalTicket(sectorId, user = null) {
     }
 
     return { ticket: null, message: "Nenhuma senha elegível para chamada." };
+  });
+}
+
+async function callControlLocalTicket(sectorId, action, user = null) {
+  const normalizedSectorId = normalizeRequiredId(sectorId, "sectorId");
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!["previous", "again", "next"].includes(normalizedAction)) {
+    throw new Error("Ação de chamada inválida.");
+  }
+  if (!canAccessLocalSector(user, normalizedSectorId)) {
+    throw new Error("Usuário sem permissão para este setor.");
+  }
+  if (normalizedAction === "next") {
+    let result = await callNextLocalTicket(normalizedSectorId, user);
+    if (!result.ticket && !result.error) result = await callNextLocalTicket(normalizedSectorId, user, { preferStandby: true });
+    return result;
+  }
+
+  return withTransaction(async (client) => {
+    const sectorResult = await client.query("SELECT * FROM public.sectors WHERE id = $1 FOR UPDATE", [normalizedSectorId]);
+    const sector = sectorResult.rows[0];
+    if (!sector) throw new Error("Setor não encontrado.");
+    if (sector.status !== "open") throw new Error("Setor fechado.");
+
+    const callsResult = await client.query(
+      `
+        SELECT c.ticket_id, c.created_at, t.customer_id, t.customer_name,
+               t.code, t.status, t.absence_count
+        FROM public.calls c
+        JOIN public.tickets t ON t.id = c.ticket_id
+        WHERE c.sector_id = $1
+          AND c.action = 'senha_chamada'
+          AND c.created_at >= (((now() AT TIME ZONE $2)::date)::timestamp AT TIME ZONE $2)
+          AND c.created_at < ((((now() AT TIME ZONE $2)::date + 1)::timestamp) AT TIME ZONE $2)
+        ORDER BY c.created_at DESC
+        LIMIT 100
+      `,
+      [normalizedSectorId, BUSINESS_TIME_ZONE]
+    );
+    const latest = callsResult.rows[0];
+    const target = normalizedAction === "again"
+      ? latest
+      : callsResult.rows.find((call) => call.ticket_id !== latest?.ticket_id);
+    if (!target) {
+      return {
+        ticket: null,
+        message: normalizedAction === "again" ? "Nenhuma senha chamada para repetir." : "Nenhuma senha anterior disponível."
+      };
+    }
+
+    const now = new Date().toISOString();
+    if (["aguardando", "proximo", "standby"].includes(target.status)) {
+      await client.query(
+        `
+          UPDATE public.tickets
+          SET status = 'chamado'::public.ticket_status,
+              called_at = $2,
+              standby_started_at = NULL,
+              standby_expires_at = NULL,
+              updated_at = $2
+          WHERE id = $1
+        `,
+        [target.ticket_id, now]
+      );
+    }
+    await client.query(
+      "INSERT INTO public.calls (id, ticket_id, sector_id, action, created_at) VALUES (gen_random_uuid(), $1, $2, 'senha_chamada', $3)",
+      [target.ticket_id, normalizedSectorId, now]
+    );
+    await client.query(
+      `
+        INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload)
+        VALUES ('senha_chamada', 'ticket', $1, $2, $3, $4::jsonb)
+      `,
+      [target.ticket_id, target.customer_id, normalizedSectorId, JSON.stringify({ code: target.code, controlAction: normalizedAction })]
+    );
+
+    const ticketResult = await client.query("SELECT * FROM public.tickets WHERE id = $1", [target.ticket_id]);
+    const activeRows = await client.query(
+      "SELECT * FROM public.tickets WHERE sector_id = $1 AND status = ANY($2::public.ticket_status[])",
+      [normalizedSectorId, ACTIVE_STATUSES]
+    );
+    const counters = await client.query("SELECT sector_id, business_date, last_number FROM public.ticket_counters WHERE sector_id = $1", [normalizedSectorId]);
+    const businessDateResult = await client.query("SELECT (now() AT TIME ZONE $1)::date AS business_date", [BUSINESS_TIME_ZONE]);
+    return {
+      ticket: publicTicketDto(
+        ticketResult.rows[0],
+        sector,
+        activeRows.rows,
+        counters.rows,
+        businessDateResult.rows[0].business_date
+      )
+    };
   });
 }
 
@@ -1240,7 +1336,7 @@ function publicSectorDto(sector, counters, businessDate, activeRows) {
     estimateBasedOnRecentServices: false,
     capacity: Number(sector.capacity || 1),
     status: sector.status,
-    current: active?.code || formatTicket(sector.prefix, counter?.business_date === businessDate ? Number(counter.last_number) : 0)
+    current: active?.code || (counter?.business_date === businessDate ? formatTicket(sector.prefix, Number(counter.last_number)) : null)
   };
 }
 
@@ -1262,7 +1358,7 @@ function publicTicketDto(ticket, sector, sectorRows, counters, businessDate) {
   const secondsToCall = waiting ? Math.max(eligibleDelay, activeDelay + ahead * averageSeconds) : 0;
   const estimatedCallAt = waiting ? new Date(Date.now() + secondsToCall * 1000).toISOString() : null;
   const counter = counters.find((row) => row.sector_id === sector.id);
-  const current = currentTicket?.code || formatTicket(sector.prefix, counter?.business_date === businessDate ? Number(counter.last_number) : 0);
+  const current = currentTicket?.code || (counter?.business_date === businessDate ? formatTicket(sector.prefix, Number(counter.last_number)) : null);
 
   return {
     id: ticket.id,
@@ -1383,6 +1479,7 @@ function publicTrackingTicketView(ticket) {
 module.exports = {
   cancelTicket,
   createTicket,
+  callControlLocalTicket,
   callNextLocalTicket,
   confirmLocalTicket,
   finishLocalTicket,

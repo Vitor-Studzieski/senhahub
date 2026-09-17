@@ -60,6 +60,12 @@ test("bloqueia paginas sensiveis, HTML legado e status do totem sem acesso", asy
   assert.equal(kioskStatus.status, 401);
 });
 
+test("painel nao inventa senha atual quando ainda nao houve emissao", async () => {
+  const state = await api("/api/staff/state", { cookie: adminCookie });
+  assert.ok(state.sectors.length > 0);
+  assert.ok(state.sectors.every((sector) => sector.current === null));
+});
+
 test.after(async () => {
   server?.kill();
   await new Promise((resolve) => server?.once("exit", resolve));
@@ -84,6 +90,10 @@ test("orquestra espera inteligente e libera uma senha por vez", async () => {
   assert.equal(state.tickets.find((ticket) => ticket.sectorId === "frios").status, "espera_inteligente");
 
   await api(`/api/tickets/${first.ticket.id}/finish`, { method: "POST", cookie, body: identity });
+  state = await api(`/api/state?customer_id=${identity.customerId}`, { cookie });
+  assert.equal(state.tickets.find((ticket) => ticket.sectorId === "frios").status, "aguardando");
+
+  await api("/api/sectors/frios/call-next", { method: "POST", cookie: adminCookie });
   state = await api(`/api/state?customer_id=${identity.customerId}`, { cookie });
   assert.equal(state.tickets.find((ticket) => ticket.sectorId === "frios").status, "chamado");
 });
@@ -118,14 +128,24 @@ test("permite chamadas em setores com outras senhas ja chamadas", async () => {
     await api("/api/sectors/frios/call-next", { method: "POST", cookie: adminCookie });
     await api(`/api/tickets/${firstService.ticket.id}/finish`, { method: "POST", cookie: adminCookie });
 
-    const staff = await api("/api/staff/state", { cookie: adminCookie });
-    const frios = staff.sectors.find((sector) => sector.id === "frios");
-    const activeCalls = frios.tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
-    assert.equal(activeCalls.length, 2);
+    let customerState = await api(`/api/state?customer_id=${firstCustomer.identity.customerId}`, { cookie: firstCustomer.cookie });
+    assert.equal(customerState.tickets.find((ticket) => ticket.id === smartWait.ticket.id).status, "aguardando");
+
+    let staff = await api("/api/staff/state", { cookie: adminCookie });
+    let frios = staff.sectors.find((sector) => sector.id === "frios");
+    let activeCalls = frios.tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
+    assert.equal(activeCalls.length, 1);
     assert.ok(activeCalls.some((ticket) => ticket.id === other.ticket.id));
 
-    const customerState = await api(`/api/state?customer_id=${firstCustomer.identity.customerId}`, { cookie: firstCustomer.cookie });
+    const calledSmartWait = await api("/api/sectors/frios/call-next", { method: "POST", cookie: adminCookie });
+    assert.equal(calledSmartWait.ticket.id, smartWait.ticket.id);
+    customerState = await api(`/api/state?customer_id=${firstCustomer.identity.customerId}`, { cookie: firstCustomer.cookie });
     assert.equal(customerState.tickets.find((ticket) => ticket.id === smartWait.ticket.id).status, "chamado");
+
+    staff = await api("/api/staff/state", { cookie: adminCookie });
+    frios = staff.sectors.find((sector) => sector.id === "frios");
+    activeCalls = frios.tickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
+    assert.equal(activeCalls.length, 2);
   } finally {
     resetSectorTickets("acougue");
     resetSectorTickets("frios");
@@ -298,6 +318,43 @@ test("duas chamadas paralelas registram duas senhas distintas sem duplicar uma s
     assert.ok(calledTestTickets.every((ticket) => ["chamado", "em_atendimento"].includes(ticket.status)));
     const testCalls = sector.recentCalls.filter((call) => [first.ticket.ticket, second.ticket.ticket].includes(call.ticket));
     assert.equal(new Set(testCalls.map((call) => call.ticket)).size, 2);
+  } finally {
+    resetSectorTickets("acougue");
+  }
+});
+
+test("estado da TV mostra apenas chamadas do dia atual", async () => {
+  resetSectorTickets("acougue");
+  try {
+    const previousCustomer = await createCustomer("tv-chamada-dia-anterior");
+    const previousTicket = await api("/api/tickets", {
+      method: "POST",
+      cookie: previousCustomer.cookie,
+      body: { ...previousCustomer.identity, sectorId: "acougue" }
+    });
+    await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie });
+    await api(`/api/tickets/${previousTicket.ticket.id}/confirm`, { method: "POST", cookie: adminCookie });
+    await api(`/api/tickets/${previousTicket.ticket.id}/finish`, { method: "POST", cookie: adminCookie });
+
+    const previousDay = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const database = new DatabaseSync(path.join(dataDir, "senhahub.sqlite"));
+    database.prepare("UPDATE tickets SET created_at = ? WHERE id = ?").run(previousDay, previousTicket.ticket.id);
+    database.prepare("UPDATE calls SET created_at = ? WHERE ticket_id = ?").run(previousDay, previousTicket.ticket.id);
+    database.close();
+
+    const todayCustomer = await createCustomer("tv-chamada-dia-atual");
+    const todayTicket = await api("/api/tickets", {
+      method: "POST",
+      cookie: todayCustomer.cookie,
+      body: { ...todayCustomer.identity, sectorId: "acougue" }
+    });
+    await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie });
+
+    const state = await api("/api/staff/state", { cookie: adminCookie });
+    const sector = state.sectors.find((item) => item.id === "acougue");
+    const callTickets = sector.recentCalls.map((call) => call.ticket);
+    assert.ok(callTickets.includes(todayTicket.ticket.ticket));
+    assert.ok(!callTickets.includes(previousTicket.ticket.ticket));
   } finally {
     resetSectorTickets("acougue");
   }
@@ -684,6 +741,51 @@ test("atendente chama varias senhas em sequencia sem finalizar a anterior", asyn
   assert.equal(secondState.tickets[0].status, "chamado");
 });
 
+test("TV controla senha anterior, repeticao e proxima chamada", async () => {
+  resetSectorTickets("acougue");
+  const customers = await Promise.all([
+    createCustomer("controle-tv-um"),
+    createCustomer("controle-tv-dois"),
+    createCustomer("controle-tv-tres")
+  ]);
+  const tickets = [];
+  for (const customer of customers) {
+    tickets.push((await api("/api/tickets", {
+      method: "POST",
+      cookie: customer.cookie,
+      body: { ...customer.identity, sectorId: "acougue" }
+    })).ticket);
+  }
+
+  try {
+    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie })).ticket.id, tickets[0].id);
+    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie })).ticket.id, tickets[1].id);
+
+    const repeated = await api("/api/sectors/acougue/call-control", {
+      method: "POST",
+      cookie: adminCookie,
+      body: { action: "again" }
+    });
+    assert.equal(repeated.ticket.id, tickets[1].id);
+
+    const previous = await api("/api/sectors/acougue/call-control", {
+      method: "POST",
+      cookie: adminCookie,
+      body: { action: "previous" }
+    });
+    assert.equal(previous.ticket.id, tickets[0].id);
+
+    const next = await api("/api/sectors/acougue/call-control", {
+      method: "POST",
+      cookie: adminCookie,
+      body: { action: "next" }
+    });
+    assert.equal(next.ticket.id, tickets[2].id);
+  } finally {
+    resetSectorTickets("acougue");
+  }
+});
+
 test("atendente nao opera senha fora do setor permitido", async () => {
   resetSectorTickets("acougue");
   const attendantCookie = await createStaffUser("atendente-padaria", "attendant", ["padaria"]);
@@ -775,14 +877,21 @@ test("fila segue duas preferenciais e uma comum, preservando a ordem de chegada"
   assert.deepEqual(calls, [firstPriority.ticket.ticket, secondPriority.ticket.ticket, firstCommon.ticket.ticket, secondCommon.ticket.ticket]);
 });
 
-test("atendente so pula senha com justificativa e registra historico", async () => {
+test("atendente so pula senha com justificativa e controla a proxima chamada", async () => {
   resetSectorTickets("padaria");
   const customer = await createCustomer("pular-com-motivo");
+  const nextCustomer = await createCustomer("aguarda-chamada-colaborador");
   const created = await api("/api/tickets", {
     method: "POST",
     cookie: customer.cookie,
     body: { ...customer.identity, sectorId: "padaria" }
   });
+  const nextTicket = await api("/api/tickets", {
+    method: "POST",
+    cookie: nextCustomer.cookie,
+    body: { ...nextCustomer.identity, sectorId: "padaria" }
+  });
+  assert.equal(nextTicket.ticket.position, 2);
 
   const blocked = await api(`/api/tickets/${created.ticket.id}/skip`, { method: "POST", cookie: adminCookie, body: {}, ok: false });
   assert.match(blocked.error, /motivo/i);
@@ -797,9 +906,15 @@ test("atendente so pula senha com justificativa e registra historico", async () 
   const staff = await api("/api/staff/state", { cookie: adminCookie });
   const padaria = staff.sectors.find((sector) => sector.id === "padaria");
   assert.ok(padaria.recentCalls.some((call) => call.action === "senha_pulada:cliente_ausente"));
+  assert.equal((await api(`/api/state?customer_id=${nextCustomer.identity.customerId}`, { cookie: nextCustomer.cookie })).tickets[0].status, "aguardando");
+
+  const called = await api("/api/sectors/padaria/call-next", { method: "POST", cookie: adminCookie });
+  assert.equal(called.ticket.id, nextTicket.ticket.id);
+  assert.equal((await api(`/api/state?customer_id=${nextCustomer.identity.customerId}`, { cookie: nextCustomer.cookie })).tickets[0].status, "chamado");
+  assert.equal((await api(`/api/state?customer_id=${customer.identity.customerId}`, { cookie: customer.cookie })).tickets[0].status, "standby");
 });
 
-test("senha ausente entra em standby e volta apos o proximo atendimento", async () => {
+test("senha ausente volta para fila e aguarda chamada explicita do atendente", async () => {
   resetSectorTickets("acougue");
   const firstCustomer = await createCustomer("standby-ausente");
   const secondCustomer = await createCustomer("standby-proximo");
@@ -819,8 +934,14 @@ test("senha ausente entra em standby e volta apos o proximo atendimento", async 
 
   await api(`/api/tickets/${second.ticket.id}/confirm`, { method: "POST", cookie: adminCookie });
   const finished = await api(`/api/tickets/${second.ticket.id}/finish`, { method: "POST", cookie: adminCookie });
-  assert.equal(finished.nextTicket.ticket, first.ticket.ticket);
+  assert.equal(finished.nextTicket, null);
 
+  firstState = await api(`/api/state?customer_id=${firstCustomer.identity.customerId}`, { cookie: firstCustomer.cookie });
+  assert.equal(firstState.tickets[0].status, "standby");
+
+  // The waiting queue is empty, so the collaborator explicitly recalls the standby ticket.
+  const calledFirst = await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie });
+  assert.equal(calledFirst.ticket.ticket, first.ticket.ticket);
   firstState = await api(`/api/state?customer_id=${firstCustomer.identity.customerId}`, { cookie: firstCustomer.cookie });
   assert.equal(firstState.tickets[0].status, "chamado");
 });
@@ -864,6 +985,94 @@ test("contador de senha usa 000 a 999 e reinicia depois do limite", async () => 
 
   assert.equal(first.ticket.ticket, "P999");
   assert.equal(second.ticket.ticket, "P000");
+});
+
+test("gestor limpa o histórico encerrado sem apagar a fila ativa nem a numeração", async () => {
+  resetSectorTickets("padaria");
+  resetSectorTickets("acougue");
+
+  const historyCustomer = await createCustomer("limpar-historico");
+  const finishedTicket = await api("/api/tickets", {
+    method: "POST",
+    cookie: historyCustomer.cookie,
+    body: { ...historyCustomer.identity, sectorId: "padaria" }
+  });
+  const called = await api("/api/sectors/padaria/call-next", { method: "POST", cookie: adminCookie });
+  assert.equal(called.ticket.id, finishedTicket.ticket.id);
+  await api(`/api/tickets/${finishedTicket.ticket.id}/confirm`, { method: "POST", cookie: adminCookie });
+  await api(`/api/tickets/${finishedTicket.ticket.id}/finish`, { method: "POST", cookie: adminCookie });
+  await api("/api/ratings", {
+    method: "POST",
+    cookie: historyCustomer.cookie,
+    body: { ticketId: finishedTicket.ticket.id, score: "Ótima", comment: "Atendimento de teste" }
+  });
+
+  const protectedCustomer = await createCustomer("impressao-pendente-preservada");
+  const protectedTicket = await api("/api/tickets", {
+    method: "POST",
+    cookie: protectedCustomer.cookie,
+    body: { ...protectedCustomer.identity, sectorId: "padaria" }
+  });
+  const protectedCall = await api("/api/sectors/padaria/call-next", { method: "POST", cookie: adminCookie });
+  assert.equal(protectedCall.ticket.id, protectedTicket.ticket.id);
+  await api(`/api/tickets/${protectedTicket.ticket.id}/confirm`, { method: "POST", cookie: adminCookie });
+  await api(`/api/tickets/${protectedTicket.ticket.id}/finish`, { method: "POST", cookie: adminCookie });
+
+  const activeCustomer = await createCustomer("fila-preservada");
+  const activeTicket = await api("/api/tickets", {
+    method: "POST",
+    cookie: activeCustomer.cookie,
+    body: { ...activeCustomer.identity, sectorId: "acougue" }
+  });
+  const databasePath = path.join(dataDir, "senhahub.sqlite");
+  let database = new DatabaseSync(databasePath);
+  const numberBeforeReset = database.prepare("SELECT last_number FROM ticket_counters WHERE sector_id = ?").get("acougue").last_number;
+  const kioskId = database.prepare("SELECT id FROM print_kiosks LIMIT 1").get().id;
+  const insertedAt = new Date().toISOString();
+  database.prepare(`
+    INSERT INTO print_jobs (id, ticket_id, kiosk_id, idempotency_key, status, payload, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    crypto.randomUUID(),
+    protectedTicket.ticket.id,
+    kioskId,
+    crypto.randomUUID(),
+    JSON.stringify({ ticketIds: [protectedTicket.ticket.id] }),
+    insertedAt,
+    insertedAt
+  );
+  database.close();
+
+  const missingCsrf = await fetch(`${BASE_URL}/api/tickets/history/reset`, {
+    method: "POST",
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(missingCsrf.status, 403);
+
+  const result = await api("/api/tickets/history/reset", { method: "POST", cookie: adminCookie });
+  assert.ok(result.deletedTickets >= 1);
+  assert.ok(result.deletedRatings >= 1);
+  assert.equal(result.skippedTickets, 1);
+
+  const customerHistory = await api("/api/history", { cookie: historyCustomer.cookie });
+  assert.deepEqual(customerHistory.tickets, []);
+  assert.deepEqual(customerHistory.ratings, []);
+  const protectedHistory = await api("/api/history", { cookie: protectedCustomer.cookie });
+  assert.deepEqual(protectedHistory.tickets.map((ticket) => ticket.id), [protectedTicket.ticket.id]);
+  const activeState = await api("/api/state", { cookie: activeCustomer.cookie });
+  assert.deepEqual(activeState.tickets.map((ticket) => ticket.id), [activeTicket.ticket.id]);
+
+  database = new DatabaseSync(databasePath);
+  const remainingHistoricalTickets = database.prepare(`
+    SELECT COUNT(*) AS total FROM tickets WHERE status IN ('atendido', 'cancelado', 'expirado')
+  `).get().total;
+  const numberAfterReset = database.prepare("SELECT last_number FROM ticket_counters WHERE sector_id = ?").get("acougue").last_number;
+  database.close();
+  assert.equal(remainingHistoricalTickets, 1);
+  assert.equal(numberAfterReset, numberBeforeReset);
+
+  const metrics = await api(`/api/metrics?date=${businessDateFor()}`, { cookie: adminCookie });
+  assert.equal(metrics.sectors.find((sector) => sector.id === "padaria").issued, 1);
 });
 
 async function login(email, password) {

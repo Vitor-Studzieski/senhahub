@@ -1,0 +1,34 @@
+name: SenhaHub Print Agent x86
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "windows/print-agent-x86/**"
+      - ".github/workflows/print-agent-x86.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: senhahub-print-agent-x86-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-installer:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build x86 agent and installer
+        shell: pwsh
+        run: .\windows\print-agent-x86\build-installer.ps1
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: senhahub-print-agent-x86-installer
+          path: windows/print-agent-x86/installer/bin/Release/SenhaHub.PrintAgent.Setup.exe
+          if-no-files-found: error

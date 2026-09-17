@@ -4,37 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Setores - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260916.4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
-        <div class="manager-brand"><div class="manager-brand-mark">SH</div><div><strong>SenhaHub</strong><span>Painel do gestor</span></div></div>
-        <nav class="manager-nav" aria-label="Navegação do gestor">
-          <a href="/admin"><span>Visão geral</span><small>01</small></a>
-          <a href="/admin/operacao"><span>Operação</span><small>02</small></a>
-          <a class="active" href="/admin/setores"><span>Setores</span><small>03</small></a>
-          <a href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><span>Usuários</span><small>05</small></a>
+        <div class="manager-brand"><img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" /><div><strong>SenhaHub</strong><span>Painel do gestor</span></div></div>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a class="active" href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
-        <div class="manager-sidebar-note">Configure os setores, capacidade, balcões e tempos médios.</div>
+        <div class="manager-sidebar-note">Ajuste a capacidade e os parâmetros de cada área de atendimento.</div>
       </aside>
 
       <main class="manager-main">
         <header class="manager-topbar">
-          <div><p class="manager-eyebrow">Configuração</p><h1>Setores</h1><p>Gerencie os balcões e os parâmetros que orientam as filas.</p></div>
+          <div><p class="manager-eyebrow">Configuração de atendimento</p><h1>Setores</h1><p>Gerencie balcões, capacidade e tempo médio de cada área.</p></div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização automática</span></span>
-            <a class="manager-button secondary" href="/admin">Visão geral</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Sair</button>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
+            <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
           </div>
         </header>
         <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Áreas de atendimento</p><h2>Configuração dos setores</h2><p>Edite cada setor sem misturar esses campos com o acompanhamento operacional.</p></div>
+          <div><p class="manager-eyebrow">Áreas de atendimento</p><h2>Setores cadastrados</h2><p>Acompanhe a fila e ajuste os parâmetros de cada setor nesta tela.</p></div>
         </section>
-        <section class="manager-sector-grid" id="adminSectors"></section>
+        <section class="manager-sector-grid" id="adminSectors" aria-live="polite">
+          <p class="manager-empty" role="status">Carregando os setores cadastrados…</p>
+        </section>
       </main>
     </div>
-    <script src="admin.js"></script>
+    <script src="admin.js?v=20260916.4"></script>
   </body>
 </html>

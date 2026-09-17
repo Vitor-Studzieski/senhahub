@@ -1,6 +1,7 @@
 (function initializeTotem() {
   const GENERAL_QR_URL = "https://senhahub.vercel.app/login?next=%2F";
   const RESULT_DISPLAY_MS = 4000;
+  const QUEUE_REFRESH_INTERVAL_MS = 5000;
   // Novos tipos de atendimento podem ser adicionados aqui sem alterar a estrutura da tela.
   const SERVICE_TYPES = [
     {
@@ -72,6 +73,7 @@
     currentStep: "type",
     pollingTimer: null,
     queueRefreshTimer: null,
+    queueRefreshInFlight: false,
     resultTimer: null,
     printJobs: [],
     printJobStatuses: new Map(),
@@ -232,11 +234,13 @@
     clearInterval(state.queueRefreshTimer);
     state.queueRefreshTimer = null;
     if (state.mode !== "central") return;
-    state.queueRefreshTimer = setInterval(refreshQueueCounts, 10000);
+    state.queueRefreshTimer = setInterval(refreshQueueCounts, QUEUE_REFRESH_INTERVAL_MS);
   }
 
   async function refreshQueueCounts() {
     if (state.currentStep !== "sector" || elements.operation.hidden) return;
+    if (state.queueRefreshInFlight) return;
+    state.queueRefreshInFlight = true;
     try {
       const status = await api("/api/kiosk/status");
       if (!status.paired) return;
@@ -244,6 +248,8 @@
       updateSectorWaitingCounts(status.sectors);
     } catch {
       // A contagem atual permanece na tela até a próxima atualização bem-sucedida.
+    } finally {
+      state.queueRefreshInFlight = false;
     }
   }
 

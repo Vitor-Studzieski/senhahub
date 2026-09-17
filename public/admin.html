@@ -4,86 +4,109 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestor - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260916.4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
         <div class="manager-brand">
-          <div class="manager-brand-mark">SH</div>
+          <img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" />
           <div>
             <strong>SenhaHub</strong>
             <span>Painel do gestor</span>
           </div>
         </div>
-        <nav class="manager-nav" aria-label="Navegação do gestor">
-          <a class="active" href="#visao"><span>Visão geral</span><small>01</small></a>
-          <a href="/admin/operacao"><span>Operação</span><small>02</small></a>
-          <a href="/admin/setores"><span>Setores</span><small>03</small></a>
-          <a href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><span>Usuários</span><small>05</small></a>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a class="active" href="#visao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
         <div class="manager-sidebar-note">
-          Acompanhe a operação primeiro. Configurações e acessos ficam organizados em áreas próprias.
+          Indicadores, filas e configurações reunidos em um só painel de gestão.
         </div>
       </aside>
 
       <main class="manager-main">
         <header class="manager-topbar">
           <div>
-            <p class="manager-eyebrow">Painel operacional</p>
+            <p class="manager-eyebrow">Painel gerencial</p>
             <h1>Visão geral</h1>
-            <p>Uma leitura rápida das filas, setores e pontos que precisam de atenção.</p>
+            <p>Monitore filas, atendimentos e desempenho dos setores em um só lugar.</p>
           </div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização manual</span></span>
-            <a class="manager-button secondary" href="/">Cliente</a>
-            <a class="manager-button secondary" href="/attendant">Atendente</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Sair</button>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
+            <a class="manager-button secondary" href="/">Área do cliente</a>
+            <a class="manager-button secondary" href="/attendant">Painel do atendente</a>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
           </div>
         </header>
 
         <section class="manager-hero" id="visao">
           <div class="manager-hero-panel">
             <div>
-              <p class="manager-eyebrow">Resumo da operação</p>
+              <p class="manager-eyebrow">Panorama da operação</p>
               <h2 id="heroHeadline">Acompanhe o que está acontecendo agora.</h2>
               <p id="heroDescription">Use a fila operacional para identificar gargalos e agir nos setores que mais precisam de atenção.</p>
             </div>
             <div class="manager-hero-strip">
-              <span>Setores abertos: <strong id="heroOpenSectors">0</strong></span>
-              <span>Chamadas ativas: <strong id="heroActiveCalls">0</strong></span>
-              <span>Setor crítico: <strong id="heroCriticalSector">nenhum</strong></span>
+              <span>Setores ativos: <strong id="heroOpenSectors">0</strong></span>
+              <span>Atendimentos em curso: <strong id="heroActiveCalls">0</strong></span>
+              <span>Maior fila: <strong id="heroCriticalSector">nenhuma</strong></span>
             </div>
           </div>
 
           <aside class="manager-health-card">
             <div class="manager-health-head">
               <div>
-                <strong id="heroStatus">Carregando operação</strong>
-                <span>Leitura baseada nos dados atuais da fila</span>
+                <strong id="heroStatus">Sincronizando operação…</strong>
+                <span>Resumo atualizado com os dados da fila</span>
               </div>
               <span class="manager-status-dot" id="healthDot"></span>
             </div>
             <div class="manager-health-list">
-              <div><span>Clientes aguardando</span><strong id="heroWaitingCustomers">0</strong></div>
-              <div><span>Tempo médio de atendimento</span><strong id="heroAverageTime">0 min 0 s</strong></div>
-              <div><span>Última sincronização</span><strong id="heroSyncTime">--:--</strong></div>
+              <div><span>Aguardando atendimento</span><strong id="heroWaitingCustomers">0</strong></div>
+              <div><span>Tempo médio</span><strong id="heroAverageTime">0 min 0 s</strong></div>
+              <div><span>Atualizado às</span><strong id="heroSyncTime">--:--</strong></div>
             </div>
             <label class="manager-date-filter">
-              <span>Dia das métricas</span>
+              <span>Data de referência</span>
               <input id="metricsDate" type="date" aria-label="Selecionar dia das métricas" />
             </label>
-            <button class="manager-button secondary" id="refreshDashboardButton" type="button">Atualizar painel</button>
+            <button class="manager-button secondary" id="refreshDashboardButton" type="button">Atualizar agora</button>
           </aside>
         </section>
 
-        <section class="manager-kpis" id="dashboardKpis" aria-label="Indicadores principais"></section>
+        <section class="manager-section-title">
+          <div><p class="manager-eyebrow">Desempenho</p><h2>Indicadores da operação</h2><p>Resultados consolidados para a data selecionada.</p></div>
+        </section>
+        <section class="manager-kpis" id="dashboardKpis" aria-label="Indicadores principais" aria-live="polite">
+          <p class="manager-empty" role="status">Carregando os indicadores da operação…</p>
+        </section>
 
-        <section class="manager-alert-panel" id="dashboardAlerts" aria-live="polite"></section>
+        <section class="manager-section-title manager-section-compact">
+          <div><p class="manager-eyebrow">Acompanhamento</p><h2>Pontos de atenção</h2><p>Alertas operacionais e recomendações para o momento.</p></div>
+        </section>
+        <section class="manager-alert-panel" id="dashboardAlerts" aria-live="polite">
+          <div class="manager-alert manager-alert-neutral"><span class="manager-alert-mark" aria-hidden="true">i</span><div><strong>Preparando análise</strong><p>Os alertas aparecerão assim que os dados da operação forem carregados.</p></div></div>
+        </section>
+
+        <section class="manager-panel manager-history-reset" aria-labelledby="ticketHistoryResetHeading">
+          <div class="manager-panel-header">
+            <div>
+              <h3 id="ticketHistoryResetHeading">Histórico das senhas</h3>
+              <p>Apague o histórico de senhas encerradas, canceladas ou expiradas e as avaliações vinculadas. Tentativas de impressão esgotadas entram na limpeza, mas os registros de impressão ficam guardados para auditoria. Atendimentos ativos, impressões pendentes ou em revisão e a numeração atual serão mantidos.</p>
+            </div>
+            <button class="manager-button warning" id="resetTicketHistoryButton" type="button">Limpar histórico</button>
+          </div>
+          <div class="manager-panel-body">
+            <p class="manager-empty" id="resetTicketHistoryStatus" role="status" aria-live="polite" hidden></p>
+          </div>
+        </section>
 
       </main>
     </div>
-    <script src="admin.js"></script>
+    <script src="admin.js?v=20260916.4"></script>
   </body>
 </html>

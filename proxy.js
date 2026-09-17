@@ -9,7 +9,7 @@ const pageRoles = {
   "/admin/totens": ["manager", "admin"],
   "/admin/usuarios": ["manager", "admin"],
   "/tablet": ["tablet", "attendant"],
-  "/tv/acougue": ["tv"]
+  "/tv/acougue": ["tv", "attendant", "manager", "admin"]
 };
 const legacyPageRedirects = {
   "/index.html": "/",
@@ -61,7 +61,7 @@ function rolesForPath(pathname) {
   if (pageRoles[pathname]) return pageRoles[pathname];
   if (pathname === "/attendant" || pathname.startsWith("/attendant/")) return ["attendant", "manager", "admin"];
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return ["manager", "admin"];
-  if (pathname === "/tv/acougue") return ["tv"];
+  if (pathname === "/tv/acougue") return ["tv", "attendant", "manager", "admin"];
   if (pathname === "/") return pageRoles["/"];
   return null;
 }

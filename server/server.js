@@ -71,12 +71,14 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["GET /api/local-postgres/staff/state", "app/api/local-postgres/staff/state/route.js"],
   ["GET /api/local-postgres/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/local-postgres/staff/call-next", "app/api/local-postgres/staff/call-next/route.js"],
+  ["POST /api/local-postgres/staff/call-control", "app/api/local-postgres/staff/call-control/route.js"],
   ["POST /api/local-postgres/tickets", "app/api/local-postgres/tickets/route.js"],
   ["GET /api/local-postgres/tickets/track", "app/api/local-postgres/tickets/track/route.js"],
   ["POST /api/local-postgres/tickets/cancel", "app/api/local-postgres/tickets/cancel/route.js"],
   ["POST /api/local-postgres/tickets/confirm", "app/api/local-postgres/tickets/confirm/route.js"],
   ["POST /api/local-postgres/tickets/finish", "app/api/local-postgres/tickets/finish/route.js"],
   ["POST /api/local-postgres/tickets/skip", "app/api/local-postgres/tickets/skip/route.js"],
+  ["POST /api/local-postgres/tickets/history/reset", "app/api/local-postgres/tickets/history/reset/route.js"],
   ["GET /api/local-postgres/kiosk/status", "app/api/local-postgres/kiosk/status/route.js"],
   ["POST /api/local-postgres/kiosk/pair", "app/api/local-postgres/kiosk/pair/route.js"],
   ["POST /api/local-postgres/kiosk/unpair", "app/api/local-postgres/kiosk/unpair/route.js"],
@@ -114,6 +116,7 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["GET /api/staff/state", "app/api/local-postgres/staff/state/route.js"],
   ["GET /api/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/tickets", "app/api/local-postgres/tickets/route.js"],
+  ["POST /api/tickets/history/reset", "app/api/local-postgres/tickets/history/reset/route.js"],
   ["GET /api/kiosk/status", "app/api/local-postgres/kiosk/status/route.js"],
   ["POST /api/kiosk/pair", "app/api/local-postgres/kiosk/pair/route.js"],
   ["POST /api/kiosk/unpair", "app/api/local-postgres/kiosk/unpair/route.js"],
@@ -1304,6 +1307,18 @@ async function handleApiInternal(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/tickets/history/reset") {
+    const user = requireAuth(req, res, ADMIN_ROLES);
+    if (!user || !verifyCsrf(req, res, user)) return;
+    try {
+      sendJson(res, 200, resetTicketHistory(user.id), { "cache-control": "no-store" });
+    } catch (error) {
+      logStructured("error", "ticket_history.reset_failed", { error: errorDetails(error) });
+      sendJson(res, 500, { error: "Não foi possível limpar o histórico de senhas." });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/staff/state") {
     const user = requireAuth(req, res, STAFF_ROLES);
     if (!user) return;
@@ -1400,9 +1415,26 @@ async function handleApiInternal(req, res, url) {
       sendJson(res, 403, { error: "Usuário sem permissão para este setor." });
       return;
     }
-    const result = callNextTicket(callNext[1]);
+    let result = callNextTicket(callNext[1]);
+    if (!result.ticket && !result.error) result = callNextTicket(callNext[1], { preferStandby: true });
     broadcast();
     sendApiResult(res, 200, result);
+    return;
+  }
+
+  const callControl = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-control$/);
+  if (req.method === "POST" && callControl) {
+    const user = requireAuth(req, res, STAFF_ROLES);
+    if (!user) return;
+    if (!verifyCsrf(req, res, user)) return;
+    if (!canAccessSector(user, callControl[1])) {
+      sendJson(res, 403, { error: "Usuário sem permissão para este setor." });
+      return;
+    }
+    const body = await readBody(req);
+    const result = callControlTicket(callControl[1], body.action);
+    broadcast();
+    sendApiResult(res, result.error ? 400 : 200, result);
     return;
   }
 
@@ -1503,6 +1535,16 @@ async function handleLocalPostgresAppAlias(req, res, url) {
     bodyOverride = Buffer.from(JSON.stringify({ sectorId: decodeURIComponent(callNextMatch[1]) }));
   }
 
+  const callControlMatch = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-control$/);
+  if (req.method === "POST" && callControlMatch) {
+    routeFile = "app/api/local-postgres/staff/call-control/route.js";
+    const body = await readJsonBodyForLocalRoute(req);
+    bodyOverride = Buffer.from(JSON.stringify({
+      ...body,
+      sectorId: decodeURIComponent(callControlMatch[1])
+    }));
+  }
+
   const ticketLifecycleMatch = url.pathname.match(/^\/api\/tickets\/([^/]+)\/(confirm|finish|skip)$/);
   if (req.method === "POST" && ticketLifecycleMatch) {
     const routeName = ticketLifecycleMatch[2];
@@ -1528,11 +1570,6 @@ async function handleLocalPostgresAppAlias(req, res, url) {
 
   const tabletPrintJobMatch = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)$/);
   if (req.method === "GET" && tabletPrintJobMatch) {
-    routeFile = "app/api/local-postgres/tablet/print-job/route.js";
-  }
-
-  const tabletRawbtPrintMatch = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)\/rawbt$/);
-  if (req.method === "POST" && tabletRawbtPrintMatch) {
     routeFile = "app/api/local-postgres/tablet/print-job/route.js";
   }
 
@@ -1867,7 +1904,7 @@ async function handlePage(req, res, url) {
     "/admin/totens": ADMIN_ROLES,
     "/admin/usuarios": ADMIN_ROLES,
     "/tablet": ["tablet", "attendant"],
-    "/tv/acougue": ["tv"]
+    "/tv/acougue": ["tv", ...STAFF_ROLES]
   };
   const requiredRoles = pageRoles[requested]
     || (requested.startsWith("/admin/") ? ADMIN_ROLES : null)
@@ -3648,6 +3685,65 @@ function callNextTicket(sectorId, options = {}) {
   return { ticket: null, message: "Nenhuma senha elegível para chamada." };
 }
 
+function callControlTicket(sectorId, action) {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!["previous", "again", "next"].includes(normalizedAction)) {
+    return fail("Ação de chamada inválida.");
+  }
+  if (normalizedAction === "next") {
+    let result = callNextTicket(sectorId);
+    if (!result.ticket && !result.error) result = callNextTicket(sectorId, { preferStandby: true });
+    return result;
+  }
+
+  const sector = getSector(sectorId);
+  if (!sector) return fail("Setor não encontrado.");
+  if (sector.status !== "open") return fail("Setor fechado.");
+
+  const { start, end } = businessDayBounds(businessDateFor());
+  const calls = db.prepare(`
+    SELECT calls.ticket_id, calls.created_at, tickets.customer_id, tickets.customer_name,
+           tickets.code, tickets.status, tickets.absence_count
+    FROM calls
+    JOIN tickets ON tickets.id = calls.ticket_id
+    WHERE calls.sector_id = ?
+      AND calls.action = 'senha_chamada'
+      AND calls.created_at >= ?
+      AND calls.created_at < ?
+    ORDER BY calls.created_at DESC
+    LIMIT 100
+  `).all(sectorId, start, end);
+  const latest = calls[0];
+  const target = normalizedAction === "again"
+    ? latest
+    : calls.find((call) => call.ticket_id !== latest?.ticket_id);
+  if (!target) {
+    return {
+      ticket: null,
+      message: normalizedAction === "again" ? "Nenhuma senha chamada para repetir." : "Nenhuma senha anterior disponível."
+    };
+  }
+
+  const now = isoNow();
+  if (["aguardando", "proximo", "standby"].includes(target.status)) {
+    db.prepare(`
+      UPDATE tickets
+      SET status = 'chamado', called_at = ?, standby_started_at = NULL,
+          standby_expires_at = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(now, now, target.ticket_id);
+  }
+  db.prepare("INSERT INTO calls (id, ticket_id, sector_id, action, created_at) VALUES (?, ?, ?, 'senha_chamada', ?)")
+    .run(`call-${crypto.randomUUID()}`, target.ticket_id, sectorId, now);
+  registerEvent("senha_chamada", "ticket", target.ticket_id, target.customer_id, sectorId, {
+    code: target.code,
+    controlAction: normalizedAction
+  });
+  const called = getTicket(target.ticket_id);
+  dispatchTicketPush(called, "queue_recalled", `control-${normalizedAction}`);
+  return { ticket: ticketDto(called) };
+}
+
 function autoCallReadyTickets() {
   expireStaleActiveTickets({ broadcast: false });
 }
@@ -3835,12 +3931,11 @@ function skipTicket(ticketId, body = {}) {
     }
 
     const released = CALL_BLOCKING_STATUSES.includes(ticket.status) ? releaseSmartWaitTicket(ticket.customer_id) : null;
-    const nextInSector = CALL_BLOCKING_STATUSES.includes(ticket.status) ? callNextTicket(ticket.sector_id) : null;
     notifyQueueMilestones(ticket.sector_id);
     return {
       skippedTicket: ticketDto(getTicket(ticket.id)),
       releasedTicket: released ? ticketDto(released) : null,
-      nextTicket: nextInSector?.ticket || null
+      nextTicket: null
     };
   });
 }
@@ -3858,12 +3953,11 @@ function finishTicket(ticketId) {
     registerEvent("pedido_finalizado", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code });
 
     const released = releaseSmartWaitTicket(ticket.customer_id);
-    const nextInSector = callNextTicket(ticket.sector_id, { preferStandby: true });
     notifyQueueMilestones(ticket.sector_id);
     return {
       finishedTicket: ticketDto(getTicket(ticket.id)),
       releasedTicket: released ? ticketDto(released) : null,
-      nextTicket: nextInSector?.ticket || null
+      nextTicket: null
     };
   });
 }
@@ -3888,7 +3982,6 @@ function releaseSmartWaitTicket(customerId) {
   if (!released.changes) return null;
   registerEvent("espera_inteligente_liberada", "ticket", next.id, next.customer_id, next.sector_id, { code: next.code });
   dispatchTicketPush(getTicket(next.id), "queue_changed", "smart-wait-released");
-  callNextTicket(next.sector_id, { preferStandby: true });
   notifyQueueMilestones(next.sector_id);
   return getTicket(next.id);
 }
@@ -3965,6 +4058,7 @@ function getMetrics(metricsDate = businessDateFor()) {
       finished,
       abandoned,
       avgServiceSeconds,
+      serviceSamples: serviceRows.length,
       avgSmartWaitSeconds
     };
   });
@@ -3975,6 +4069,55 @@ function getMetrics(metricsDate = businessDateFor()) {
     satisfaction: satisfactionSummary(ratings),
     generatedAt: isoNow()
   };
+}
+
+function resetTicketHistory(actorId) {
+  let deletedTickets = 0;
+  let deletedRatings = 0;
+  let skippedTickets = 0;
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const candidateIds = db.prepare(`
+      SELECT id FROM tickets WHERE status IN ('atendido', 'cancelado', 'expirado')
+    `).all().map((row) => row.id);
+    const lockedIds = candidateIds.length
+      ? db.prepare(`
+          SELECT t.id FROM tickets t
+          WHERE t.status IN ('atendido', 'cancelado', 'expirado')
+            AND NOT EXISTS (
+              SELECT 1 FROM print_jobs j
+              WHERE j.ticket_id = t.id AND j.status <> 'printed'
+            )
+        `).all().map((row) => row.id)
+      : [];
+    skippedTickets = candidateIds.length - lockedIds.length;
+
+    if (lockedIds.length) {
+      const whereIds = placeholders(lockedIds);
+      deletedRatings = db.prepare(`DELETE FROM ratings WHERE ticket_id IN (${whereIds})`).run(...lockedIds).changes;
+      db.prepare(`DELETE FROM calls WHERE ticket_id IN (${whereIds})`).run(...lockedIds);
+      db.prepare(`DELETE FROM services WHERE ticket_id IN (${whereIds})`).run(...lockedIds);
+      deletedTickets = db.prepare(`DELETE FROM tickets WHERE id IN (${whereIds})`).run(...lockedIds).changes;
+    }
+
+    db.prepare(`
+      INSERT INTO events (id, type, entity_type, entity_id, customer_id, sector_id, payload, created_at)
+      VALUES (?, 'ticket_history_reset', 'admin_action', ?, ?, NULL, ?, ?)
+    `).run(
+      `event-${crypto.randomUUID()}`,
+      String(actorId || ""),
+      String(actorId || ""),
+      JSON.stringify({ deleted_tickets: deletedTickets, deleted_ratings: deletedRatings, skipped_tickets: skippedTickets }),
+      isoNow()
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return { deletedTickets, deletedRatings, skippedTickets };
 }
 
 function getCustomerState(customerId) {
@@ -4020,6 +4163,7 @@ function getStaffState(user = null) {
     )
     WHERE row_number <= 20
   `).all(...sectorIds);
+  const { start: businessDayStart, end: businessDayEnd } = businessDayBounds(businessDateFor());
   const callRows = db.prepare(`
     SELECT sector_id, action, created_at, customer_name, number, code, status, priority
     FROM (
@@ -4029,9 +4173,11 @@ function getStaffState(user = null) {
       FROM calls
       JOIN tickets ON tickets.id = calls.ticket_id
       WHERE calls.sector_id IN (${sectorFilters})
+        AND calls.created_at >= ?
+        AND calls.created_at < ?
     )
     WHERE row_number <= 6
-  `).all(...sectorIds);
+  `).all(...sectorIds, businessDayStart, businessDayEnd);
   const ticketsBySector = groupRowsByKey(ticketRows, "sector_id");
   const countersBySector = new Map(counterRows.map((counter) => [counter.sector_id, counter]));
   const statsBySector = staffAverageStatsFromRows(serviceRows, visibleSectors);
@@ -4183,8 +4329,8 @@ function activeServiceDelayFromRow(active, averageSeconds) {
 }
 
 function currentCodeFromCounter(sector, counter) {
-  const currentNumber = counter?.business_date === businessDateFor() ? Number(counter.last_number) : TICKET_MIN_NUMBER;
-  return formatTicket(sector.prefix, currentNumber);
+  if (!counter || counter.business_date !== businessDateFor()) return null;
+  return formatTicket(sector.prefix, Number(counter.last_number));
 }
 
 function recentSectorCalls(sectorId) {
@@ -4414,8 +4560,9 @@ function averageServiceStats(sector) {
 function currentCode(sector) {
   const active = currentTicketForSector(sector.id);
   const counter = db.prepare("SELECT * FROM ticket_counters WHERE sector_id = ?").get(sector.id);
-  const currentNumber = counter?.business_date === businessDateFor() ? Number(counter.last_number) : TICKET_MIN_NUMBER;
-  return active?.code || formatTicket(sector.prefix, currentNumber);
+  if (active) return active.code;
+  if (!counter || counter.business_date !== businessDateFor()) return null;
+  return formatTicket(sector.prefix, Number(counter.last_number));
 }
 
 function currentTicketForSector(sectorId) {

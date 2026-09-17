@@ -52,8 +52,9 @@ const state = {
   inFlight: false,
   statusRequestInFlight: false,
   issueIdempotencyKey: null,
-  rawbtPrintInFlight: false,
-  rawbtPrintJob: null,
+  printJobs: [],
+  printJobStatuses: new Map(),
+  printPollTimer: null,
   refreshTimer: null
 };
 
@@ -70,8 +71,7 @@ const elements = {
   confirmSummary: document.querySelector("#tabletConfirmSummary"),
   issueButton: document.querySelector("#tabletIssueButton"),
   resultTickets: document.querySelector("#tabletResultTickets"),
-  printStatus: document.querySelector("#tabletPrintStatus"),
-  printAgainButton: document.querySelector("#tabletPrintAgain")
+  printStatus: document.querySelector("#tabletPrintStatus")
 };
 
 document.querySelectorAll("[data-tablet-type]").forEach((button) => {
@@ -80,9 +80,6 @@ document.querySelectorAll("[data-tablet-type]").forEach((button) => {
 document.querySelector("#tabletBackToType")?.addEventListener("click", () => setStep("type"));
 document.querySelector("#tabletBackToSector")?.addEventListener("click", () => setStep("type"));
 elements.issueButton?.addEventListener("click", issueTicket);
-elements.printAgainButton?.addEventListener("click", () => {
-  if (state.rawbtPrintJob) sendToRawbt(state.rawbtPrintJob);
-});
 document.querySelector("#tabletNewRequest")?.addEventListener("click", resetOperation);
 document.querySelector("#tabletLogoutButton")?.addEventListener("click", logout);
 
@@ -117,7 +114,7 @@ function renderStatus() {
   elements.result.hidden = true;
   resetOperation();
   clearInterval(state.refreshTimer);
-  state.refreshTimer = setInterval(refreshStatus, 2000);
+  state.refreshTimer = setInterval(refreshStatus, 5000);
 }
 
 async function refreshStatus() {
@@ -227,7 +224,7 @@ function renderResult(tickets, printJobs = []) {
   elements.operation.hidden = true;
   elements.result.hidden = false;
   state.printJobs = printJobs;
-  state.rawbtPrintJob = printJobs[0] || null;
+  state.printJobStatuses = new Map(printJobs.map((job) => [job.id, job.status || "pending"]));
   elements.resultTickets.innerHTML = tickets.map((ticket) => `
     <article class="tablet-ticket-card">
       <span>${escapeHtml(ticket.sector || "Setor")}</span>
@@ -235,51 +232,61 @@ function renderResult(tickets, printJobs = []) {
       <small>${ticket.priority ? "Atendimento preferencial" : "Atendimento normal"}</small>
     </article>
   `).join("");
-  elements.printAgainButton.hidden = !state.rawbtPrintJob?.rawbtUrl;
-  setPrintState("pending", state.rawbtPrintJob?.rawbtUrl
-    ? "Preparando a impressão pelo RawBT..."
-    : "A impressão não está configurada.");
-  if (state.rawbtPrintJob?.rawbtUrl) {
-    setTimeout(() => sendToRawbt(state.rawbtPrintJob), 0);
+  setPrintState();
+  if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id));
+}
+
+async function pollPrintJobs(jobIds) {
+  clearTimeout(state.printPollTimer);
+  const results = await Promise.all(jobIds.map(async (jobId) => {
+    try {
+      const payload = await api(`/api/tablet/print-jobs/${encodeURIComponent(jobId)}`);
+      return { jobId, status: payload.job?.status || "failed", error: payload.job?.lastError || "" };
+    } catch (error) {
+      return { jobId, status: "unavailable", error: error.message };
+    }
+  }));
+  if (elements.result.hidden) return;
+  results.forEach((result) => state.printJobStatuses.set(result.jobId, result.status));
+  setPrintState(results);
+  if (results.some((result) => ["pending", "leased", "printing", "retry_wait", "unavailable"].includes(result.status))) {
+    state.printPollTimer = setTimeout(() => pollPrintJobs(jobIds), 1200);
   }
 }
 
-async function sendToRawbt(printJob) {
-  if (!printJob?.id || !printJob.rawbtUrl || state.rawbtPrintInFlight || elements.result.hidden) return;
-  state.rawbtPrintInFlight = true;
-  elements.printAgainButton.disabled = true;
-  setPrintState("printing", "Enviando a senha para o RawBT...");
-  try {
-    await api(`/api/tablet/print-jobs/${encodeURIComponent(printJob.id)}/rawbt`, {
-      method: "POST",
-      body: {}
-    });
-    setPrintState("printed", "Senha enviada ao RawBT. Retire o papel da impressora.");
-    window.location.href = printJob.rawbtUrl;
-  } catch (error) {
-    setPrintState("failed", error.message || "Não foi possível enviar a senha ao RawBT.");
-  } finally {
-    state.rawbtPrintInFlight = false;
-    elements.printAgainButton.disabled = false;
-    elements.printAgainButton.hidden = false;
-  }
-}
-
-function setPrintState(stateName, message) {
+function setPrintState(latestResults = []) {
   if (!elements.printStatus) return;
-  elements.printStatus.dataset.state = stateName;
+  const statuses = [...state.printJobStatuses.values()];
+  if (!statuses.length) {
+    elements.printStatus.textContent = "Senha emitida.";
+    elements.printStatus.dataset.state = "printed";
+    return;
+  }
+  const status = ["needs_review", "failed", "retry_wait", "printing", "leased", "pending", "unavailable"]
+    .find((value) => statuses.includes(value)) || "printed";
+  const message = status === "failed"
+    ? latestResults.find((result) => result.status === "failed")?.error || "Falha na impressão. Solicite ajuda."
+    : {
+        pending: "Senha emitida; aguardando a Bematech.",
+        leased: "Trabalho reservado pela Bematech.",
+        retry_wait: "Falha antes do envio. Nova tentativa agendada.",
+        needs_review: "Resultado incerto. Solicite ajuda; não emita novamente.",
+        unavailable: "Senha emitida. Consulta da impressão indisponível.",
+        printing: "Imprimindo sua senha na Bematech...",
+        printed: "Senha impressa. Retire o papel."
+      }[status];
+  elements.printStatus.dataset.state = status;
   elements.printStatus.textContent = message;
 }
 
 function resetOperation() {
+  clearTimeout(state.printPollTimer);
+  state.printPollTimer = null;
   state.serviceType = null;
   state.priorityReason = null;
   state.issueIdempotencyKey = null;
   state.printJobs = [];
-  state.rawbtPrintInFlight = false;
-  state.rawbtPrintJob = null;
-  elements.printAgainButton.hidden = true;
-  elements.printAgainButton.disabled = false;
+  state.printJobStatuses = new Map();
   document.querySelectorAll("[data-tablet-type], .tablet-priority").forEach((item) => item.classList.remove("selected"));
   setStep("type");
   elements.result.hidden = true;

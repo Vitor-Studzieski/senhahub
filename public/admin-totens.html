@@ -4,46 +4,47 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Totens e impressão - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260916.4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
-        <div class="manager-brand"><div class="manager-brand-mark">SH</div><div><strong>SenhaHub</strong><span>Painel do gestor</span></div></div>
-        <nav class="manager-nav" aria-label="Navegação do gestor">
-          <a href="/admin"><span>Visão geral</span><small>01</small></a>
-          <a href="/admin/operacao"><span>Operação</span><small>02</small></a>
-          <a href="/admin/setores"><span>Setores</span><small>03</small></a>
-          <a class="active" href="/admin/totens"><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><span>Usuários</span><small>05</small></a>
+        <div class="manager-brand"><img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" /><div><strong>SenhaHub</strong><span>Painel do gestor</span></div></div>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a class="active" href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
-        <div class="manager-sidebar-note">Acompanhe os dispositivos e os trabalhos de impressão.</div>
+        <div class="manager-sidebar-note">Consulte a disponibilidade dos totens e a situação das impressões.</div>
       </aside>
 
       <main class="manager-main">
         <header class="manager-topbar">
-          <div><p class="manager-eyebrow">Dispositivos</p><h1>Totens e impressão</h1><p>Centralize a configuração dos totens e o acompanhamento da impressão.</p></div>
+          <div><p class="manager-eyebrow">Dispositivos</p><h1>Totens e impressão</h1><p>Acompanhe os pontos de emissão de senhas e a integridade das impressões.</p></div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Atualização manual</span></span>
-            <a class="manager-button secondary" href="/admin">Visão geral</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Sair</button>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Consulta sob demanda</span></span>
+            <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
           </div>
         </header>
         <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Infraestrutura de atendimento</p><h2>Totens e fila de impressão</h2><p>Os controles desta área ficam separados da operação para facilitar a manutenção dos dispositivos.</p></div>
+          <div><p class="manager-eyebrow">Infraestrutura de atendimento</p><h2>Dispositivos e impressão</h2><p>Informações organizadas para facilitar o suporte aos equipamentos da loja.</p></div>
         </section>
         <section class="manager-content-grid manager-future-grid">
-          <article class="manager-panel manager-future-card"><div class="manager-future-icon">T</div><div><h3>Configuração dos Totens</h3><p>Central ou específico por balcão, com setor associado e estado do dispositivo.</p><span class="manager-badge neutral">Módulo em preparação</span></div></article>
-          <article class="manager-panel manager-future-card"><div class="manager-future-icon">P</div><div><h3>Fila de impressão</h3><p>Trabalhos pendentes, impressões concluídas e falhas que precisam de recuperação.</p><span class="manager-badge neutral">Módulo em preparação</span></div></article>
+          <article class="manager-panel manager-future-card"><div class="manager-future-icon" aria-hidden="true">T</div><div><h3>Totens de atendimento</h3><p>Gerencie dispositivos, setores vinculados e disponibilidade em cada balcão.</p><span class="manager-badge neutral">Em desenvolvimento</span></div></article>
+          <article class="manager-panel manager-future-card"><div class="manager-future-icon" aria-hidden="true">P</div><div><h3>Impressão de senhas</h3><p>Acompanhe trabalhos pendentes, concluídos e ocorrências que exigem revisão.</p><span class="manager-badge neutral">Em desenvolvimento</span></div></article>
         </section>
         <section class="manager-panel" aria-labelledby="printReviewHeading">
-          <h2 id="printReviewHeading">Impressões que precisam de atenção</h2>
-          <p>Confira o papel e pare o agente responsável antes de resolver um resultado incerto.</p>
-          <button class="manager-button secondary" id="refreshPrintReview" type="button">Atualizar impressões</button>
-          <div id="printReviewList" role="status">Carregando...</div>
+          <div class="manager-panel-header">
+            <div><p class="manager-eyebrow">Revisão segura</p><h2 id="printReviewHeading">Ocorrências de impressão</h2><p>Confira o estado da impressora antes de autorizar uma nova tentativa.</p></div>
+            <button class="manager-button secondary" id="refreshPrintReview" type="button">Atualizar lista</button>
+          </div>
+          <div class="manager-panel-body"><div id="printReviewList" role="status" aria-live="polite"><p class="manager-empty">Consultando ocorrências de impressão…</p></div></div>
         </section>
       </main>
     </div>
-    <script src="admin.js"></script>
+    <script src="admin.js?v=20260916.4"></script>
   </body>
 </html>

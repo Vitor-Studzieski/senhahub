@@ -3,9 +3,9 @@ import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export default function AttendantPage() {
   return (
-    <>
+    <div className="attendant-page">
       <HtmlTemplate fileName="attendant.html" />
-      <Script src="/attendant.js?v=20260908.3" strategy="afterInteractive" />
-    </>
+      <Script src="/attendant.js?v=20260915.3" strategy="afterInteractive" />
+    </div>
   );
 }

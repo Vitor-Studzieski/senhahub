@@ -4,8 +4,8 @@ const KIOSK_SESSION_SECONDS = 60 * 60 * 24 * 30;
 const DEFAULT_KIOSK_ID = "totem-pompeia-01";
 const DEFAULT_KIOSK_STORE_CODE = "loja-2";
 const DEFAULT_TABLET_PRINTER_KIOSK_ID = "tablet-pompeia-01";
-const DEFAULT_TABLET_PRINTER_NAME = "POS-5890A-L";
-const DEFAULT_TABLET_PRINTER_PORT = "BLUETOOTH";
+const DEFAULT_TABLET_PRINTER_NAME = "Bematech MP - 4200 TH";
+const DEFAULT_TABLET_PRINTER_PORT = "COM4";
 const DEFAULT_INSTALL_URL = "https://senhahub.vercel.app/instalar";
 const DEFAULT_APP_URL = "https://senhahub.vercel.app";
 
@@ -52,7 +52,9 @@ function loadTabletPrinterConfiguration(env = process.env) {
     storeCode: /^loja-[0-9]+$/.test(storeCode) ? storeCode : kiosk.storeCode,
     printerName: cleanText(env.TABLET_PRINTER_NAME, 160) || DEFAULT_TABLET_PRINTER_NAME,
     printerPort: cleanText(env.TABLET_PRINTER_PORT, 40) || DEFAULT_TABLET_PRINTER_PORT,
-    paperWidthMm: Number(env.TABLET_PAPER_WIDTH_MM) === 80 ? 80 : 58,
+    paperWidthMm: env.TABLET_PAPER_WIDTH_MM === undefined || env.TABLET_PAPER_WIDTH_MM === ""
+      ? 80
+      : Number(env.TABLET_PAPER_WIDTH_MM) === 80 ? 80 : 58,
     installUrl: normalizeHttpsUrl(env.PUBLIC_INSTALL_URL)
       || `${kiosk.appUrl.replace(/\/+$/, "")}/instalar`
       || DEFAULT_INSTALL_URL

@@ -6,7 +6,6 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { buildTicketReceipt } = require("../server/kiosk/escpos-receipt");
-const { rawbtUrlForPrintJob } = require("../server/kiosk/rawbt-print");
 const {
   loadKioskConfiguration,
   loadTabletPrinterConfiguration,
@@ -72,22 +71,6 @@ test("gera duas senhas no mesmo cupom mantendo um unico QR Code", () => {
   assert.ok(receipt.includes(Buffer.from([0x1d, 0x56, 66, 4])));
 });
 
-test("gera um link RawBT com a mesma senha do trabalho de impressao", () => {
-  const rawbtUrl = rawbtUrlForPrintJob({
-    payload: {
-      ticketCode: "A042",
-      sectorName: "Acougue",
-      issuedAt: "2026-07-29T20:00:00.000Z",
-      trackUrl: "https://senhahub.vercel.app/acompanhar/token-de-teste-1234567890"
-    }
-  });
-
-  assert.match(rawbtUrl, /^rawbt:base64,[A-Za-z0-9+/]+=*$/);
-  const receipt = Buffer.from(rawbtUrl.slice("rawbt:base64,".length), "base64");
-  assert.ok(receipt.includes(Buffer.from("A042", "ascii")));
-  assert.equal(receipt.includes(Buffer.from([0x1d, 0xf9, 0x20, 0x01])), false);
-});
-
 test("totem exibe o QR geral separado do QR individual da senha", () => {
   const html = fs.readFileSync(path.resolve(__dirname, "../public/totem.html"), "utf8");
   const script = fs.readFileSync(path.resolve(__dirname, "../public/totem.js"), "utf8");
@@ -100,7 +83,7 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.doesNotMatch(html, /Acompanhe sua posição pelo celular/);
   assert.doesNotMatch(html, /Escaneie o QR Code para acompanhar sua fila/);
   assert.match(html, /id="backToTypeFromSectorsButton"/);
-  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.08\.1"/);
+  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.15\.2"/);
   assert.match(page, /`\/totem\.js\?v=\$\{TOTEM_ASSET_VERSION\}`/);
   assert.match(html, /id="issueTicketsButton"/);
   assert.match(html, /id="resultTickets"/);
@@ -138,9 +121,114 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.match(attendant, /const callNextInFlight = new Set\(\)/);
   assert.match(attendant, /const isCallingNext = callNextInFlight\.has\(sector\.id\)/);
   assert.match(attendant, /applyCalledTicket\(sectorId, result\.ticket\)/);
+  assert.match(attendant, /function latestActiveTicket\(tickets\)/);
+  assert.match(attendant, /\["chamado", "em_atendimento"\]/);
+  assert.match(attendant, /const callHighlight = activeTicket/);
+  assert.match(attendant, /\$\{callHighlight \? "" : `<b>\$\{waiting\.length\} na fila<\/b>`\}/);
+  assert.match(attendant, /class="ops-call-details"/);
+  assert.doesNotMatch(attendant, /formatClock\(callHighlight\.createdAt\)/);
+  assert.match(fs.readFileSync(path.resolve(__dirname, "../public/styles.css"), "utf8"), /\.attendant-page \.ops-call-panel\.call-highlight \.ops-call-main\s*\{[^}]*display: grid;/);
+  assert.match(fs.readFileSync(path.resolve(__dirname, "../public/app.js"), "utf8"), /const STATE_POLL_INTERVAL_MS = 5000/);
+  assert.match(trackingScript, /const TRACKING_POLL_INTERVAL_MS = 5000/);
+  assert.match(script, /const QUEUE_REFRESH_INTERVAL_MS = 5000/);
   assert.match(trackingHtml, /id="trackingTicketsList"/);
   assert.match(trackingScript, /payload\.tickets/);
   assert.match(trackingScript, /renderBundleTicket/);
+});
+
+test("painel conserva a senha chamada enquanto o estado do atendimento estiver ativo", () => {
+  const attendant = fs.readFileSync(path.resolve(__dirname, "../public/attendant.js"), "utf8");
+  const helper = attendant.match(/function latestActiveTicket\(tickets\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(helper, "O painel precisa derivar a chamada ativa dos tickets retornados pelo servidor.");
+  const selectActiveTicket = new Function(`${helper}; return latestActiveTicket;`)();
+  const tickets = [
+    { id: "waiting", status: "aguardando", createdAt: "2026-09-15T18:25:00.000Z" },
+    { id: "called", status: "chamado", calledAt: "2026-09-15T18:20:00.000Z" },
+    { id: "in-service", status: "em_atendimento", serviceStartedAt: "2026-09-15T18:22:00.000Z" }
+  ];
+
+  assert.equal(selectActiveTicket(tickets)?.id, "in-service");
+  assert.equal(selectActiveTicket(tickets.filter((ticket) => ticket.status === "aguardando")), null);
+});
+
+test("fila do atendente mantém linhas concisas e não desloca o histórico entre estados", () => {
+  const attendant = fs.readFileSync(path.resolve(__dirname, "../public/attendant.js"), "utf8");
+  const styles = fs.readFileSync(path.resolve(__dirname, "../public/styles.css"), "utf8");
+  const rowHelper = attendant.match(/function ticketRow\(ticket\) \{[\s\S]*?\n\}/)?.[0];
+  const supportCodeHelper = attendant.match(/function supportCode\(ticket\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(rowHelper, "A fila precisa renderizar os tickets por uma função única.");
+  assert.ok(supportCodeHelper, "O painel precisa formatar o código da senha em um único padrão.");
+  const formatSupportCode = new Function(`${supportCodeHelper}; return supportCode;`)();
+
+  const renderTicketRow = new Function(
+    "escapeHtml",
+    "displayCustomerName",
+    "ticketTypeBadgeMarkup",
+    "ticketActions",
+    "supportCode",
+    `${rowHelper}; return ticketRow;`
+  )(
+    (value) => String(value),
+    (ticket) => ticket.customerName,
+    () => '<em class="ticket-type-badge">COMUM</em>',
+    () => "",
+    formatSupportCode
+  );
+  const standbyRow = renderTicketRow({
+    id: "standby-1",
+    status: "standby",
+    customerName: "Vitor Studzieski",
+    ticket: "A002",
+    ticketNumber: 2,
+    sector: "Açougue",
+    store: "Loja 2"
+  });
+
+  assert.match(standbyRow, /Vitor Studzieski/);
+  assert.match(standbyRow, /class="ops-ticket-code">Senha 002<\/span>/);
+  assert.match(standbyRow, /Senha 002[\s\S]*COMUM/);
+  assert.doesNotMatch(standbyRow, /A002/);
+  assert.match(standbyRow, /COMUM/);
+  assert.doesNotMatch(standbyRow, /standby|stand by|Açougue|Loja 2|Retorno|à frente|minutos?/i);
+  assert.doesNotMatch(attendant, /function ticketDetailLine\(|function formatStandbyTime\(/);
+  assert.match(attendant, /ops-feedback-slot/);
+  assert.match(styles, /grid-template-rows: 72px 128px 64px 34px 176px auto/);
+  assert.match(styles, /\.attendant-page \.ops-queue-section\s*\{[^}]*height: 176px;[^}]*overflow-y: auto/s);
+  assert.match(styles, /\.attendant-page \.ops-call-button:hover:not\(:disabled\)\s*\{\s*background: var\(--vr-orange-strong\);/);
+  assert.match(styles, /\.attendant-page \.ops-ticket-meta\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
+  assert.match(styles, /\.attendant-page \.ops-ticket-meta \.priority-badge > span\s*\{[^}]*display: inline;/);
+  assert.match(styles, /@media \(max-width: 760px\) \{[\s\S]*?\.attendant-page \.ops-grid\s*\{\s*grid-template-columns: 1fr;/);
+  assert.match(styles, /grid-template-rows: auto auto 64px 34px 176px auto/);
+});
+
+test("últimas chamadas mostram nome, senha e prioridade sem rótulo de ação", () => {
+  const attendant = fs.readFileSync(path.resolve(__dirname, "../public/attendant.js"), "utf8");
+  const historyHelper = attendant.match(/function callHistory\(items\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(historyHelper, "O histórico precisa ter um renderizador próprio.");
+
+  const renderHistory = new Function(
+    "escapeHtml",
+    "displayCustomerName",
+    "supportCode",
+    "formatClock",
+    `${historyHelper}; return callHistory;`
+  )(
+    (value) => String(value),
+    (ticket) => ticket.customerName || "Cliente",
+    (ticket) => `Senha ${String(ticket.ticketNumber).padStart(3, "0")}`,
+    () => "18:00:00"
+  );
+  const history = renderHistory([
+    { action: "senha_chamada", customerName: "Ana", ticketNumber: 7, priority: false },
+    { action: "senha_chamada", customerName: "Bruno", ticketNumber: 8, priority: true },
+    { action: "senha_pulada:cancelamento", customerName: "Carla", ticketNumber: 9, priority: false }
+  ]);
+
+  assert.match(history, /Ana · Senha 007 · comum/);
+  assert.match(history, /Bruno · Senha 008 · preferencial/);
+  assert.doesNotMatch(history, /Carla|cancelamento|pulada/);
+  assert.doesNotMatch(history, /Senha 007 - chamada|Senha 008 - chamada/);
+  assert.equal((history.match(/class="history-row"/g) || []).length, 2);
 });
 
 test("carrega configuracao local sem sobrescrever variaveis do processo", () => {
@@ -217,18 +305,18 @@ test("mantem o totem Pompeia na Loja 2 mesmo com configuracao antiga", () => {
   assert.equal(configuration.storeCode, "loja-2");
 });
 
-test("configura a impressora Bluetooth do tablet somente para o Acougue da Loja 2", () => {
+test("configura a Bematech dos mini PCs somente para o Acougue da Loja 2", () => {
   const configuration = loadTabletPrinterConfiguration({});
   assert.equal(configuration.id, "tablet-pompeia-01");
   assert.equal(configuration.mode, "sector");
   assert.equal(configuration.sectorId, "acougue-loja-2");
   assert.equal(configuration.storeCode, "loja-2");
-  assert.equal(configuration.printerName, "POS-5890A-L");
-  assert.equal(configuration.printerPort, "BLUETOOTH");
-  assert.equal(configuration.paperWidthMm, 58);
+  assert.equal(configuration.printerName, "Bematech MP - 4200 TH");
+  assert.equal(configuration.printerPort, "COM4");
+  assert.equal(configuration.paperWidthMm, 80);
 });
 
-test("aceita tokens separados para o totem e a impressora Bluetooth do tablet", () => {
+test("aceita tokens separados para o totem e a Bematech do mini PC", () => {
   const tabletToken = "tablet-token-abcdefghijklmnopqrstuvwxyz-1234567890";
   const result = verifyPrintAgentRequest(
     new Headers({
@@ -242,6 +330,12 @@ test("aceita tokens separados para o totem e a impressora Bluetooth do tablet", 
     }
   );
   assert.deepEqual(result, { ok: true, kioskId: "tablet-pompeia-01" });
+});
+
+test("o tablet usa a fila do agente e não abre um aplicativo de impressão", () => {
+  const script = fs.readFileSync(path.resolve(__dirname, "../public/tablet.js"), "utf8");
+  assert.match(script, /pollPrintJobs/);
+  assert.doesNotMatch(script, /RawBT|rawbt|window\.location\.href/);
 });
 
 test("usa a porta configurada pelo agente ao criar a impressora", () => {

@@ -44,7 +44,7 @@ Antes da ativação, registre a impressora por `hardware_key`, confirme loja e t
 
 ## Variáveis essenciais
 
-No backend cloud: `PRINT_PROVISIONING_SECRET`, `PRINT_REALTIME_ENABLED=1`, `PRINT_RECONCILIATION_MS` (mínimo 60000, padrão 600000) e as chaves Supabase já usadas pelo runtime. No agente Node: `PRINT_API_URL` HTTPS (HTTP só para `localhost`, `127.0.0.1` ou `::1` em uma instalação local), `PRINT_ENROLLMENT_CODE` somente no primeiro pareamento, `PRINT_AGENT_STATE_DIR`, `KIOSK_PRINTER_PORT` e os parâmetros `PRINT_SERIAL_*`. No Android, a URL, o código de enrollment e o endereço Bluetooth ficam na configuração cifrada do aplicativo.
+No backend cloud: `PRINT_PROVISIONING_SECRET`, `PRINT_REALTIME_ENABLED=1`, `PRINT_RECONCILIATION_MS` (mínimo 60000, padrão 600000) e as chaves Supabase já usadas pelo runtime. Em cada agente Windows, inclusive nos mini PCs que substituíram os tablets: `PRINT_API_URL` HTTPS, `PRINT_ENROLLMENT_CODE` somente no primeiro pareamento, `PRINT_AGENT_STATE_DIR`, `KIOSK_ID` quando aplicável ao agente legado, `KIOSK_PRINTER_PORT` e os parâmetros `PRINT_SERIAL_*`. O agente x86 homologado usa `KIOSK_PRINTER_PORT=COM4` no mini PC da Bematech. O agente Android permanece apenas como alternativa para hardware Android/Bluetooth separado.
 
 `PRINT_REALTIME_ENABLED=0` é um modo de contingência: o agente continua recuperando por watchdog, com intervalo de reconciliação, sem abrir o canal privado. Não desative o Realtime como configuração permanente sem aceitar a latência do intervalo.
 
@@ -52,7 +52,7 @@ No backend cloud: `PRINT_PROVISIONING_SECRET`, `PRINT_REALTIME_ENABLED=1`, `PRIN
 
 No Windows, use `npm run print:agent:ports` para descobrir a porta e `npm run print:agent:test` para um cupom de diagnóstico. O serviço mantém a configuração e o journal em `data/print-agent`; o instalador aplica ACL ao diretório padrão. Se `PRINT_AGENT_STATE_DIR` apontar para outro diretório, aplique ACL equivalente manualmente.
 
-No Android, quando a operação usar o agente Bluetooth alternativo, o aplicativo precisa permanecer como serviço em primeiro plano, com a notificação ativa, Bluetooth pareado e permissão `BLUETOOTH_CONNECT`. Para o fluxo ativo dos tablets com RawBT, o navegador abre o esquema `rawbt:base64,...` e o próprio RawBT envia o cupom à impressora; nesse caso, não inicie o agente Android do projeto no mesmo tablet. A ausência de Android físico não impede o build, os testes unitários ou a revisão do protocolo; a primeira validação de campo ainda deve cobrir abertura do RawBT, reboot, queda de rede, queda de energia e papel/corte.
+Nos mini PCs Windows, o agente x86 precisa permanecer instalado como serviço e ter acesso exclusivo à porta serial virtual da Bematech. A primeira validação de campo deve cobrir pareamento do dispositivo, reboot, queda de rede, queda de energia, papel, corte e recuperação de lease. A ausência de um Android físico não impede o build, os testes unitários ou a revisão do protocolo.
 
 A impressora só confirma que recebeu os bytes. Sem sensor transacional, não é possível provar que o papel saiu; queda exatamente entre o envio e o journal pode exigir resolução manual. Em qualquer dúvida, deixe `needs_review` e use o painel administrativo. Nunca apague a linha ou recrie manualmente o mesmo ticket para “destravar”.
 
@@ -75,4 +75,4 @@ Para voltar ao writer anterior, pare o agente v2, resolva ou preserve as execuç
 
 Use `npm run check`, `npm run check:print-agent`, `npm run test:print-v2`, `npm run test:print-v2:postgres` (PostgreSQL isolado) e `npm run build`. O módulo Android foi compilado com `assembleDebug`, `lintDebug` e `testDebugUnitTest` em JDK 17/Gradle 8.9. Esses checks não substituem teste físico Android, Bluetooth, serial, papel ou produção Supabase/Realtime; nenhum deles foi executado nesta máquina Apple.
 
-Arquivos centrais: `server/kiosk/print-v2-api.js`, `server/kiosk/print-v2-local.js`, `server/kiosk/print-v2-sqlite.js`, `scripts/print-agent/consumer.js`, `scripts/print-agent/durable-store.js`, `scripts/print-agent/realtime.js`, `android/print-agent/app/src/main/java/com/senhahub/bluetoothprintagent/PrinterAgentService.kt` e a migration citada acima. O inventário completo está em [IMPRESSAO_V2_ARQUIVOS.md](IMPRESSAO_V2_ARQUIVOS.md).
+Arquivos centrais: `server/kiosk/print-v2-api.js`, `server/kiosk/print-v2-local.js`, `server/kiosk/print-v2-sqlite.js`, `scripts/print-agent/consumer.js`, `scripts/print-agent/durable-store.js`, `scripts/print-agent/realtime.js`, `android/print-agent/app/src/main/java/com/senhahub/bluetoothprintagent/PrinterAgentService.kt` e a migration citada acima.
