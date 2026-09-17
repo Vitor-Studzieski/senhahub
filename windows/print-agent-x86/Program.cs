@@ -82,7 +82,7 @@ namespace SenhaHub.PrintAgent.X86
 
             log.Info("Agente x86 iniciado.", new Dictionary<string, object>
             {
-                { "version", "x86/1.2.0" },
+                { "version", "x86/1.2.3" },
                 { "transport", config.PrinterMode },
                 { "target", config.PrinterMode == "spooler" ? config.PrinterName : config.PrinterPort },
                 { "pollMs", config.PollIntervalMs }
@@ -405,7 +405,7 @@ namespace SenhaHub.PrintAgent.X86
             using (var message = new HttpRequestMessage(HttpMethod.Post, config.ApiUrl + "/api/print/v2/" + command))
             {
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                message.Headers.Add("x-print-agent-version", "windows-x86/1.2.0");
+                message.Headers.Add("x-print-agent-version", "windows-x86/1.2.3");
                 message.Content = new StringContent(Json.Serialize(body ?? new Dictionary<string, object>()), Encoding.UTF8, "application/json");
                 using (var response = await http.SendAsync(message))
                 {

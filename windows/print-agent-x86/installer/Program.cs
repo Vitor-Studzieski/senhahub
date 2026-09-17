@@ -291,6 +291,7 @@ namespace SenhaHub.PrintAgent.Setup
             // Remove only the SenhaHub service and files that this installer owns.
             // Keep data\print-agent-x86: it contains the paired device session and
             // the print journal, which prevent duplicate tickets after an upgrade.
+            ConfirmFullCleanup();
             StopAndRemoveService();
 
             var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SenhaHub", "PrintAgentX86");
@@ -300,7 +301,8 @@ namespace SenhaHub.PrintAgent.Setup
             var staging = Path.Combine(Path.GetTempPath(), "SenhaHubBematechDriver");
             DeleteOwnedFile(Path.Combine(staging, "Bematech_USBCOM_v4.0.2_2018-09-05.exe"));
             DeleteOwnedFile(Path.Combine(staging, "BematechSpoolerDrivers_x86_v5.0.0.4.exe"));
-            WriteLog("Limpeza concluída: serviço, agente e cache temporário antigos removidos; pareamento preservado.");
+            RemoveBematechPrintComponents();
+            WriteLog("Limpeza concluída: serviço, agente, fila, driver de impressão e cache temporário antigos removidos; pareamento preservado.");
         }
 
         private static void DeleteOwnedFile(string path)
@@ -308,6 +310,68 @@ namespace SenhaHub.PrintAgent.Setup
             if (!File.Exists(path)) return;
             File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
+        }
+
+        private void RemoveBematechPrintComponents()
+        {
+            var script = @"
+$ErrorActionPreference = 'Stop'
+Import-Module PrintManagement
+$printers = @(Get-Printer | Where-Object {
+  $_.Name -match '(?i)Bematech|MP[- ]?4200' -or
+  $_.DriverName -match '(?i)Bematech|MP[- ]?4200'
+})
+foreach ($printer in $printers) {
+  Write-Output ('Fila removida: ' + $printer.Name)
+  Remove-Printer -Name $printer.Name -Confirm:$false -ErrorAction Stop
+}
+Start-Sleep -Milliseconds 700
+$drivers = @(Get-PrinterDriver | Where-Object {
+  $_.Name -match '(?i)Bematech|MP[- ]?4200'
+})
+foreach ($driver in $drivers) {
+  try {
+    Remove-PrinterDriver -Name $driver.Name -RemoveFromDriverStore -Confirm:$false -ErrorAction Stop
+    Write-Output ('Driver removido da loja: ' + $driver.Name)
+  } catch {
+    Remove-PrinterDriver -Name $driver.Name -Confirm:$false -ErrorAction Stop
+    Write-Output ('Driver removido: ' + $driver.Name)
+  }
+}
+";
+            var result = RunPowerShell(script);
+            var output = (result.Output + Environment.NewLine + result.Error).Trim();
+            if (output.Length > 0) WriteLog(output);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException("Não foi possível remover completamente o driver Bematech. " + output);
+        }
+
+        private void ConfirmFullCleanup()
+        {
+            var answer = MessageBox.Show(
+                "Este reparo vai remover as filas e os drivers de impressão antigos da Bematech/MP-4200 deste computador e reinstalá-los.\r\n\r\nDeseja continuar?",
+                "Limpeza do driver Bematech",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+            if (answer != DialogResult.Yes)
+                throw new InvalidOperationException("Limpeza dos drivers cancelada pelo operador.");
+        }
+
+        private static ProcessResult RunPowerShell(string script)
+        {
+            var windowsDirectory = Environment.GetEnvironmentVariable("windir") ?? "C:\\Windows";
+            var systemPowerShell = Path.Combine(windowsDirectory, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+            if (Environment.Is64BitOperatingSystem)
+            {
+                var nativePowerShell = Path.Combine(windowsDirectory, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe");
+                if (File.Exists(nativePowerShell)) systemPowerShell = nativePowerShell;
+            }
+            if (!File.Exists(systemPowerShell))
+                throw new InvalidOperationException("O Windows PowerShell não foi encontrado.");
+
+            var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+            return RunProcess(systemPowerShell, "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + encoded, false);
         }
 
         private void InstallAgentFiles(string url, string code, string port, string mode = "native-serial", string printerName = "")
