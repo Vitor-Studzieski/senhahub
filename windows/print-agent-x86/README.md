@@ -31,6 +31,7 @@ Em um Windows com Visual Studio ou Build Tools instalados, abra o PowerShell nes
 O script compila o agente e gera um único instalador em `installer\bin\Release\SenhaHub.PrintAgent.Setup.exe`. O instalador pede o servidor, o código de pareamento e a porta, testa a Bematech, grava a configuração, instala o agente como serviço `SenhaHubPrintAgentX86` e inicia o serviço automaticamente.
 
 O instalador gerado pelo workflow embute os drivers oficiais USB/COM e Spooler x86 da MP-4200 TH. O botão `Instalar driver + agente` usa o Spooler do Windows, localiza a fila Bematech, envia um teste e pede confirmação do papel; o serviço só é instalado depois da confirmação física.
+Em atualizações, ele remove o serviço, o executável e a configuração antigos e limpa os instaladores temporários que ele próprio extraiu. A pasta de estado é preservada para manter o pareamento e impedir reimpressões duplicadas.
 
 O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`. Depois de enviar as alterações ao GitHub, execute `SenhaHub Print Agent x86` em **Actions** e baixe o artefato `senhahub-print-agent-x86-installer`. Assim, não é necessário instalar Visual Studio ou Build Tools no computador usado para operar o mini PC.
 

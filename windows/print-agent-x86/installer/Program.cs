@@ -229,6 +229,7 @@ namespace SenhaHub.PrintAgent.Setup
             try
             {
                 SetBusy(true);
+                PrepareCleanInstall();
                 SetStatus("Instalando o driver Spooler oficial da Bematech...", false);
                 var driverPath = ExtractSpoolerDriverPayload();
                 var driverResult = RunExternalInstaller(driverPath);
@@ -248,7 +249,6 @@ namespace SenhaHub.PrintAgent.Setup
                 if (!ConfirmPhysicalPrint(printerName))
                     throw new InvalidOperationException("O Windows aceitou o trabalho, mas a impressora não confirmou papel. O agente não foi instalado.");
 
-                StopAndRemoveService();
                 InstallAgentFiles(url, code, port, "spooler", printerName);
                 SetStatus("Teste físico confirmado; agente instalado.", false);
                 WriteLog("Driver Spooler Bematech e agente instalados em C:\\ProgramData\\SenhaHub\\PrintAgentX86.");
@@ -284,6 +284,30 @@ namespace SenhaHub.PrintAgent.Setup
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        }
+
+        private void PrepareCleanInstall()
+        {
+            // Remove only the SenhaHub service and files that this installer owns.
+            // Keep data\print-agent-x86: it contains the paired device session and
+            // the print journal, which prevent duplicate tickets after an upgrade.
+            StopAndRemoveService();
+
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SenhaHub", "PrintAgentX86");
+            DeleteOwnedFile(Path.Combine(root, "SenhaHub.PrintAgent.X86.exe"));
+            DeleteOwnedFile(Path.Combine(root, "agent.env"));
+
+            var staging = Path.Combine(Path.GetTempPath(), "SenhaHubBematechDriver");
+            DeleteOwnedFile(Path.Combine(staging, "Bematech_USBCOM_v4.0.2_2018-09-05.exe"));
+            DeleteOwnedFile(Path.Combine(staging, "BematechSpoolerDrivers_x86_v5.0.0.4.exe"));
+            WriteLog("Limpeza concluída: serviço, agente e cache temporário antigos removidos; pareamento preservado.");
+        }
+
+        private static void DeleteOwnedFile(string path)
+        {
+            if (!File.Exists(path)) return;
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
         }
 
         private void InstallAgentFiles(string url, string code, string port, string mode = "native-serial", string printerName = "")

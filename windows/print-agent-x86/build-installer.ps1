@@ -29,6 +29,9 @@ $MsBuild = Find-MSBuild
 if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar o agente x86." }
 if (-not (Test-Path $AgentOutput)) { throw "Saída do agente não encontrada: $AgentOutput" }
 
+if (Test-Path -LiteralPath $PayloadDirectory) {
+  Remove-Item -LiteralPath $PayloadDirectory -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path $PayloadDirectory | Out-Null
 Copy-Item $AgentOutput (Join-Path $PayloadDirectory "SenhaHub.PrintAgent.X86.exe") -Force
 $BematechDriverOutput = Join-Path $PayloadDirectory $BematechDriverName
