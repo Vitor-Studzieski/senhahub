@@ -1,12 +1,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.ServiceProcess;
 using System.Text;
@@ -48,9 +50,9 @@ namespace SenhaHub.PrintAgent.X86
 
                 if (args.Any(a => string.Equals(a, "--test-printer", StringComparison.OrdinalIgnoreCase)))
                 {
-                    var printer = new SerialPrinter(config);
+                    var printer = PrinterTransport.Create(config);
                     printer.Print(ReceiptBuilder.Build(TestPayload()), Stop.Token);
-                    Console.WriteLine("Cupom de diagnóstico enviado para " + config.PrinterPort + ".");
+                    Console.WriteLine("Cupom de diagnóstico enviado para " + printer.Target + ".");
                     return 0;
                 }
 
@@ -74,13 +76,14 @@ namespace SenhaHub.PrintAgent.X86
             var state = new AgentState(config.StateDirectory);
             var auth = new DeviceAuth(config, state, log);
             var api = new PrintApi(config, auth);
-            var printer = new SerialPrinter(config);
+            var printer = PrinterTransport.Create(config);
             var worker = new PrintWorker(config, api, printer, state, log, cancellationToken);
 
             log.Info("Agente x86 iniciado.", new Dictionary<string, object>
             {
-                { "version", "x86/1.0.0" },
-                { "port", config.PrinterPort },
+                { "version", "x86/1.1.0" },
+                { "transport", config.PrinterMode },
+                { "target", config.PrinterPort },
                 { "pollMs", config.PollIntervalMs }
             });
 
@@ -209,6 +212,7 @@ namespace SenhaHub.PrintAgent.X86
         public string ApiUrl;
         public string EnrollmentCode;
         public string LocalToken;
+        public string PrinterMode;
         public string PrinterPort;
         public int BaudRate;
         public int DataBits;
@@ -242,6 +246,7 @@ namespace SenhaHub.PrintAgent.X86
                 ApiUrl = Get(values, "PRINT_API_URL", "https://senhahub.vercel.app").TrimEnd('/'),
                 EnrollmentCode = Get(values, "PRINT_ENROLLMENT_CODE", ""),
                 LocalToken = Get(values, "PRINT_DEVICE_LOCAL_TOKEN", ""),
+                PrinterMode = Get(values, "KIOSK_PRINTER_MODE", "native-serial").Trim().ToLowerInvariant(),
                 PrinterPort = Get(values, "KIOSK_PRINTER_PORT", "COM4"),
                 BaudRate = PositiveInt(Get(values, "PRINT_SERIAL_BAUD_RATE", "115200"), 115200),
                 DataBits = Get(values, "PRINT_SERIAL_DATA_BITS", "8") == "7" ? 7 : 8,
@@ -256,6 +261,8 @@ namespace SenhaHub.PrintAgent.X86
                 throw new InvalidOperationException("PRINT_API_URL deve usar HTTPS.");
             if (config.EnrollmentCode.Length == 0 && config.LocalToken.Length == 0)
                 throw new InvalidOperationException("Informe PRINT_ENROLLMENT_CODE no primeiro pareamento.");
+            if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial")
+                throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial ou serial.");
             if (config.StateDirectory.Length == 0) config.StateDirectory = "data\\print-agent-x86";
             if (!Path.IsPathRooted(config.StateDirectory)) config.StateDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, config.StateDirectory);
             return config;
@@ -393,7 +400,7 @@ namespace SenhaHub.PrintAgent.X86
             using (var message = new HttpRequestMessage(HttpMethod.Post, config.ApiUrl + "/api/print/v2/" + command))
             {
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                message.Headers.Add("x-print-agent-version", "windows-x86/1.0.0");
+                message.Headers.Add("x-print-agent-version", "windows-x86/1.1.0");
                 message.Content = new StringContent(Json.Serialize(body ?? new Dictionary<string, object>()), Encoding.UTF8, "application/json");
                 using (var response = await http.SendAsync(message))
                 {
@@ -409,13 +416,13 @@ namespace SenhaHub.PrintAgent.X86
     {
         private readonly AgentConfig config;
         private readonly PrintApi api;
-        private readonly SerialPrinter printer;
+        private readonly IPrinter printer;
         private readonly AgentState state;
         private readonly AgentLog log;
         private readonly CancellationToken stop;
         private bool needsReview;
 
-        public PrintWorker(AgentConfig config, PrintApi api, SerialPrinter printer, AgentState state, AgentLog log, CancellationToken stop)
+        public PrintWorker(AgentConfig config, PrintApi api, IPrinter printer, AgentState state, AgentLog log, CancellationToken stop)
         {
             this.config = config;
             this.api = api;
@@ -572,7 +579,225 @@ namespace SenhaHub.PrintAgent.X86
         }
     }
 
-    internal sealed class SerialPrinter
+    internal interface IPrinter
+    {
+        string Target { get; }
+        void Print(byte[] data, CancellationToken stop);
+    }
+
+    internal static class PrinterTransport
+    {
+        public static IPrinter Create(AgentConfig config)
+        {
+            if (config.PrinterMode == "native-serial") return new NativeSerialPrinter(config);
+            return new SerialPrinter(config);
+        }
+    }
+
+    // Uses the Windows communication API directly. This avoids the .NET
+    // SerialPort initialization path that can fail with ERROR_SEM_TIMEOUT on
+    // some Bematech USB/serial drivers.
+    internal sealed class NativeSerialPrinter : IPrinter
+    {
+        private const uint GenericRead = 0x80000000;
+        private const uint GenericWrite = 0x40000000;
+        private const uint OpenExisting = 3;
+        private const uint FileAttributeNormal = 0x00000080;
+        private const uint PurgeRxClear = 0x0008;
+        private const uint PurgeTxClear = 0x0004;
+        private const uint DcbBinary = 0x00000001;
+        private const uint DcbParity = 0x00000002;
+        private const uint DcbOutCtsFlow = 0x00000004;
+        private const uint DcbOutDsrFlow = 0x00000008;
+        private const uint DcbDtrControlMask = 0x00000030;
+        private const uint DcbDsrSensitivity = 0x00000040;
+        private const uint DcbOutX = 0x00000100;
+        private const uint DcbInX = 0x00000200;
+        private const uint DcbRtsControlMask = 0x00003000;
+        private const uint DcbRtsHandshake = 0x00002000;
+
+        private readonly AgentConfig config;
+
+        public NativeSerialPrinter(AgentConfig config)
+        {
+            this.config = config;
+        }
+
+        public string Target { get { return "Win32 " + config.PrinterPort; } }
+
+        public void Print(byte[] data, CancellationToken stop)
+        {
+            if (data == null || data.Length == 0) throw new PrintException("Conteúdo vazio.", true);
+
+            var handle = CreateFile(
+                ToDevicePath(config.PrinterPort),
+                GenericRead | GenericWrite,
+                0,
+                IntPtr.Zero,
+                OpenExisting,
+                FileAttributeNormal,
+                IntPtr.Zero);
+            if (handle == new IntPtr(-1))
+            {
+                throw new PrintException(LastError("abrir " + config.PrinterPort), true);
+            }
+
+            var beforeSend = true;
+            try
+            {
+                stop.ThrowIfCancellationRequested();
+                Configure(handle);
+                if (!PurgeComm(handle, PurgeRxClear | PurgeTxClear))
+                    throw new InvalidOperationException(LastError("limpar a porta"));
+
+                stop.ThrowIfCancellationRequested();
+                beforeSend = false;
+                int written;
+                if (!WriteFile(handle, data, data.Length, out written, IntPtr.Zero))
+                    throw new InvalidOperationException(LastError("enviar o cupom"));
+                if (written != data.Length)
+                    throw new InvalidOperationException("O Windows enviou apenas " + written + " de " + data.Length + " bytes.");
+                if (!FlushFileBuffers(handle))
+                    throw new InvalidOperationException(LastError("finalizar o envio"));
+
+                var waitMs = Math.Max(500, (int)Math.Ceiling(data.Length * 10.0 * 1000.0 / config.BaudRate));
+                var started = Environment.TickCount;
+                while (Environment.TickCount - started < waitMs)
+                {
+                    stop.ThrowIfCancellationRequested();
+                    Thread.Sleep(Math.Min(100, waitMs));
+                }
+            }
+            catch (PrintException)
+            {
+                throw;
+            }
+            catch (Exception error)
+            {
+                throw new PrintException(error.Message, beforeSend, error);
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        private void Configure(IntPtr handle)
+        {
+            var dcb = new Dcb { DcbLength = (uint)Marshal.SizeOf(typeof(Dcb)) };
+            if (!GetCommState(handle, ref dcb)) throw new InvalidOperationException(LastError("ler a configuração da porta"));
+
+            dcb.BaudRate = (uint)config.BaudRate;
+            dcb.ByteSize = (byte)config.DataBits;
+            dcb.Parity = (byte)ToNativeParity(config.Parity);
+            dcb.StopBits = (byte)ToNativeStopBits(config.StopBits);
+            dcb.Flags |= DcbBinary;
+            dcb.Flags &= ~(DcbParity | DcbOutCtsFlow | DcbOutDsrFlow | DcbDtrControlMask |
+                           DcbDsrSensitivity | DcbOutX | DcbInX | DcbRtsControlMask);
+            if (config.Parity != Parity.None) dcb.Flags |= DcbParity;
+            if (config.RtsCts) dcb.Flags |= DcbOutCtsFlow | DcbRtsHandshake;
+
+            if (!SetCommState(handle, ref dcb)) throw new InvalidOperationException(LastError("configurar a porta"));
+
+            var timeouts = new CommTimeouts
+            {
+                ReadIntervalTimeout = 0xffffffff,
+                ReadTotalTimeoutMultiplier = 0,
+                ReadTotalTimeoutConstant = 0,
+                WriteTotalTimeoutMultiplier = 0,
+                WriteTotalTimeoutConstant = 30000
+            };
+            if (!SetCommTimeouts(handle, ref timeouts)) throw new InvalidOperationException(LastError("configurar o tempo limite"));
+        }
+
+        private static byte ToNativeParity(Parity parity)
+        {
+            if (parity == Parity.Odd) return 1;
+            if (parity == Parity.Even) return 2;
+            return 0;
+        }
+
+        private static byte ToNativeStopBits(StopBits stopBits)
+        {
+            return stopBits == StopBits.Two ? (byte)2 : (byte)0;
+        }
+
+        private static string ToDevicePath(string port)
+        {
+            port = (port ?? "").Trim();
+            return port.StartsWith("\\\\.\\", StringComparison.Ordinal) ? port : "\\\\." + "\\" + port;
+        }
+
+        private static string LastError(string operation)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            return "Não foi possível " + operation + ": " + error.Message + " (código " + error.NativeErrorCode + ").";
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(string fileName, uint desiredAccess, uint shareMode, IntPtr securityAttributes,
+            uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCommState(IntPtr handle, ref Dcb dcb);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCommState(IntPtr handle, ref Dcb dcb);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCommTimeouts(IntPtr handle, ref CommTimeouts timeouts);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PurgeComm(IntPtr handle, uint flags);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool WriteFile(IntPtr handle, byte[] buffer, int bytesToWrite, out int bytesWritten, IntPtr overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool FlushFileBuffers(IntPtr handle);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CommTimeouts
+        {
+            public uint ReadIntervalTimeout;
+            public uint ReadTotalTimeoutMultiplier;
+            public uint ReadTotalTimeoutConstant;
+            public uint WriteTotalTimeoutMultiplier;
+            public uint WriteTotalTimeoutConstant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Dcb
+        {
+            public uint DcbLength;
+            public uint BaudRate;
+            public uint Flags;
+            public ushort Reserved;
+            public ushort XonLimit;
+            public ushort XoffLimit;
+            public byte ByteSize;
+            public byte Parity;
+            public byte StopBits;
+            public sbyte XonChar;
+            public sbyte XoffChar;
+            public sbyte ErrorChar;
+            public sbyte EofChar;
+            public sbyte EvtChar;
+            public ushort Reserved1;
+        }
+    }
+
+    internal sealed class SerialPrinter : IPrinter
     {
         private readonly AgentConfig config;
 
@@ -580,6 +805,8 @@ namespace SenhaHub.PrintAgent.X86
         {
             this.config = config;
         }
+
+        public string Target { get { return config.PrinterPort; } }
 
         public void Print(byte[] data, CancellationToken stop)
         {
@@ -987,7 +1214,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.0.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.1.0");
             return client;
         }
     }

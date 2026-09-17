@@ -1,10 +1,12 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading;
@@ -105,8 +107,9 @@ namespace SenhaHub.PrintAgent.Setup
             var selected = printerPort.Text;
             printerPort.Items.Clear();
             foreach (var port in SerialPort.GetPortNames().OrderBy(p => p)) printerPort.Items.Add(port);
-            if (printerPort.Items.Count == 0) printerPort.Text = string.IsNullOrWhiteSpace(selected) ? "COM4" : selected;
+            if (printerPort.Items.Count == 0) printerPort.Text = string.IsNullOrWhiteSpace(selected) ? "COM3" : selected;
             else if (printerPort.Items.Contains(selected)) printerPort.SelectedItem = selected;
+            else if (printerPort.Items.Contains("COM3")) printerPort.SelectedItem = "COM3";
             else if (printerPort.Items.Contains("COM4")) printerPort.SelectedItem = "COM4";
             else printerPort.SelectedIndex = 0;
             WriteLog("Portas encontradas: " + (printerPort.Items.Count == 0 ? "nenhuma" : string.Join(", ", printerPort.Items.Cast<object>())));
@@ -124,16 +127,7 @@ namespace SenhaHub.PrintAgent.Setup
             try
             {
                 SetBusy(true);
-                using (var serial = new SerialPort(port, 115200, Parity.None, 8, StopBits.One))
-                {
-                    serial.Handshake = Handshake.None;
-                    serial.DtrEnable = false;
-                    serial.RtsEnable = false;
-                    serial.Open();
-                    var bytes = Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n");
-                    serial.Write(bytes, 0, bytes.Length);
-                    serial.BaseStream.Flush();
-                }
+                NativeSerialProbe.Send(port, Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n"));
                 SetStatus("Teste enviado. Confira a impressão.", false);
                 WriteLog("Teste enviado para " + port + ".");
             }
@@ -183,6 +177,7 @@ namespace SenhaHub.PrintAgent.Setup
                 var env = new StringBuilder()
                     .AppendLine("PRINT_API_URL=" + url)
                     .AppendLine("PRINT_ENROLLMENT_CODE=" + code)
+                    .AppendLine("KIOSK_PRINTER_MODE=native-serial")
                     .AppendLine("KIOSK_PRINTER_PORT=" + port)
                     .AppendLine("PRINT_SERIAL_BAUD_RATE=115200")
                     .AppendLine("PRINT_SERIAL_DATA_BITS=8")
@@ -296,6 +291,131 @@ namespace SenhaHub.PrintAgent.Setup
         private void WriteLog(string message)
         {
             log.AppendText(DateTime.Now.ToString("HH:mm:ss") + " " + message + Environment.NewLine);
+        }
+    }
+
+    internal static class NativeSerialProbe
+    {
+        private const uint GenericRead = 0x80000000;
+        private const uint GenericWrite = 0x40000000;
+        private const uint OpenExisting = 3;
+        private const uint FileAttributeNormal = 0x00000080;
+        private const uint PurgeRxClear = 0x0008;
+        private const uint PurgeTxClear = 0x0004;
+        private const uint DcbBinary = 0x00000001;
+        private const uint DcbParity = 0x00000002;
+        private const uint DcbOutCtsFlow = 0x00000004;
+        private const uint DcbOutDsrFlow = 0x00000008;
+        private const uint DcbDtrControlMask = 0x00000030;
+        private const uint DcbDsrSensitivity = 0x00000040;
+        private const uint DcbOutX = 0x00000100;
+        private const uint DcbInX = 0x00000200;
+        private const uint DcbRtsControlMask = 0x00003000;
+
+        public static void Send(string port, byte[] data)
+        {
+            var handle = CreateFile("\\\\." + "\\" + port.Trim(), GenericRead | GenericWrite, 0, IntPtr.Zero,
+                OpenExisting, FileAttributeNormal, IntPtr.Zero);
+            if (handle == new IntPtr(-1)) throw new IOException(LastError("abrir " + port));
+
+            try
+            {
+                var dcb = new Dcb { DcbLength = (uint)Marshal.SizeOf(typeof(Dcb)) };
+                if (!GetCommState(handle, ref dcb)) throw new IOException(LastError("ler a configuração da porta"));
+                dcb.BaudRate = 115200;
+                dcb.ByteSize = 8;
+                dcb.Parity = 0;
+                dcb.StopBits = 0;
+                dcb.Flags |= DcbBinary;
+                dcb.Flags &= ~(DcbParity | DcbOutCtsFlow | DcbOutDsrFlow | DcbDtrControlMask |
+                               DcbDsrSensitivity | DcbOutX | DcbInX | DcbRtsControlMask);
+                if (!SetCommState(handle, ref dcb)) throw new IOException(LastError("configurar a porta"));
+
+                var timeouts = new CommTimeouts
+                {
+                    ReadIntervalTimeout = 0xffffffff,
+                    WriteTotalTimeoutConstant = 30000
+                };
+                if (!SetCommTimeouts(handle, ref timeouts)) throw new IOException(LastError("configurar o tempo limite"));
+                if (!PurgeComm(handle, PurgeRxClear | PurgeTxClear)) throw new IOException(LastError("limpar a porta"));
+
+                int written;
+                if (!WriteFile(handle, data, data.Length, out written, IntPtr.Zero)) throw new IOException(LastError("enviar o teste"));
+                if (written != data.Length) throw new IOException("O Windows enviou apenas " + written + " de " + data.Length + " bytes.");
+                if (!FlushFileBuffers(handle)) throw new IOException(LastError("finalizar o teste"));
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        private static string LastError(string operation)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            return "Não foi possível " + operation + ": " + error.Message + " (código " + error.NativeErrorCode + ").";
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(string fileName, uint desiredAccess, uint shareMode, IntPtr securityAttributes,
+            uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCommState(IntPtr handle, ref Dcb dcb);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCommState(IntPtr handle, ref Dcb dcb);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCommTimeouts(IntPtr handle, ref CommTimeouts timeouts);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PurgeComm(IntPtr handle, uint flags);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool WriteFile(IntPtr handle, byte[] buffer, int bytesToWrite, out int bytesWritten, IntPtr overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool FlushFileBuffers(IntPtr handle);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CommTimeouts
+        {
+            public uint ReadIntervalTimeout;
+            public uint ReadTotalTimeoutMultiplier;
+            public uint ReadTotalTimeoutConstant;
+            public uint WriteTotalTimeoutMultiplier;
+            public uint WriteTotalTimeoutConstant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Dcb
+        {
+            public uint DcbLength;
+            public uint BaudRate;
+            public uint Flags;
+            public ushort Reserved;
+            public ushort XonLimit;
+            public ushort XoffLimit;
+            public byte ByteSize;
+            public byte Parity;
+            public byte StopBits;
+            public sbyte XonChar;
+            public sbyte XoffChar;
+            public sbyte ErrorChar;
+            public sbyte EofChar;
+            public sbyte EvtChar;
+            public ushort Reserved1;
         }
     }
 

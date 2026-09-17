@@ -2,6 +2,8 @@
 
 Este agente é uma alternativa para o mini PC com Windows de 32 bits e processador baseado em x64. Ele não usa Node.js nem o pacote `serialport`: é um executável C# para .NET Framework 4.8, compilado com `PlatformTarget=x86`, e envia ESC/POS diretamente para a porta serial virtual da Bematech.
 
+A versão `x86/1.1.0` usa a API nativa de comunicação do Windows para abrir a porta. Isso contorna um problema de alguns drivers USB/serial que retornam `O tempo limite do semáforo expirou` quando a porta é aberta pelo `System.IO.Ports.SerialPort`.
+
 ## Versão homologada
 
 A versão `x86/1.0.0` desta pasta foi homologada no mini PC com Windows 10 de 32 bits e na Bematech MP-4200 TH identificada como `COM4`. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
@@ -35,7 +37,7 @@ O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`
 1. Cadastre a MP-4200 TH e o destino do novo mini PC no SenhaHub.
 2. Gere, no painel administrativo, um código de enrollment para esse dispositivo. O código é de uso único e expira em dez minutos.
 3. Preencha `PRINT_ENROLLMENT_CODE` no `agent.env` e mantenha `PRINT_API_URL=https://senhahub.vercel.app`.
-4. Confirme `KIOSK_PRINTER_PORT=COM4`, pois o Windows identificou a impressora como `Bematech COM4`.
+4. Configure `KIOSK_PRINTER_MODE=native-serial` e informe a porta exibida pelo Gerenciador de Dispositivos em `KIOSK_PRINTER_PORT`.
 5. Execute uma vez no PowerShell para testar a impressora:
 
 ```powershell
