@@ -33,6 +33,7 @@
     <Compile Include="Program.cs" />
     <EmbeddedResource Include="payload\SenhaHub.PrintAgent.X86.exe" />
     <EmbeddedResource Include="payload\Bematech_USBCOM_v4.0.2_2018-09-05.exe" />
+    <EmbeddedResource Include="payload\BematechSpoolerDrivers_x86_v5.0.0.4.exe" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

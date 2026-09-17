@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing.Printing;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -81,9 +82,9 @@ namespace SenhaHub.PrintAgent.X86
 
             log.Info("Agente x86 iniciado.", new Dictionary<string, object>
             {
-                { "version", "x86/1.1.0" },
+                { "version", "x86/1.2.0" },
                 { "transport", config.PrinterMode },
-                { "target", config.PrinterPort },
+                { "target", config.PrinterMode == "spooler" ? config.PrinterName : config.PrinterPort },
                 { "pollMs", config.PollIntervalMs }
             });
 
@@ -213,6 +214,7 @@ namespace SenhaHub.PrintAgent.X86
         public string EnrollmentCode;
         public string LocalToken;
         public string PrinterMode;
+        public string PrinterName;
         public string PrinterPort;
         public int BaudRate;
         public int DataBits;
@@ -247,6 +249,7 @@ namespace SenhaHub.PrintAgent.X86
                 EnrollmentCode = Get(values, "PRINT_ENROLLMENT_CODE", ""),
                 LocalToken = Get(values, "PRINT_DEVICE_LOCAL_TOKEN", ""),
                 PrinterMode = Get(values, "KIOSK_PRINTER_MODE", "native-serial").Trim().ToLowerInvariant(),
+                PrinterName = Get(values, "KIOSK_PRINTER_NAME", "").Trim(),
                 PrinterPort = Get(values, "KIOSK_PRINTER_PORT", "COM4"),
                 BaudRate = PositiveInt(Get(values, "PRINT_SERIAL_BAUD_RATE", "115200"), 115200),
                 DataBits = Get(values, "PRINT_SERIAL_DATA_BITS", "8") == "7" ? 7 : 8,
@@ -261,8 +264,10 @@ namespace SenhaHub.PrintAgent.X86
                 throw new InvalidOperationException("PRINT_API_URL deve usar HTTPS.");
             if (config.EnrollmentCode.Length == 0 && config.LocalToken.Length == 0)
                 throw new InvalidOperationException("Informe PRINT_ENROLLMENT_CODE no primeiro pareamento.");
-            if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial")
-                throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial ou serial.");
+            if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial" && config.PrinterMode != "spooler")
+                throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial, serial ou spooler.");
+            if (config.PrinterMode == "spooler" && config.PrinterName.Length == 0)
+                throw new InvalidOperationException("Informe KIOSK_PRINTER_NAME para o modo spooler.");
             if (config.StateDirectory.Length == 0) config.StateDirectory = "data\\print-agent-x86";
             if (!Path.IsPathRooted(config.StateDirectory)) config.StateDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, config.StateDirectory);
             return config;
@@ -400,7 +405,7 @@ namespace SenhaHub.PrintAgent.X86
             using (var message = new HttpRequestMessage(HttpMethod.Post, config.ApiUrl + "/api/print/v2/" + command))
             {
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                message.Headers.Add("x-print-agent-version", "windows-x86/1.1.0");
+                message.Headers.Add("x-print-agent-version", "windows-x86/1.2.0");
                 message.Content = new StringContent(Json.Serialize(body ?? new Dictionary<string, object>()), Encoding.UTF8, "application/json");
                 using (var response = await http.SendAsync(message))
                 {
@@ -589,8 +594,124 @@ namespace SenhaHub.PrintAgent.X86
     {
         public static IPrinter Create(AgentConfig config)
         {
+            if (config.PrinterMode == "spooler") return new WindowsRawPrinter(config.PrinterName);
             if (config.PrinterMode == "native-serial") return new NativeSerialPrinter(config);
             return new SerialPrinter(config);
+        }
+    }
+
+    internal sealed class WindowsRawPrinter : IPrinter
+    {
+        private readonly string printerName;
+
+        public WindowsRawPrinter(string printerName)
+        {
+            this.printerName = (printerName ?? "").Trim();
+            if (this.printerName.Length == 0) throw new InvalidOperationException("Nome da fila do Windows não informado.");
+        }
+
+        public string Target { get { return "fila Windows " + printerName; } }
+
+        public void Print(byte[] data, CancellationToken stop)
+        {
+            if (data == null || data.Length == 0) throw new PrintException("Conteúdo vazio.", true);
+
+            IntPtr handle;
+            if (!OpenPrinter(printerName, out handle, IntPtr.Zero))
+                throw new PrintException(LastError("abrir a fila " + printerName), true);
+
+            var beforeSend = true;
+            var documentStarted = false;
+            var pageStarted = false;
+            try
+            {
+                stop.ThrowIfCancellationRequested();
+                var document = new DocInfo
+                {
+                    DocumentName = "SenhaHub",
+                    DataType = "RAW"
+                };
+                if (StartDocPrinter(handle, 1, ref document) == 0)
+                    throw new InvalidOperationException(LastError("iniciar o trabalho de impressão"));
+                documentStarted = true;
+                if (!StartPagePrinter(handle))
+                    throw new InvalidOperationException(LastError("iniciar a página"));
+                pageStarted = true;
+
+                stop.ThrowIfCancellationRequested();
+                beforeSend = false;
+                int written;
+                if (!WritePrinter(handle, data, data.Length, out written, IntPtr.Zero))
+                    throw new InvalidOperationException(LastError("enviar o cupom para a fila"));
+                if (written != data.Length)
+                    throw new InvalidOperationException("A fila aceitou apenas " + written + " de " + data.Length + " bytes.");
+            }
+            catch (PrintException)
+            {
+                throw;
+            }
+            catch (Exception error)
+            {
+                throw new PrintException(error.Message, beforeSend, error);
+            }
+            finally
+            {
+                if (pageStarted) EndPagePrinter(handle);
+                if (documentStarted) EndDocPrinter(handle);
+                ClosePrinter(handle);
+            }
+        }
+
+        public static string FindBematechPrinter()
+        {
+            foreach (string name in PrinterSettings.InstalledPrinters)
+            {
+                if (name.IndexOf("Bematech", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("MP-4200", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return name;
+            }
+            return null;
+        }
+
+        private static string LastError(string operation)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            return "Não foi possível " + operation + ": " + error.Message + " (código " + error.NativeErrorCode + ").";
+        }
+
+        [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool OpenPrinter(string printerName, out IntPtr printer, IntPtr defaults);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClosePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int StartDocPrinter(IntPtr printer, int level, ref DocInfo document);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndDocPrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool StartPagePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndPagePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool WritePrinter(IntPtr printer, byte[] data, int count, out int written, IntPtr reserved);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DocInfo
+        {
+            public string DocumentName;
+            public string OutputFile;
+            public string DataType;
         }
     }
 

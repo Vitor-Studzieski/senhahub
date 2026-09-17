@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Printing;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -117,23 +118,23 @@ namespace SenhaHub.PrintAgent.Setup
 
         private void TestPrinter()
         {
-            var port = printerPort.Text.Trim();
-            if (port.Length == 0)
-            {
-                SetStatus("Informe a porta da impressora.", true);
-                return;
-            }
-
             try
             {
                 SetBusy(true);
-                NativeSerialProbe.Send(port, Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n"));
-                SetStatus("Teste enviado. Confira a impressão.", false);
-                WriteLog("Teste enviado para " + port + ".");
+                var printerName = WindowsRawPrinterProbe.FindBematechPrinter();
+                if (printerName.Length == 0)
+                    throw new InvalidOperationException("Nenhuma fila Bematech foi encontrada. Clique em Instalar driver + agente primeiro.");
+
+                SetStatus("Enviando teste para a fila " + printerName + "...", false);
+                NativeSpoolerProbe.Send(printerName, DiagnosticReceipt());
+                WriteLog("Teste aceito pela fila " + printerName + ".");
+                if (!ConfirmPhysicalPrint(printerName))
+                    throw new InvalidOperationException("O Windows aceitou o trabalho, mas a impressora não confirmou papel. Verifique cabo, papel, luzes e a fila da Bematech.");
+                SetStatus("Teste físico confirmado.", false);
             }
             catch (Exception error)
             {
-                SetStatus("Não foi possível abrir a porta: " + error.Message, true);
+                SetStatus("Não foi possível testar a Bematech: " + error.Message, true);
                 WriteLog("Falha no teste: " + error);
             }
             finally
@@ -228,25 +229,29 @@ namespace SenhaHub.PrintAgent.Setup
             try
             {
                 SetBusy(true);
-                SetStatus("Instalando o driver oficial da Bematech...", false);
-                var driverPath = ExtractDriverPayload();
+                SetStatus("Instalando o driver Spooler oficial da Bematech...", false);
+                var driverPath = ExtractSpoolerDriverPayload();
                 var driverResult = RunExternalInstaller(driverPath);
                 if (driverResult != 0 && driverResult != 3010)
                     throw new InvalidOperationException("O instalador do driver terminou com o código " + driverResult + ".");
 
                 LoadPorts();
                 var port = printerPort.Text.Trim();
-                if (port.Length == 0)
-                    throw new InvalidOperationException("O driver foi instalado, mas nenhuma porta da Bematech apareceu. Desligue e ligue a impressora e clique em Atualizar portas.");
+                if (port.Length == 0) port = "COM3";
+                var printerName = WindowsRawPrinterProbe.FindBematechPrinter();
+                if (printerName.Length == 0)
+                    throw new InvalidOperationException("O driver foi instalado, mas nenhuma fila Bematech apareceu. Se o instalador pediu, conclua a criação da impressora e tente novamente.");
 
-                SetStatus("Testando a Bematech em " + port + "...", false);
-                NativeSerialProbe.Send(port, Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n"));
-                WriteLog("Teste nativo enviado para " + port + ".");
+                SetStatus("Testando a fila " + printerName + "...", false);
+                NativeSpoolerProbe.Send(printerName, DiagnosticReceipt());
+                WriteLog("Teste aceito pela fila " + printerName + ".");
+                if (!ConfirmPhysicalPrint(printerName))
+                    throw new InvalidOperationException("O Windows aceitou o trabalho, mas a impressora não confirmou papel. O agente não foi instalado.");
 
                 StopAndRemoveService();
-                InstallAgentFiles(url, code, port);
-                SetStatus("Driver testado e agente instalado.", false);
-                WriteLog("Driver Bematech e agente instalados em C:\\ProgramData\\SenhaHub\\PrintAgentX86.");
+                InstallAgentFiles(url, code, port, "spooler", printerName);
+                SetStatus("Teste físico confirmado; agente instalado.", false);
+                WriteLog("Driver Spooler Bematech e agente instalados em C:\\ProgramData\\SenhaHub\\PrintAgentX86.");
             }
             catch (Exception error)
             {
@@ -259,7 +264,22 @@ namespace SenhaHub.PrintAgent.Setup
             }
         }
 
-        private void InstallAgentFiles(string url, string code, string port)
+        private static byte[] DiagnosticReceipt()
+        {
+            return Encoding.ASCII.GetBytes("\x1B@\x1Ba\x01SenhaHub\r\nTeste de comunicacao\r\n\r\n");
+        }
+
+        private static bool ConfirmPhysicalPrint(string printerName)
+        {
+            return MessageBox.Show(
+                "O trabalho foi aceito pela fila " + printerName + ".\r\n\r\nSaiu papel na Bematech?",
+                "Confirmação do teste físico",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        }
+
+        private void InstallAgentFiles(string url, string code, string port, string mode = "native-serial", string printerName = "")
         {
             var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SenhaHub", "PrintAgentX86");
             var state = Path.Combine(root, "data", "print-agent-x86");
@@ -272,7 +292,8 @@ namespace SenhaHub.PrintAgent.Setup
             var env = new StringBuilder()
                 .AppendLine("PRINT_API_URL=" + url)
                 .AppendLine("PRINT_ENROLLMENT_CODE=" + code)
-                .AppendLine("KIOSK_PRINTER_MODE=native-serial")
+                .AppendLine("KIOSK_PRINTER_MODE=" + mode)
+                .AppendLine("KIOSK_PRINTER_NAME=" + printerName)
                 .AppendLine("KIOSK_PRINTER_PORT=" + port)
                 .AppendLine("PRINT_SERIAL_BAUD_RATE=115200")
                 .AppendLine("PRINT_SERIAL_DATA_BITS=8")
@@ -296,6 +317,16 @@ namespace SenhaHub.PrintAgent.Setup
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, "Bematech_USBCOM_v4.0.2_2018-09-05.exe");
             using (var source = OpenDriverPayload())
+            using (var target = File.Create(path)) source.CopyTo(target);
+            return path;
+        }
+
+        private string ExtractSpoolerDriverPayload()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "SenhaHubBematechDriver");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "BematechSpoolerDrivers_x86_v5.0.0.4.exe");
+            using (var source = OpenSpoolerDriverPayload())
             using (var target = File.Create(path)) source.CopyTo(target);
             return path;
         }
@@ -387,6 +418,16 @@ namespace SenhaHub.PrintAgent.Setup
             if (name == null) throw new InvalidOperationException("O driver da Bematech não foi incluído neste instalador.");
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
             if (stream == null) throw new InvalidOperationException("Não foi possível ler o driver da Bematech.");
+            return stream;
+        }
+
+        private static Stream OpenSpoolerDriverPayload()
+        {
+            var name = Assembly.GetExecutingAssembly().GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith(".BematechSpoolerDrivers_x86_v5.0.0.4.exe", StringComparison.OrdinalIgnoreCase));
+            if (name == null) throw new InvalidOperationException("O driver Spooler da Bematech não foi incluído neste instalador.");
+            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+            if (stream == null) throw new InvalidOperationException("Não foi possível ler o driver Spooler da Bematech.");
             return stream;
         }
 
@@ -531,6 +572,98 @@ namespace SenhaHub.PrintAgent.Setup
             public sbyte EofChar;
             public sbyte EvtChar;
             public ushort Reserved1;
+        }
+    }
+
+    internal static class WindowsRawPrinterProbe
+    {
+        public static string FindBematechPrinter()
+        {
+            foreach (string name in PrinterSettings.InstalledPrinters)
+            {
+                if (name.IndexOf("Bematech", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("MP-4200", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return name;
+            }
+            return "";
+        }
+    }
+
+    internal static class NativeSpoolerProbe
+    {
+        public static void Send(string printerName, byte[] data)
+        {
+            IntPtr handle;
+            if (!OpenPrinter(printerName, out handle, IntPtr.Zero))
+                throw new IOException(LastError("abrir a fila " + printerName));
+
+            var documentStarted = false;
+            var pageStarted = false;
+            try
+            {
+                var document = new DocInfo
+                {
+                    DocumentName = "SenhaHub",
+                    DataType = "RAW"
+                };
+                if (StartDocPrinter(handle, 1, ref document) == 0)
+                    throw new IOException(LastError("iniciar o trabalho de impressão"));
+                documentStarted = true;
+                if (!StartPagePrinter(handle)) throw new IOException(LastError("iniciar a página"));
+                pageStarted = true;
+                int written;
+                if (!WritePrinter(handle, data, data.Length, out written, IntPtr.Zero))
+                    throw new IOException(LastError("enviar o teste para a fila"));
+                if (written != data.Length)
+                    throw new IOException("A fila aceitou apenas " + written + " de " + data.Length + " bytes.");
+            }
+            finally
+            {
+                if (pageStarted) EndPagePrinter(handle);
+                if (documentStarted) EndDocPrinter(handle);
+                ClosePrinter(handle);
+            }
+        }
+
+        private static string LastError(string operation)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            return "Não foi possível " + operation + ": " + error.Message + " (código " + error.NativeErrorCode + ").";
+        }
+
+        [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool OpenPrinter(string printerName, out IntPtr printer, IntPtr defaults);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClosePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int StartDocPrinter(IntPtr printer, int level, ref DocInfo document);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndDocPrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool StartPagePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndPagePrinter(IntPtr printer);
+
+        [DllImport("winspool.drv", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool WritePrinter(IntPtr printer, byte[] data, int count, out int written, IntPtr reserved);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DocInfo
+        {
+            public string DocumentName;
+            public string OutputFile;
+            public string DataType;
         }
     }
 
