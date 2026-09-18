@@ -2,7 +2,9 @@
 
 > A operação atual está em [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md). Este arquivo preserva o contexto histórico do totem e dos parâmetros físicos; os tokens v1, polling e endpoints antigos abaixo não são instruções para um novo pareamento.
 
-O totem e os antigos tablets, agora mini PCs Windows, emitem senhas fisicas por filas próprias. A emissao cria, em uma unica transacao no Supabase, a senha e um trabalho de impressao. O agente Windows consome a fila do seu destino e envia o recibo em ESC/POS para a Bematech MP-4200 TH pela porta serial.
+O totem e os antigos tablets, agora mini PCs Windows, emitem senhas fisicas por filas próprias. A emissao cria, em uma unica transacao no Supabase, a senha e um trabalho de impressao. O agente x86 dos tablets envia ESC/POS para a Bematech MP-4200 TH; o agente do totem para a MP-4000 TH FI usa o protocolo fiscal de comandos e imprime o ticket como relatório gerencial não fiscal.
+
+Para a MP-4000 TH FI, consulte o agente específico em [windows/print-agent-totem](../windows/print-agent-totem). Ele mantém as mesmas regras da fila v2, mas usa `9600`, 8 bits, sem paridade, 1 stop bit e RTS/CTS. O QR Code da MP-4200 não é enviado à MP-4000; a URL de acompanhamento sai como texto.
 
 ## Componentes entregues
 

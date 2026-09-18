@@ -56,6 +56,7 @@ const state = {
   printJobs: [],
   printJobStatuses: new Map(),
   printPollTimer: null,
+  resultResetTimer: null,
   refreshTimer: null
 };
 
@@ -68,6 +69,7 @@ const elements = {
   result: document.querySelector("#tabletResult"),
   connection: document.querySelector("#tabletConnection"),
   pwaQr: document.querySelector("#tabletPwaQr"),
+  resultQr: document.querySelector("#tabletResultQr"),
   feedback: document.querySelector("#tabletFeedback"),
   priorityOptions: document.querySelector("#tabletPriorityOptions"),
   confirmSummary: document.querySelector("#tabletConfirmSummary"),
@@ -121,16 +123,24 @@ function renderStatus() {
 }
 
 function renderPwaQr(value) {
-  if (!elements.pwaQr || elements.pwaQr.childElementCount) return;
-  const target = normalizePwaUrl(value || PWA_FALLBACK_URL);
-  if (!target || typeof window.qrcode !== "function") {
-    elements.pwaQr.textContent = "QR indisponível";
+  renderQr(elements.pwaQr, value || PWA_FALLBACK_URL, "QR indisponível");
+}
+
+function renderResultQr(value) {
+  renderQr(elements.resultQr, value || state.status?.appUrl || PWA_FALLBACK_URL, "QR indisponível");
+}
+
+function renderQr(target, value, fallback) {
+  if (!target || target.childElementCount) return;
+  const targetUrl = normalizePwaUrl(value);
+  if (!targetUrl || typeof window.qrcode !== "function") {
+    target.textContent = fallback;
     return;
   }
   const code = window.qrcode(0, "M");
-  code.addData(target, "Byte");
+  code.addData(targetUrl, "Byte");
   code.make();
-  elements.pwaQr.innerHTML = code.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
+  target.innerHTML = code.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
 }
 
 function normalizePwaUrl(value) {
@@ -252,14 +262,18 @@ function renderResult(tickets, printJobs = []) {
   state.printJobs = printJobs;
   state.printJobStatuses = new Map(printJobs.map((job) => [job.id, job.status || "pending"]));
   elements.resultTickets.innerHTML = tickets.map((ticket) => `
-    <article class="tablet-ticket-card">
+      <article class="tablet-ticket-card">
       <span>${escapeHtml(ticket.sector || "Setor")}</span>
       <strong>${escapeHtml(ticket.ticket || "---")}</strong>
-    <small class="${ticket.priority ? "tablet-ticket-type-priority" : "tablet-ticket-type-normal"}">${ticket.priority ? "ATENDIMENTO PREFERENCIAL" : "ATENDIMENTO PADRÃO"}</small>
+      <small class="${ticket.priority ? "tablet-ticket-type-priority" : "tablet-ticket-type-normal"}">${ticket.priority ? "ATENDIMENTO PREFERENCIAL" : "ATENDIMENTO PADRÃO"}</small>
     </article>
   `).join("");
+  const trackingUrl = printJobs[0]?.payload?.trackUrl || state.status?.appUrl || PWA_FALLBACK_URL;
+  renderResultQr(trackingUrl);
   setPrintState();
   if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id));
+  clearTimeout(state.resultResetTimer);
+  state.resultResetTimer = setTimeout(resetOperation, 5000);
 }
 
 async function pollPrintJobs(jobIds) {
@@ -307,12 +321,15 @@ function setPrintState(latestResults = []) {
 
 function resetOperation() {
   clearTimeout(state.printPollTimer);
+  clearTimeout(state.resultResetTimer);
   state.printPollTimer = null;
+  state.resultResetTimer = null;
   state.serviceType = null;
   state.priorityReason = null;
   state.issueIdempotencyKey = null;
   state.printJobs = [];
   state.printJobStatuses = new Map();
+  if (elements.resultQr) elements.resultQr.innerHTML = "";
   document.querySelectorAll("[data-tablet-type], .tablet-priority").forEach((item) => item.classList.remove("selected"));
   setStep("type");
   elements.result.hidden = true;

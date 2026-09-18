@@ -1,0 +1,35 @@
+name: SenhaHub Print Agent Totem MP-4000 TH FI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "windows/print-agent-totem/**"
+      - "windows/print-agent-x86/Program.cs"
+      - ".github/workflows/print-agent-totem.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: senhahub-print-agent-totem-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-installer:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build totem agent and installer
+        shell: pwsh
+        run: .\windows\print-agent-totem\build-installer.ps1
+
+      - name: Upload totem installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: senhahub-print-agent-totem-mp4000-v1.0.0-installer
+          path: windows/print-agent-totem/artifacts/SenhaHub.PrintAgent.Totem.Setup-mp4000-v1.0.0.exe
+          if-no-files-found: error

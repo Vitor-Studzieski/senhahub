@@ -11,7 +11,7 @@ export default function TabletPage() {
     <>
       <HtmlTemplate fileName="tablet.html" />
       <Script src="/vendor/qrcode-generator.js" strategy="beforeInteractive" />
-      <Script src="/tablet.js?v=20260918.3" strategy="afterInteractive" />
+      <Script src="/tablet.js?v=20260918.4" strategy="afterInteractive" />
     </>
   );
 }

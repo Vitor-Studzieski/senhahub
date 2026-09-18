@@ -4,8 +4,12 @@ $Root = $PSScriptRoot
 $AgentProject = Join-Path $Root "SenhaHub.PrintAgent.X86.csproj"
 $SetupProject = Join-Path $Root "installer\SenhaHub.PrintAgent.Setup.csproj"
 $AgentOutput = Join-Path $Root "bin\Release\SenhaHub.PrintAgent.X86.exe"
+$AgentVersion = "1.2.5"
+$ArtifactsDirectory = Join-Path $Root "artifacts"
+$VersionedAgentOutput = Join-Path $ArtifactsDirectory "SenhaHub.PrintAgent-x86-v$AgentVersion.exe"
 $PayloadDirectory = Join-Path $Root "installer\payload"
 $SetupOutput = Join-Path $Root "installer\bin\Release\SenhaHub.PrintAgent.Setup.exe"
+$VersionedSetupOutput = Join-Path $ArtifactsDirectory "SenhaHub.PrintAgent.Setup-x86-v$AgentVersion.exe"
 $BematechDriverName = "Bematech_USBCOM_v4.0.2_2018-09-05.exe"
 $BematechDriverUrl = "https://raw.githubusercontent.com/ElginDeveloperCommunity/Impressoras/master/Impressoras%20N%C3%A3o%20Fiscais/Utilit%C3%A1rios%20Bematech/MP-4200%20TH/Drivers/$BematechDriverName"
 $BematechSpoolerDriverName = "BematechSpoolerDrivers_x86_v5.0.0.4.exe"
@@ -45,4 +49,10 @@ if (-not (Test-Path $BematechSpoolerDriverOutput)) { throw "Driver Spooler Bemat
 if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar o instalador." }
 if (-not (Test-Path $SetupOutput)) { throw "Instalador não encontrado: $SetupOutput" }
 
+New-Item -ItemType Directory -Force -Path $ArtifactsDirectory | Out-Null
+Copy-Item $AgentOutput $VersionedAgentOutput -Force
+Copy-Item $SetupOutput $VersionedSetupOutput -Force
+
 Write-Host "Instalador criado em: $SetupOutput"
+Write-Host "Agente versionado criado em: $VersionedAgentOutput"
+Write-Host "Instalador versionado criado em: $VersionedSetupOutput"

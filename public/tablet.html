@@ -57,13 +57,13 @@
       </section>
 
       <section class="tablet-result" id="tabletResult" hidden aria-live="assertive">
-        <p class="tablet-eyebrow">Solicitação concluída</p>
-        <h1>Sua senha</h1>
-        <p class="tablet-result-copy">Acompanhe a chamada na tela do sistema ou pelo link de acompanhamento.</p>
-        <p class="tablet-print-state" id="tabletPrintStatus" aria-live="polite">Senha aguardando a Bematech.</p>
+        <p class="tablet-eyebrow">Senha concluída</p>
+        <h1>Acompanhe sua senha</h1>
         <div class="tablet-result-tickets" id="tabletResultTickets"></div>
-        <button class="tablet-secondary" id="tabletPrintAgain" type="button" hidden>Imprimir novamente</button>
-        <button class="tablet-primary" id="tabletNewRequest" type="button">Nova solicitação</button>
+        <aside class="tablet-result-qr-card" id="tabletResultQrCard" aria-label="Acompanhar a senha pelo SenhaHub">
+          <div class="tablet-result-qr" id="tabletResultQr" aria-label="QR Code para acompanhar sua senha"></div>
+          <div><strong>Use o SenhaHub pelo QR Code</strong><span>Escaneie para acompanhar sua senha pelo celular.</span></div>
+        </aside>
       </section>
     </main>
   </body>

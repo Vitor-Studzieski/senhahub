@@ -20,6 +20,33 @@ using System.Web.Script.Serialization;
 
 namespace SenhaHub.PrintAgent.X86
 {
+    internal static class AgentProfile
+    {
+#if MP4000_TOTEM
+        public const string DisplayName = "Totem MP-4000 TH FI";
+        public const string Version = "totem-mp4000-th-fi/1.0.0";
+        public const string ServiceName = "SenhaHubPrintAgentTotem";
+        public const string ServiceDisplayName = "SenhaHub Print Agent Totem MP-4000 TH FI";
+        public const string DefaultPrinterMode = "mp4000-serial";
+        public const string DefaultPrinterPort = "COM3";
+        public const int DefaultBaudRate = 9600;
+        public const bool DefaultRtsCts = true;
+        public const string DefaultStateDirectory = "data\\print-agent-totem";
+        public const string StateLogFile = "print-agent-totem.log";
+#else
+        public const string DisplayName = "Agente x86";
+        public const string Version = "windows-x86/1.2.5";
+        public const string ServiceName = "SenhaHubPrintAgentX86";
+        public const string ServiceDisplayName = "SenhaHub Print Agent x86";
+        public const string DefaultPrinterMode = "native-serial";
+        public const string DefaultPrinterPort = "COM4";
+        public const int DefaultBaudRate = 115200;
+        public const bool DefaultRtsCts = false;
+        public const string DefaultStateDirectory = "data\\print-agent-x86";
+        public const string StateLogFile = "print-agent-x86.log";
+#endif
+    }
+
     internal static class Program
     {
         private static readonly CancellationTokenSource Stop = new CancellationTokenSource();
@@ -65,7 +92,7 @@ namespace SenhaHub.PrintAgent.X86
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine("Falha ao iniciar o agente x86: " + error.Message);
+                Console.Error.WriteLine("Falha ao iniciar o " + AgentProfile.DisplayName + ": " + error.Message);
                 return 1;
             }
         }
@@ -80,9 +107,9 @@ namespace SenhaHub.PrintAgent.X86
             var printer = PrinterTransport.Create(config);
             var worker = new PrintWorker(config, api, printer, state, log, cancellationToken);
 
-            log.Info("Agente x86 iniciado.", new Dictionary<string, object>
+            log.Info(AgentProfile.DisplayName + " iniciado.", new Dictionary<string, object>
             {
-                { "version", "x86/1.2.5" },
+                { "version", AgentProfile.Version },
                 { "transport", config.PrinterMode },
                 { "target", config.PrinterMode == "spooler" ? config.PrinterName : config.PrinterPort },
                 { "pollMs", config.PollIntervalMs }
@@ -127,7 +154,7 @@ namespace SenhaHub.PrintAgent.X86
                 }
             }
 
-            log.Info("Agente x86 encerrado.", null);
+            log.Info(AgentProfile.DisplayName + " encerrado.", null);
             return 0;
         }
 
@@ -157,7 +184,7 @@ namespace SenhaHub.PrintAgent.X86
         public PrintAgentService(string configPath)
         {
             this.configPath = configPath;
-            ServiceName = "SenhaHubPrintAgentX86";
+            ServiceName = AgentProfile.ServiceName;
             CanStop = true;
             CanShutdown = true;
             AutoLog = false;
@@ -248,27 +275,27 @@ namespace SenhaHub.PrintAgent.X86
                 ApiUrl = Get(values, "PRINT_API_URL", "https://senhahub.vercel.app").TrimEnd('/'),
                 EnrollmentCode = Get(values, "PRINT_ENROLLMENT_CODE", ""),
                 LocalToken = Get(values, "PRINT_DEVICE_LOCAL_TOKEN", ""),
-                PrinterMode = Get(values, "KIOSK_PRINTER_MODE", "native-serial").Trim().ToLowerInvariant(),
+                PrinterMode = Get(values, "KIOSK_PRINTER_MODE", AgentProfile.DefaultPrinterMode).Trim().ToLowerInvariant(),
                 PrinterName = Get(values, "KIOSK_PRINTER_NAME", "").Trim(),
-                PrinterPort = Get(values, "KIOSK_PRINTER_PORT", "COM4"),
-                BaudRate = PositiveInt(Get(values, "PRINT_SERIAL_BAUD_RATE", "115200"), 115200),
+                PrinterPort = Get(values, "KIOSK_PRINTER_PORT", AgentProfile.DefaultPrinterPort),
+                BaudRate = PositiveInt(Get(values, "PRINT_SERIAL_BAUD_RATE", AgentProfile.DefaultBaudRate.ToString()), AgentProfile.DefaultBaudRate),
                 DataBits = Get(values, "PRINT_SERIAL_DATA_BITS", "8") == "7" ? 7 : 8,
                 StopBits = Get(values, "PRINT_SERIAL_STOP_BITS", "1") == "2" ? StopBits.Two : StopBits.One,
                 Parity = ParseParity(Get(values, "PRINT_SERIAL_PARITY", "none")),
-                RtsCts = ParseFlag(Get(values, "PRINT_SERIAL_RTSCTS", "0")),
-                PollIntervalMs = Math.Max(2000, PositiveInt(Get(values, "PRINT_POLL_INTERVAL_MS", "5000"), 5000)),
-                StateDirectory = Get(values, "PRINT_AGENT_STATE_DIR", "data\\print-agent-x86")
+                RtsCts = ParseFlag(Get(values, "PRINT_SERIAL_RTSCTS", AgentProfile.DefaultRtsCts ? "1" : "0")),
+                PollIntervalMs = Math.Max(5000, PositiveInt(Get(values, "PRINT_POLL_INTERVAL_MS", "5000"), 5000)),
+                StateDirectory = Get(values, "PRINT_AGENT_STATE_DIR", AgentProfile.DefaultStateDirectory)
             };
 
             if (!config.ApiUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !IsLoopback(config.ApiUrl))
                 throw new InvalidOperationException("PRINT_API_URL deve usar HTTPS.");
             if (config.EnrollmentCode.Length == 0 && config.LocalToken.Length == 0)
                 throw new InvalidOperationException("Informe PRINT_ENROLLMENT_CODE no primeiro pareamento.");
-            if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial" && config.PrinterMode != "spooler")
-                throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial, serial ou spooler.");
+            if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial" && config.PrinterMode != "spooler" && config.PrinterMode != "mp4000-serial")
+                throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial, serial, spooler ou mp4000-serial.");
             if (config.PrinterMode == "spooler" && config.PrinterName.Length == 0)
                 throw new InvalidOperationException("Informe KIOSK_PRINTER_NAME para o modo spooler.");
-            if (config.StateDirectory.Length == 0) config.StateDirectory = "data\\print-agent-x86";
+            if (config.StateDirectory.Length == 0) config.StateDirectory = AgentProfile.DefaultStateDirectory;
             if (!Path.IsPathRooted(config.StateDirectory)) config.StateDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, config.StateDirectory);
             return config;
         }
@@ -405,7 +432,7 @@ namespace SenhaHub.PrintAgent.X86
             using (var message = new HttpRequestMessage(HttpMethod.Post, config.ApiUrl + "/api/print/v2/" + command))
             {
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                message.Headers.Add("x-print-agent-version", "windows-x86/1.2.5");
+                message.Headers.Add("x-print-agent-version", AgentProfile.Version);
                 message.Content = new StringContent(Json.Serialize(body ?? new Dictionary<string, object>()), Encoding.UTF8, "application/json");
                 using (var response = await http.SendAsync(message))
                 {
@@ -511,6 +538,7 @@ namespace SenhaHub.PrintAgent.X86
 
         private async Task ProcessAsync(Dictionary<string, object> job)
         {
+            var processStartedAt = Environment.TickCount;
             state.SaveExecution(job, "leased", null, null);
             byte[] receipt;
             try
@@ -527,7 +555,9 @@ namespace SenhaHub.PrintAgent.X86
             }
 
             state.SaveExecution(job, "starting", null, null);
+            var startRequestStartedAt = Environment.TickCount;
             var started = await api.CommandAsync("start", Ownership(job));
+            var startRequestMs = ElapsedMilliseconds(startRequestStartedAt);
             var startedJob = Json.Object(started, "job");
             if (startedJob == null || Json.String(startedJob, "status") != "printing") throw new InvalidOperationException("O servidor não aceitou o início da impressão.");
             var expiresAt = Json.ParseDateTime(startedJob, "lease_expires_at");
@@ -536,6 +566,7 @@ namespace SenhaHub.PrintAgent.X86
             state.SaveExecution(job, "writing", null, null);
             string outcome = "printed";
             string errorMessage = null;
+            var printerStartedAt = Environment.TickCount;
             try
             {
                 printer.Print(receipt, stop);
@@ -545,9 +576,21 @@ namespace SenhaHub.PrintAgent.X86
                 outcome = error.BeforeSend ? "before_send" : "unknown";
                 errorMessage = error.BeforeSend ? "Impressora indisponível antes do envio." : "Resultado físico incerto; impressão não será repetida automaticamente.";
             }
+            var printerMs = ElapsedMilliseconds(printerStartedAt);
 
             state.SaveExecution(job, "result", outcome, errorMessage);
+            var finishRequestStartedAt = Environment.TickCount;
             await FinishAsync(job, outcome, errorMessage);
+            log.Info("Tempos do trabalho de impressão.", new Dictionary<string, object>
+            {
+                { "jobId", Json.String(job, "id") },
+                { "receiptBytes", receipt.Length },
+                { "startRequestMs", startRequestMs },
+                { "printerMs", printerMs },
+                { "finishRequestMs", ElapsedMilliseconds(finishRequestStartedAt) },
+                { "totalMs", ElapsedMilliseconds(processStartedAt) },
+                { "outcome", outcome }
+            });
         }
 
         private async Task ReportUnknownAsync(Dictionary<string, object> job)
@@ -582,6 +625,11 @@ namespace SenhaHub.PrintAgent.X86
                 { "attemptVersion", Json.Int(job, "attempt_version") }
             };
         }
+
+        private static int ElapsedMilliseconds(int startedAt)
+        {
+            return Math.Max(0, unchecked(Environment.TickCount - startedAt));
+        }
     }
 
     internal interface IPrinter
@@ -596,6 +644,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             if (config.PrinterMode == "spooler") return new WindowsRawPrinter(config.PrinterName);
             if (config.PrinterMode == "native-serial") return new NativeSerialPrinter(config);
+            if (config.PrinterMode == "mp4000-serial") return new Mp4000FiscalPrinter(config);
             return new SerialPrinter(config);
         }
     }
@@ -968,6 +1017,119 @@ namespace SenhaHub.PrintAgent.X86
         }
     }
 
+    internal sealed class Mp4000FiscalPrinter : IPrinter
+    {
+        private const byte Ack = 0x06;
+        private const byte Nak = 0x15;
+        private const byte StartOfText = 0x02;
+        private readonly AgentConfig config;
+
+        public Mp4000FiscalPrinter(AgentConfig config)
+        {
+            this.config = config;
+        }
+
+        public string Target { get { return "MP-4000 TH FI " + config.PrinterPort; } }
+
+        public void Print(byte[] data, CancellationToken stop)
+        {
+            if (data == null || data.Length == 0) throw new PrintException("Conteúdo vazio.", true);
+
+            using (var port = new SerialPort(config.PrinterPort, config.BaudRate, config.Parity, config.DataBits, config.StopBits))
+            {
+                port.Handshake = config.RtsCts ? Handshake.RequestToSend : Handshake.None;
+                port.DtrEnable = false;
+                port.RtsEnable = false;
+                port.ReadTimeout = 5000;
+                port.WriteTimeout = 30000;
+
+                var beforeSend = true;
+                try
+                {
+                    stop.ThrowIfCancellationRequested();
+                    port.Open();
+                    port.DiscardInBuffer();
+                    port.DiscardOutBuffer();
+
+                    var offset = 0;
+                    while (offset < data.Length)
+                    {
+                        stop.ThrowIfCancellationRequested();
+                        var blockLength = ReadBlockLength(data, offset);
+                        var block = new byte[blockLength];
+                        Buffer.BlockCopy(data, offset, block, 0, blockLength);
+                        beforeSend = false;
+                        port.Write(block, 0, block.Length);
+                        port.BaseStream.Flush();
+
+                        var responseType = ReadExact(port, 1, stop)[0];
+                        if (responseType == Nak)
+                            throw new PrintException("A MP-4000 TH FI rejeitou o comando fiscal.", false);
+                        if (responseType != Ack)
+                            throw new PrintException("Resposta inválida da MP-4000 TH FI: byte " + responseType + ".", false);
+                        var responseStatus = ReadExact(port, 2, stop);
+                        if (responseStatus[0] != 0 || responseStatus[1] != 0)
+                            throw new PrintException(FormatStatus(responseStatus[0], responseStatus[1]), false);
+
+                        offset += blockLength;
+                    }
+                }
+                catch (PrintException)
+                {
+                    throw;
+                }
+                catch (Exception error)
+                {
+                    throw new PrintException(error.Message, beforeSend, error);
+                }
+            }
+        }
+
+        private static int ReadBlockLength(byte[] data, int offset)
+        {
+            if (offset < 0 || offset + 5 > data.Length || data[offset] != StartOfText)
+                throw new PrintException("Pacote da MP-4000 TH FI inválido.", true);
+
+            var payloadLength = data[offset + 1] | (data[offset + 2] << 8);
+            var blockLength = 3 + payloadLength;
+            if (payloadLength < 4 || offset + blockLength > data.Length)
+                throw new PrintException("Tamanho do pacote da MP-4000 TH FI inválido.", true);
+            return blockLength;
+        }
+
+        private static byte[] ReadExact(SerialPort port, int length, CancellationToken stop)
+        {
+            var result = new byte[length];
+            var read = 0;
+            while (read < length)
+            {
+                stop.ThrowIfCancellationRequested();
+                var count = port.Read(result, read, length - read);
+                if (count <= 0) throw new System.TimeoutException("A MP-4000 TH FI não respondeu ao comando.");
+                read += count;
+            }
+            return result;
+        }
+
+        private static string FormatStatus(byte st1, byte st2)
+        {
+            var errors = new List<string>();
+            if ((st1 & 0x80) != 0) errors.Add("sem papel");
+            if ((st1 & 0x40) != 0) errors.Add("pouco papel");
+            if ((st1 & 0x20) != 0) errors.Add("erro no relógio");
+            if ((st1 & 0x10) != 0) errors.Add("impressora em erro");
+            if ((st1 & 0x08) != 0) errors.Add("comando inválido");
+            if ((st1 & 0x04) != 0) errors.Add("comando inexistente");
+            if ((st1 & 0x02) != 0) errors.Add("documento aberto");
+            if ((st1 & 0x01) != 0) errors.Add("parâmetro inválido");
+            if ((st2 & 0x80) != 0) errors.Add("tipo de parâmetro inválido");
+            if ((st2 & 0x40) != 0) errors.Add("memória fiscal cheia");
+            if ((st2 & 0x20) != 0) errors.Add("erro na memória não volátil");
+            if (errors.Count == 0) errors.Add("status fiscal não-zero");
+            return "A MP-4000 TH FI retornou status " + st1 + "/" + st2 + ": " + string.Join(", ", errors) + ".";
+        }
+    }
+
     internal static class ReceiptBuilder
     {
         private const byte Esc = 0x1b;
@@ -976,6 +1138,9 @@ namespace SenhaHub.PrintAgent.X86
 
         public static byte[] Build(Dictionary<string, object> payload)
         {
+#if MP4000_TOTEM
+            return Mp4000ReceiptBuilder.Build(payload);
+#else
             var output = new List<byte>();
             Command(output, Esc, 0x40);
             Command(output, Gs, 0xf9, 0x20, 0x01);
@@ -1008,6 +1173,7 @@ namespace SenhaHub.PrintAgent.X86
             Command(output, Esc, 0x64, 3);
             Command(output, Gs, 0x56, 0x42, 0x04);
             return output.ToArray();
+#endif
         }
 
         private static void QrCode(List<byte> output, string value)
@@ -1031,6 +1197,82 @@ namespace SenhaHub.PrintAgent.X86
         private static void Command(List<byte> output, params byte[] bytes)
         {
             output.AddRange(bytes);
+        }
+
+        private static string CleanText(string value, int maxLength)
+        {
+            if (value == null) value = "";
+            value = Regex.Replace(value.Normalize(NormalizationForm.FormD), "\\p{Mn}+", "");
+            value = new string(value.Where(c => c >= 0x20 && c <= 0x7e).ToArray());
+            value = Regex.Replace(value, "\\s+", " ").Trim();
+            return value.Length > maxLength ? value.Substring(0, maxLength) : value;
+        }
+
+        private static string CleanUrl(string value)
+        {
+            if (value == null) return "";
+            value = new string(value.Where(c => c >= 0x20 && c != 0x7f).ToArray()).Trim();
+            return value.Length > 512 ? value.Substring(0, 512) : value;
+        }
+    }
+
+    internal static class Mp4000ReceiptBuilder
+    {
+        private const byte Stx = 0x02;
+        private const byte Esc = 0x1b;
+        private const int MaxTextBytesPerCommand = 600;
+
+        public static byte[] Build(Dictionary<string, object> payload)
+        {
+            var lines = new List<string>
+            {
+                "SUPERMERCADO POMPEIA",
+                "SenhaHub"
+            };
+
+            var tickets = Json.Array(payload, "tickets");
+            if (tickets.Count == 0) tickets.Add(payload);
+            foreach (var item in tickets.Take(12))
+            {
+                var ticket = item as Dictionary<string, object> ?? payload;
+                lines.Add(CleanText(Json.String(ticket, "sectorName") ?? Json.String(payload, "sectorName") ?? "SETOR", 60).ToUpperInvariant());
+                lines.Add("SENHA");
+                lines.Add(CleanText(Json.String(ticket, "ticketCode") ?? Json.String(payload, "ticketCode") ?? "---", 16));
+            }
+
+            var trackUrl = CleanUrl(Json.String(payload, "trackUrl"));
+            lines.Add("Acompanhe em:");
+            lines.Add(trackUrl.Length == 0 ? "URL indisponivel" : trackUrl);
+            var text = Encoding.ASCII.GetBytes(string.Join("\r\n", lines) + "\r\n");
+
+            var output = new List<byte>();
+            var offset = 0;
+            var first = true;
+            while (offset < text.Length)
+            {
+                var count = Math.Min(MaxTextBytesPerCommand, text.Length - offset);
+                var command = new List<byte> { Esc, first ? (byte)0x14 : (byte)0x43 };
+                for (var index = 0; index < count; index++) command.Add(text[offset + index]);
+                AddPacket(output, command.ToArray());
+                offset += count;
+                first = false;
+            }
+
+            AddPacket(output, new byte[] { Esc, 0x15 });
+            return output.ToArray();
+        }
+
+        private static void AddPacket(List<byte> output, byte[] command)
+        {
+            var count = command.Length + 2;
+            var checksum = 0;
+            foreach (var value in command) checksum += value;
+            output.Add(Stx);
+            output.Add((byte)(count & 0xff));
+            output.Add((byte)((count >> 8) & 0xff));
+            output.AddRange(command);
+            output.Add((byte)(checksum & 0xff));
+            output.Add((byte)((checksum >> 8) & 0xff));
         }
 
         private static string CleanText(string value, int maxLength)
@@ -1229,7 +1471,7 @@ namespace SenhaHub.PrintAgent.X86
 
         public AgentLog(string directory)
         {
-            path = Path.Combine(directory, "print-agent-x86.log");
+            path = Path.Combine(directory, AgentProfile.StateLogFile);
         }
 
         public void Info(string message, Dictionary<string, object> details)

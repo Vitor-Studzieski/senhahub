@@ -1498,7 +1498,11 @@ async function tabletTickets(request) {
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
 
   const body = await readJson(request);
-  const sectors = (await getSectors()).filter((sector) => (
+  const [availableSectors, configuredKiosk] = await Promise.all([
+    getSectors(),
+    ensureTabletPrinterKiosk()
+  ]);
+  const sectors = availableSectors.filter((sector) => (
     sector.status === "open" && canAccessSectorSync(user, sector.id)
   ));
   if (sectors.length !== 1) {
@@ -1510,7 +1514,6 @@ async function tabletTickets(request) {
     return json({ error: "Este tablet está configurado para outro setor." }, 403);
   }
 
-  const configuredKiosk = await ensureTabletPrinterKiosk();
   if (!configuredKiosk || !configuredKiosk.active) {
     return json({ error: "A impressora dos tablets ainda nao esta configurada." }, 503);
   }

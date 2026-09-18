@@ -8,7 +8,7 @@ A versão oficial e homologada para os mini PCs é a `x86/1.2.5`. Ela usa a API 
 
 A versão `x86/1.2.5` desta pasta é a única versão homologada para os mini PCs com Windows e a Bematech MP-4200 TH. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
 
-Use exclusivamente o instalador `SenhaHub.PrintAgent.Setup.exe` gerado a partir da versão `x86/1.2.5` nos próximos mini PCs. Para cada equipamento novo, gere um código de pareamento próprio no SenhaHub; o código é temporário, de uso único e expira em dez minutos.
+Use exclusivamente o instalador versionado `SenhaHub.PrintAgent.Setup-x86-v1.2.5.exe` nos próximos mini PCs. Para cada equipamento novo, gere um código de pareamento próprio no SenhaHub; o código é temporário, de uso único e expira em dez minutos.
 
 ## Compilar
 
@@ -28,7 +28,7 @@ Em um Windows com Visual Studio ou Build Tools instalados, abra o PowerShell nes
 .\build-installer.ps1
 ```
 
-O script compila o agente e gera um único instalador em `installer\bin\Release\SenhaHub.PrintAgent.Setup.exe`. O instalador pede o servidor, o código de pareamento e a porta, testa a Bematech, grava a configuração, instala o agente como serviço `SenhaHubPrintAgentX86` e inicia o serviço automaticamente.
+O script compila o agente e gera o instalador em `installer\bin\Release\SenhaHub.PrintAgent.Setup.exe`, além das cópias versionadas `artifacts\SenhaHub.PrintAgent-x86-v1.2.5.exe` e `artifacts\SenhaHub.PrintAgent.Setup-x86-v1.2.5.exe`. O instalador pede o servidor, o código de pareamento e a porta, testa a Bematech, grava a configuração, instala o agente como serviço `SenhaHubPrintAgentX86` e inicia o serviço automaticamente.
 
 O instalador gerado pelo workflow embute os drivers oficiais USB/COM e Spooler x86 da MP-4200 TH. O botão `Instalar driver + agente` usa o Spooler do Windows, localiza a fila Bematech, envia um teste e pede confirmação do papel; o serviço só é instalado depois da confirmação física.
 Em atualizações, ele remove o serviço, o executável, a configuração, as filas e os drivers de impressão Bematech/MP-4200 antigos e limpa os instaladores temporários que ele próprio extraiu. A pasta de estado é preservada para manter o pareamento e impedir reimpressões duplicadas; drivers USB genéricos não são removidos automaticamente. Durante a remoção, o Spooler do Windows é reiniciado para liberar um driver antigo em uso.

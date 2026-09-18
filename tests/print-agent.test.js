@@ -110,8 +110,14 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.ok(tabletHtml.indexOf('id="tabletStepType"') < tabletHtml.indexOf('id="tabletPwaQrCard"'));
   assert.doesNotMatch(tabletHtml, /Escolha apenas uma opção/);
   assert.doesNotMatch(tabletHtml, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);
+  assert.match(tabletHtml, /id="tabletResultQr"/);
+  assert.match(tabletHtml, /Senha concluída/);
+  assert.match(tabletHtml, /Use o SenhaHub pelo QR Code/);
+  assert.doesNotMatch(tabletHtml, /Solicitação concluída|Nova solicitação|Senha aguardando a Bematech/);
   assert.match(tabletScript, /ATENDIMENTO PADRÃO/);
   assert.match(tabletScript, /ATENDIMENTO PREFERENCIAL/);
+  assert.match(tabletScript, /function renderResultQr\(value\)/);
+  assert.match(tabletScript, /setTimeout\(resetOperation, 5000\)/);
   assert.doesNotMatch(script, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);
   assert.match(script, /RESULT_DISPLAY_MS = 4000/);
   assert.match(script, /setTimeout\(resetOperation, RESULT_DISPLAY_MS\)/);

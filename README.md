@@ -9,7 +9,7 @@ Aplicativo de fila virtual para supermercado, com login por perfil, solicitacao 
 
 O projeto requer Node 22. O deploy atual na Vercel usa exclusivamente o Supabase para autenticação, dados da fila, notificações, impressão e RPCs transacionais. O caminho PostgreSQL local permanece preservado para a futura instalação do servidor da loja.
 
-O protocolo atual de impressão, pareamento, recuperação e rollout está em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md). Os antigos tablets agora operam como mini PCs Windows e usam o mesmo agente x86 e a mesma Bematech MP-4200 TH dos totens.
+O protocolo atual de impressão, pareamento, recuperação e rollout está em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md). Os antigos tablets usam o agente x86 da MP-4200 TH; o totem também possui um perfil Windows x86 específico para a Bematech MP-4000 TH FI em [windows/print-agent-totem](windows/print-agent-totem).
 
 ## Como rodar localmente
 
