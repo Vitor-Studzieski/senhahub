@@ -155,4 +155,4 @@ TABLET_PRINTER_PORT=COM4
 TABLET_PAPER_WIDTH_MM=80
 ```
 
-No mini PC, instale o agente em `windows/print-agent-x86`, confirme a porta real da Bematech (`COM4` no equipamento homologado), faça primeiro o teste físico e só então abra `/tablet` para emitir uma senha. O agente confirma a impressão na fila; em caso de resultado físico incerto, a reimpressão exige resolução administrativa.
+No mini PC, instale exclusivamente o agente x86 `1.2.5` em `windows/print-agent-x86`, confirme a porta real da Bematech (`COM4` no equipamento homologado), faça primeiro o teste físico e só então abra `/tablet` para emitir uma senha. O agente confirma a impressão na fila; em caso de resultado físico incerto, a reimpressão exige resolução administrativa.

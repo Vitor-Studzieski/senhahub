@@ -1335,7 +1335,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.1.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.2.5");
             return client;
         }
     }

@@ -45,7 +45,7 @@ namespace SenhaHub.PrintAgent.Setup
 
         public InstallerForm()
         {
-            Text = "Instalação do agente de impressão SenhaHub";
+            Text = "Instalação do agente x86 1.2.5 — SenhaHub";
             ClientSize = new Size(620, 430);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -92,6 +92,8 @@ namespace SenhaHub.PrintAgent.Setup
             log.ScrollBars = ScrollBars.Vertical;
             log.SetBounds(20, 285, 575, 120);
             Controls.Add(log);
+
+            WriteLog("Agente oficial: x86/1.2.5.");
 
             Load += delegate { LoadPorts(); };
         }

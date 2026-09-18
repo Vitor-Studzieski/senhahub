@@ -1,14 +1,14 @@
-# Agente x86 do SenhaHub
+# Agente x86 do SenhaHub — versão oficial 1.2.5
 
 Este agente é uma alternativa para o mini PC com Windows de 32 bits e processador baseado em x64. Ele não usa Node.js nem o pacote `serialport`: é um executável C# para .NET Framework 4.8, compilado com `PlatformTarget=x86`, e envia ESC/POS diretamente para a porta serial virtual da Bematech.
 
-A versão `x86/1.1.0` usa a API nativa de comunicação do Windows para abrir a porta. Isso contorna um problema de alguns drivers USB/serial que retornam `O tempo limite do semáforo expirou` quando a porta é aberta pelo `System.IO.Ports.SerialPort`.
+A versão oficial e homologada para os mini PCs é a `x86/1.2.5`. Ela usa a API nativa de comunicação do Windows e o fluxo de impressão Bematech validado no mini PC da Loja 2. Não use instaladores antigos (`1.0.x` ou `1.1.x`) em novos equipamentos.
 
 ## Versão homologada
 
-A versão `x86/1.0.0` desta pasta foi homologada no mini PC com Windows 10 de 32 bits e na Bematech MP-4200 TH identificada como `COM4`. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
+A versão `x86/1.2.5` desta pasta é a única versão homologada para os mini PCs com Windows e a Bematech MP-4200 TH. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
 
-Use esta versão como base para os próximos tablets. Para cada tablet novo, gere um código de pareamento próprio no SenhaHub; o código usado no teste é temporário, de uso único e expira em dez minutos.
+Use exclusivamente o instalador `SenhaHub.PrintAgent.Setup.exe` gerado a partir da versão `x86/1.2.5` nos próximos mini PCs. Para cada equipamento novo, gere um código de pareamento próprio no SenhaHub; o código é temporário, de uso único e expira em dez minutos.
 
 ## Compilar
 
@@ -33,7 +33,7 @@ O script compila o agente e gera um único instalador em `installer\bin\Release\
 O instalador gerado pelo workflow embute os drivers oficiais USB/COM e Spooler x86 da MP-4200 TH. O botão `Instalar driver + agente` usa o Spooler do Windows, localiza a fila Bematech, envia um teste e pede confirmação do papel; o serviço só é instalado depois da confirmação física.
 Em atualizações, ele remove o serviço, o executável, a configuração, as filas e os drivers de impressão Bematech/MP-4200 antigos e limpa os instaladores temporários que ele próprio extraiu. A pasta de estado é preservada para manter o pareamento e impedir reimpressões duplicadas; drivers USB genéricos não são removidos automaticamente. Durante a remoção, o Spooler do Windows é reiniciado para liberar um driver antigo em uso.
 
-O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`. Depois de enviar as alterações ao GitHub, execute `SenhaHub Print Agent x86` em **Actions** e baixe o artefato `senhahub-print-agent-x86-installer`. Assim, não é necessário instalar Visual Studio ou Build Tools no computador usado para operar o mini PC.
+O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`. Depois de enviar as alterações ao GitHub, execute `SenhaHub Print Agent x86` em **Actions** e baixe o artefato `senhahub-print-agent-x86-v1.2.5-installer`. Assim, não é necessário instalar Visual Studio ou Build Tools no computador usado para operar o mini PC.
 
 ## Parear com o SenhaHub
 
