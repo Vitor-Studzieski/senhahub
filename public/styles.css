@@ -5139,6 +5139,29 @@ textarea:focus {
 .tablet-type-heading { display: block; margin-bottom: 18px; }
 .tablet-type-heading h1 { text-align: center; }
 .tablet-type-heading p { margin: 10px 0 0; color: var(--vr-heading); font-size: 18px; line-height: 1.4; }
+.tablet-pwa-card {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  width: min(100%, 520px);
+  margin: 34px auto 28px;
+  border: 1px solid var(--vr-orange-primary);
+  border-radius: 12px;
+  padding: 14px 18px;
+  background: var(--vr-surface-muted);
+  text-align: left;
+}
+.tablet-pwa-qr {
+  width: 124px;
+  height: 124px;
+  overflow: hidden;
+  background: var(--vr-surface);
+}
+.tablet-pwa-qr svg { display: block; width: 100%; height: 100%; }
+.tablet-pwa-card > div:last-child { display: grid; gap: 6px; }
+.tablet-pwa-card strong { color: var(--vr-heading); font-size: 18px; }
+.tablet-pwa-card span { color: var(--vr-heading); line-height: 1.4; }
 .tablet-eyebrow { margin: 0 0 8px; color: var(--vr-text); font-size: 13px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .tablet-heading h1,
 .tablet-result h1 { margin: 0; color: var(--vr-heading); font-size: clamp(32px, 5vw, 50px); line-height: 1.05; }
@@ -5157,6 +5180,7 @@ textarea:focus {
 .tablet-priority,
 .tablet-sector { border: 2px solid var(--vr-border); border-radius: 14px; background: var(--vr-surface-muted); color: var(--vr-heading); cursor: pointer; text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .tablet-choice { display: grid; min-height: 150px; align-content: center; gap: 9px; padding: 24px; }
+.tablet-type-step .tablet-choice { justify-items: center; text-align: center; }
 .tablet-choice strong { color: var(--vr-heading); font-size: 21px; }
 .tablet-choice span { color: var(--vr-heading); line-height: 1.4; }
 .tablet-choice:hover,
@@ -5168,6 +5192,10 @@ textarea:focus {
 .tablet-choice-priority { background: var(--vr-surface-muted); }
 .tablet-type-step .tablet-choice { border-color: var(--vr-orange-primary); }
 .tablet-type-step .tablet-choice-priority { border-color: var(--vr-amber); background: var(--vr-surface-muted); }
+.tablet-type-step .tablet-choice-normal { border-color: var(--green); background: var(--green); }
+.tablet-type-step .tablet-choice-normal strong { color: var(--vr-on-brand); }
+.tablet-type-step .tablet-choice-priority { border-color: var(--red); background: var(--red); }
+.tablet-type-step .tablet-choice-priority strong { color: var(--vr-on-brand); }
 .tablet-priority-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .tablet-priority { display: grid; min-height: 174px; align-content: center; justify-items: center; gap: 6px; padding: 8px 6px; }
 .tablet-priority-image { width: 120px; height: 120px; border-radius: 16px; background: var(--vr-orange-primary); object-fit: cover; }
@@ -5214,6 +5242,8 @@ textarea:focus {
 .tablet-ticket-card span { color: var(--vr-heading); font-weight: 800; }
 .tablet-ticket-card strong { color: var(--vr-heading); font-size: 48px; line-height: 1; }
 .tablet-ticket-card small { color: var(--vr-text); font-weight: 800; }
+.tablet-ticket-card small.tablet-ticket-type-normal { color: var(--green); }
+.tablet-ticket-card small.tablet-ticket-type-priority { color: var(--red); }
 
 @media (max-width: 760px) {
   .tablet-header { align-items: flex-start; }
@@ -5229,6 +5259,14 @@ textarea:focus {
   .tablet-progress small { font-size: 9px; }
   .tablet-brand strong { font-size: 19px; }
   .tablet-brand img { width: 44px; height: 44px; }
+  .tablet-pwa-card { width: 100%; grid-template-columns: 104px minmax(0, 1fr); gap: 14px; padding: 12px; }
+  .tablet-pwa-qr { width: 104px; height: 104px; }
+  .tablet-pwa-card strong { font-size: 16px; }
+}
+
+.tablet-operation[data-tablet-step="priority"] .tablet-pwa-card,
+.tablet-operation[data-tablet-step="confirm"] .tablet-pwa-card {
+  display: none;
 }
 
 @media (max-width: 520px) {
@@ -6381,6 +6419,15 @@ textarea:focus {
   color: var(--vr-heading);
   font-size: 14px;
   line-height: 1.4;
+}
+
+.totem-pwa-card {
+  margin: 34px 0 28px auto;
+}
+
+.totem-operation[data-totem-step="priority"] .totem-pwa-card,
+.totem-operation[data-totem-step="sector"] .totem-pwa-card {
+  display: none;
 }
 
 .totem-sector {
@@ -9494,6 +9541,7 @@ textarea:focus {
   gap: 18px;
   min-height: 174px;
   padding: 24px 28px;
+  text-align: center;
 }
 
 .totem-choice-marker {
@@ -9518,6 +9566,7 @@ textarea:focus {
 .totem-choice-content {
   display: grid !important;
   gap: 8px;
+  justify-items: center;
   min-width: 0;
   margin: 0 !important;
 }
@@ -10920,7 +10969,7 @@ textarea:focus {
 
 @media (max-width: 760px) {
   .attendant-page .ops-card {
-    grid-template-rows: auto auto 64px 34px 176px auto;
+    grid-template-rows: auto auto 64px 34px auto auto;
   }
 
   .attendant-page .ops-card-head {
@@ -10936,6 +10985,15 @@ textarea:focus {
   .attendant-page .ops-call-button {
     height: 64px;
     min-height: 64px;
+  }
+
+  /* No celular, a fila deve acompanhar o conteúdo e usar a rolagem da página.
+     A altura fixa criava uma segunda rolagem e cortava a próxima senha. */
+  .attendant-page .ops-queue-section {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -11070,12 +11128,6 @@ textarea:focus {
 @media (max-width: 760px) {
   .attendant-page .ops-card-head {
     min-height: 72px;
-  }
-
-  .attendant-page .ops-queue-section {
-    height: 176px;
-    min-height: 176px;
-    max-height: 176px;
   }
 }
 
@@ -12927,4 +12979,41 @@ textarea:focus-visible,
 
 .manager-page .manager-sector-head > div:first-child span {
   margin-top: 2px;
+}
+
+/* Identificação rápida do tipo de atendimento nas telas que emitem senha. */
+.totem-choice-normal,
+.totem-choice-normal.selected,
+.totem-choice-normal:hover,
+.totem-choice-normal:focus-visible {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--vr-on-brand);
+}
+
+.totem-choice-normal .totem-choice-content strong {
+  color: var(--vr-on-brand);
+}
+
+.totem-choice-normal .totem-choice-marker {
+  background: color-mix(in srgb, var(--green) 16%, var(--vr-surface));
+  color: var(--green);
+}
+
+.totem-choice-priority,
+.totem-choice-priority.selected,
+.totem-choice-priority:hover,
+.totem-choice-priority:focus-visible {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--vr-on-brand);
+}
+
+.totem-choice-priority .totem-choice-content strong {
+  color: var(--vr-on-brand);
+}
+
+.totem-choice-priority .totem-choice-marker {
+  background: color-mix(in srgb, var(--red) 16%, var(--vr-surface));
+  color: var(--red) !important;
 }

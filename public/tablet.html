@@ -29,16 +29,17 @@
       </section>
 
       <section class="tablet-operation" id="tabletOperation" hidden>
-        <div class="tablet-heading tablet-type-heading">
-          <div><h1>Como você precisa ser atendido?</h1><p>Escolha apenas uma opção.</p></div>
-        </div>
-
         <section class="tablet-step tablet-type-step" id="tabletStepType">
           <div class="tablet-choice-grid">
-            <button class="tablet-choice" type="button" data-tablet-type="normal"><strong>Atendimento normal</strong><span>Entre na fila comum do setor.</span></button>
-            <button class="tablet-choice tablet-choice-priority" type="button" data-tablet-type="preferencial"><strong>Atendimento preferencial</strong><span>Para quem tem direito ao atendimento prioritário.</span></button>
+            <button class="tablet-choice tablet-choice-normal" type="button" data-tablet-type="normal"><strong>ATENDIMENTO PADRÃO</strong></button>
+            <button class="tablet-choice tablet-choice-priority" type="button" data-tablet-type="preferencial"><strong>ATENDIMENTO PREFERENCIAL</strong></button>
           </div>
         </section>
+
+        <aside class="tablet-pwa-card" id="tabletPwaQrCard" aria-label="Acessar o SenhaHub pelo celular">
+          <div class="tablet-pwa-qr" id="tabletPwaQr" aria-label="QR Code para acessar o SenhaHub"></div>
+          <div><strong>Prefere usar o celular?</strong><span>Aponte a câmera para abrir o SenhaHub no seu celular.</span></div>
+        </aside>
 
         <section class="tablet-step tablet-priority-step" id="tabletStepPriority" hidden>
           <div class="tablet-step-heading"><h2>Qual é a categoria preferencial?</h2><p>Selecione a categoria correspondente.</p></div>

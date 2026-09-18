@@ -1486,6 +1486,7 @@ async function tabletStatus(request) {
   return json({
     source: "supabase",
     user: userDto(user),
+    appUrl: TABLET_PRINTER_CONFIGURATION.appUrl,
     sector,
     sectors: [sector]
   }, 200, { "cache-control": "no-store" });

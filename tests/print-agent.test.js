@@ -75,6 +75,8 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   const html = fs.readFileSync(path.resolve(__dirname, "../public/totem.html"), "utf8");
   const script = fs.readFileSync(path.resolve(__dirname, "../public/totem.js"), "utf8");
   const page = fs.readFileSync(path.resolve(__dirname, "../app/totem/page.jsx"), "utf8");
+  const tabletHtml = fs.readFileSync(path.resolve(__dirname, "../public/tablet.html"), "utf8");
+  const tabletScript = fs.readFileSync(path.resolve(__dirname, "../public/tablet.js"), "utf8");
   const attendant = fs.readFileSync(path.resolve(__dirname, "../public/attendant.js"), "utf8");
   const trackingHtml = fs.readFileSync(path.resolve(__dirname, "../public/acompanhar.html"), "utf8");
   const trackingScript = fs.readFileSync(path.resolve(__dirname, "../public/acompanhar.js"), "utf8");
@@ -83,7 +85,7 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.doesNotMatch(html, /Acompanhe sua posição pelo celular/);
   assert.doesNotMatch(html, /Escaneie o QR Code para acompanhar sua fila/);
   assert.match(html, /id="backToTypeFromSectorsButton"/);
-  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.15\.2"/);
+  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.18\.3"/);
   assert.match(page, /`\/totem\.js\?v=\$\{TOTEM_ASSET_VERSION\}`/);
   assert.match(html, /id="issueTicketsButton"/);
   assert.match(html, /id="resultTickets"/);
@@ -101,7 +103,16 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.match(html, /class="totem-step totem-priority-step"/);
   assert.ok(html.indexOf('id="totemStepType"') < html.indexOf('id="totemStepSector"'));
   assert.match(script, /kiosk\?\.appUrl/);
-  assert.match(script, /senhahub\.vercel\.app\/login\?next=%2F/);
+  assert.match(script, /const GENERAL_QR_URL = "https:\/\/senhahub\.vercel\.app\/"/);
+  assert.match(html, /totemStepType[\s\S]*totemGeneralQr/);
+  assert.match(tabletHtml, /ATENDIMENTO PADRÃO/);
+  assert.match(tabletHtml, /ATENDIMENTO PREFERENCIAL/);
+  assert.ok(tabletHtml.indexOf('id="tabletStepType"') < tabletHtml.indexOf('id="tabletPwaQrCard"'));
+  assert.doesNotMatch(tabletHtml, /Escolha apenas uma opção/);
+  assert.doesNotMatch(tabletHtml, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);
+  assert.match(tabletScript, /ATENDIMENTO PADRÃO/);
+  assert.match(tabletScript, /ATENDIMENTO PREFERENCIAL/);
+  assert.doesNotMatch(script, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);
   assert.match(script, /RESULT_DISPLAY_MS = 4000/);
   assert.match(script, /setTimeout\(resetOperation, RESULT_DISPLAY_MS\)/);
   assert.doesNotMatch(script, /renderTrackingQr|resultTrackQr|resultTrackUrl/);
@@ -198,7 +209,8 @@ test("fila do atendente mantém linhas concisas e não desloca o histórico entr
   assert.match(styles, /\.attendant-page \.ops-ticket-meta\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
   assert.match(styles, /\.attendant-page \.ops-ticket-meta \.priority-badge > span\s*\{[^}]*display: inline;/);
   assert.match(styles, /@media \(max-width: 760px\) \{[\s\S]*?\.attendant-page \.ops-grid\s*\{\s*grid-template-columns: 1fr;/);
-  assert.match(styles, /grid-template-rows: auto auto 64px 34px 176px auto/);
+  assert.match(styles, /grid-template-rows: auto auto 64px 34px auto auto/);
+  assert.match(styles, /\.attendant-page \.ops-queue-section\s*\{[\s\S]*?height: auto;[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
 });
 
 test("últimas chamadas mostram nome, senha e prioridade sem rótulo de ação", () => {

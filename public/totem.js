@@ -1,20 +1,18 @@
 (function initializeTotem() {
-  const GENERAL_QR_URL = "https://senhahub.vercel.app/login?next=%2F";
+  const GENERAL_QR_URL = "https://senhahub.vercel.app/";
   const RESULT_DISPLAY_MS = 4000;
   const QUEUE_REFRESH_INTERVAL_MS = 5000;
   // Novos tipos de atendimento podem ser adicionados aqui sem alterar a estrutura da tela.
   const SERVICE_TYPES = [
     {
       id: "normal",
-      label: "Atendimento normal",
-      description: "Entre na fila comum do setor.",
+      label: "ATENDIMENTO PADRÃO",
       marker: "N",
       className: "totem-choice-normal"
     },
     {
       id: "preferencial",
-      label: "Atendimento preferencial",
-      description: "Para quem tem direito ao atendimento prioritário.",
+      label: "ATENDIMENTO PREFERENCIAL",
       marker: "P",
       className: "totem-choice-priority"
     }
@@ -303,9 +301,9 @@
   function renderServiceOptions() {
     if (!elements.serviceOptions) return;
     elements.serviceOptions.innerHTML = SERVICE_TYPES.map((service) => `
-      <button class="totem-choice ${service.className || ""}" type="button" data-service-type="${service.id}" aria-describedby="totem-service-${service.id}-description">
+      <button class="totem-choice ${service.className || ""}" type="button" data-service-type="${service.id}">
         <span class="totem-choice-marker" aria-hidden="true">${service.marker}</span>
-        <span class="totem-choice-content"><strong>${escapeHtml(service.label)}</strong><span id="totem-service-${service.id}-description">${escapeHtml(service.description)}</span></span>
+        <span class="totem-choice-content"><strong>${escapeHtml(service.label)}</strong></span>
         <span class="totem-choice-arrow" aria-hidden="true">&#8594;</span>
       </button>
     `).join("");
@@ -345,7 +343,7 @@
     });
     document.querySelectorAll("[data-progress-step]").forEach((item) => item.classList.toggle("active", item.dataset.progressStep === step));
     const copy = {
-      type: ["Escolha o atendimento", "Escolha atendimento normal ou preferencial."],
+      type: ["", ""],
       priority: ["Categoria preferencial", "Selecione a categoria que corresponde à sua necessidade."],
       sector: ["Escolha os setores", "Selecione um ou mais setores e retire sua senha."]
     }[step] || ["Retire sua senha", "Escolha como deseja ser atendido."];
@@ -505,25 +503,33 @@
     elements.connection.querySelector("strong").textContent = label;
   }
 
-  function renderGeneralQr() {
-    if (state.mode === "sector") {
-      elements.generalQrCard.hidden = true;
-      return;
-    }
+  function renderGeneralQr(value) {
+    if (!elements.generalQrCard) return;
     elements.generalQrCard.hidden = false;
     if (elements.generalQr.childElementCount) return;
-    renderQr(elements.generalQr, GENERAL_QR_URL, "QR indisponível");
+    renderQr(elements.generalQr, value || GENERAL_QR_URL, "QR indisponível");
   }
 
   function renderQr(target, value, fallback) {
-    if (!target || !value || !value.startsWith("https://") || typeof window.qrcode !== "function") {
+    const targetUrl = normalizePwaUrl(value);
+    if (!target || !targetUrl || typeof window.qrcode !== "function") {
       target.textContent = fallback;
       return;
     }
     const code = window.qrcode(0, "M");
-    code.addData(value, "Byte");
+    code.addData(targetUrl, "Byte");
     code.make();
     target.innerHTML = code.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
+  }
+
+  function normalizePwaUrl(value) {
+    try {
+      const url = new URL(String(value || ""), window.location.origin);
+      if (!["http:", "https:"].includes(url.protocol)) return "";
+      return url.toString();
+    } catch {
+      return "";
+    }
   }
 
   async function api(path, options = {}) {

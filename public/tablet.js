@@ -10,6 +10,7 @@ const PRIORITY_CATEGORIES = [
   { id: "doador_de_sangue", label: "Doadores de sangue", image: "/assets/tablet-priority/doador-de-sangue.png" },
   { id: "fibromialgia", label: "Fibromialgia", image: "/assets/tablet-priority/fibromialgia.png" }
 ];
+const PWA_FALLBACK_URL = "https://senhahub.vercel.app/";
 
 const tabletStorage = (() => {
   try {
@@ -66,6 +67,7 @@ const elements = {
   operation: document.querySelector("#tabletOperation"),
   result: document.querySelector("#tabletResult"),
   connection: document.querySelector("#tabletConnection"),
+  pwaQr: document.querySelector("#tabletPwaQr"),
   feedback: document.querySelector("#tabletFeedback"),
   priorityOptions: document.querySelector("#tabletPriorityOptions"),
   confirmSummary: document.querySelector("#tabletConfirmSummary"),
@@ -99,6 +101,7 @@ async function loadStatus() {
     state.status = payload;
     state.selectedSector = payload.sector || payload.sectors?.[0] || null;
     if (!state.selectedSector) throw new Error("Esta conta não está vinculada a um setor aberto.");
+    renderPwaQr(payload.appUrl);
     renderStatus();
     setConnection("online", "Tablet online");
   } catch (error) {
@@ -115,6 +118,29 @@ function renderStatus() {
   resetOperation();
   clearInterval(state.refreshTimer);
   state.refreshTimer = setInterval(refreshStatus, 5000);
+}
+
+function renderPwaQr(value) {
+  if (!elements.pwaQr || elements.pwaQr.childElementCount) return;
+  const target = normalizePwaUrl(value || PWA_FALLBACK_URL);
+  if (!target || typeof window.qrcode !== "function") {
+    elements.pwaQr.textContent = "QR indisponível";
+    return;
+  }
+  const code = window.qrcode(0, "M");
+  code.addData(target, "Byte");
+  code.make();
+  elements.pwaQr.innerHTML = code.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
+}
+
+function normalizePwaUrl(value) {
+  try {
+    const url = new URL(String(value || ""), window.location.origin);
+    if (!["http:", "https:"].includes(url.protocol)) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 async function refreshStatus() {
@@ -179,7 +205,7 @@ function setStep(step) {
 
 function renderConfirmSummary() {
   const category = PRIORITY_CATEGORIES.find((item) => item.id === state.priorityReason);
-  const service = state.serviceType === "preferencial" ? "Atendimento preferencial" : "Atendimento normal";
+  const service = state.serviceType === "preferencial" ? "ATENDIMENTO PREFERENCIAL" : "ATENDIMENTO PADRÃO";
   elements.confirmSummary.innerHTML = [
     `<div><span>Tipo de atendimento</span><strong>${escapeHtml(service)}</strong></div>`,
     state.serviceType === "preferencial" ? `<div><span>Categoria</span><strong>${escapeHtml(category?.label || "Não selecionada")}</strong></div>` : "",
@@ -229,7 +255,7 @@ function renderResult(tickets, printJobs = []) {
     <article class="tablet-ticket-card">
       <span>${escapeHtml(ticket.sector || "Setor")}</span>
       <strong>${escapeHtml(ticket.ticket || "---")}</strong>
-      <small>${ticket.priority ? "Atendimento preferencial" : "Atendimento normal"}</small>
+    <small class="${ticket.priority ? "tablet-ticket-type-priority" : "tablet-ticket-type-normal"}">${ticket.priority ? "ATENDIMENTO PREFERENCIAL" : "ATENDIMENTO PADRÃO"}</small>
     </article>
   `).join("");
   setPrintState();

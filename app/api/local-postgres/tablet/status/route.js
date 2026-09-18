@@ -1,8 +1,11 @@
 import { authenticateLocalRequest } from "../../../../../server/auth/local-http-auth.js";
 import { getQueueSnapshot } from "../../../../../server/data/local-repository.js";
+import { loadTabletPrinterConfiguration } from "../../../../../server/kiosk/print-kiosk-service.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const TABLET_CONFIGURATION = loadTabletPrinterConfiguration(process.env);
 
 export async function GET(request) {
   if (process.env.DATA_BACKEND !== "local-postgres" || process.env.LOCAL_POSTGRES_ROUTES_ENABLED !== "1") {
@@ -30,6 +33,7 @@ export async function GET(request) {
     return Response.json({
       source: "postgres-local",
       user: session.user,
+      appUrl: TABLET_CONFIGURATION.appUrl,
       sector: {
         id: visibleSectors[0].id,
         name: visibleSectors[0].name,
