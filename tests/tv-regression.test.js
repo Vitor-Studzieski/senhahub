@@ -87,8 +87,14 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   assert.match(client, /AudioContext = window\.AudioContext \|\| window\.webkitAudioContext/);
   assert.match(client, /ensureCallAlertAudio\(\)/);
   assert.match(client, /function playCallAlertSound\(\)/);
-  assert.match(client, /exponentialRampToValueAtTime\(0\.6/);
+  assert.match(client, /const CALL_ALERT_SOUND_INTERVAL_MS = 480/);
+  assert.match(client, /const CALL_ALERT_SOUND_PULSE_MS = 300/);
+  assert.match(client, /const CALL_ALERT_SOUND_GAIN = 0\.9/);
+  assert.match(client, /oscillator\.type = "square"/);
+  assert.match(client, /state\.callAlertAudioStopTimer = window\.setTimeout\(stopCallAlertSound, CALL_ALERT_DURATION_MS \+ 150\)/);
+  assert.match(client, /stopCallAlertSound\(\)/);
   assert.match(styles, /\.tv-call-alert\[hidden\]/);
+  assert.match(styles, /\.tv-call-alert\s*\{[\s\S]*?inset: 0;[\s\S]*?background: #fff;/);
   assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
-  assert.match(layout, /styles\.css\?v=20260921\.7/);
+  assert.match(layout, /styles\.css\?v=20260921\.8/);
 });

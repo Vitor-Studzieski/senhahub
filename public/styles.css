@@ -4456,7 +4456,7 @@ textarea:focus {
   display: grid;
   place-items: center;
   padding: clamp(24px, 5vw, 80px);
-  background: color-mix(in srgb, var(--vr-heading) 88%, transparent);
+  background: #fff;
 }
 
 .tv-call-alert-card {

@@ -1,6 +1,9 @@
 (function initializeButcherDisplay() {
   const POLL_INTERVAL_MS = 5000;
   const CALL_ALERT_DURATION_MS = 7000;
+  const CALL_ALERT_SOUND_INTERVAL_MS = 480;
+  const CALL_ALERT_SOUND_PULSE_MS = 300;
+  const CALL_ALERT_SOUND_GAIN = 0.9;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
   const WAITING_STATUSES = new Set(["aguardando", "proximo", "espera_inteligente", "standby"]);
@@ -44,6 +47,8 @@
     actionInFlight: false,
     callAlertTimer: null,
     audioContext: null,
+    callAlertAudioStopTimer: null,
+    callAlertAudioNodes: [],
     timer: null,
     requestInFlight: false,
     weatherTimer: null,
@@ -250,6 +255,7 @@
 
   function hideCallAlert() {
     if (!elements.callAlert) return;
+    stopCallAlertSound();
     elements.callAlert.hidden = true;
     elements.callAlert.dataset.state = "idle";
     state.callAlertTimer = null;
@@ -258,25 +264,53 @@
   function playCallAlertSound() {
     const context = ensureCallAlertAudio();
     if (!context) return;
-    const startBeeps = () => {
-      const startAt = context.currentTime;
-      [0, 0.18, 0.36].forEach((offset, index) => {
+    stopCallAlertSound();
+    const startAlert = () => {
+      const startAt = context.currentTime + 0.02;
+      const endAt = startAt + CALL_ALERT_DURATION_MS / 1000;
+      let pulseIndex = 0;
+
+      for (let start = startAt; start < endAt; start += CALL_ALERT_SOUND_INTERVAL_MS / 1000) {
+        const pulseEnd = Math.min(start + CALL_ALERT_SOUND_PULSE_MS / 1000, endAt);
         const oscillator = context.createOscillator();
         const gain = context.createGain();
-        const start = startAt + offset;
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(index === 2 ? 880 : 660, start);
+        oscillator.type = "square";
+        oscillator.frequency.setValueAtTime(pulseIndex % 2 ? 880 : 660, start);
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.6, start + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.14);
+        gain.gain.exponentialRampToValueAtTime(CALL_ALERT_SOUND_GAIN, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, pulseEnd);
         oscillator.connect(gain);
         gain.connect(context.destination);
         oscillator.start(start);
-        oscillator.stop(start + 0.16);
-      });
+        oscillator.stop(pulseEnd + 0.01);
+        state.callAlertAudioNodes.push(oscillator);
+        pulseIndex += 1;
+      }
+
+      state.callAlertAudioStopTimer = window.setTimeout(stopCallAlertSound, CALL_ALERT_DURATION_MS + 150);
     };
     const resume = context.state === "suspended" ? context.resume() : Promise.resolve();
-    resume.then(startBeeps).catch(() => {});
+    resume.then(startAlert).catch(() => {});
+  }
+
+  function stopCallAlertSound() {
+    if (state.callAlertAudioStopTimer) {
+      window.clearTimeout(state.callAlertAudioStopTimer);
+      state.callAlertAudioStopTimer = null;
+    }
+    state.callAlertAudioNodes.forEach((node) => {
+      try {
+        node.stop();
+      } catch {
+        // O oscilador pode já ter terminado naturalmente.
+      }
+      try {
+        node.disconnect();
+      } catch {
+        // O navegador pode já ter desconectado o nó.
+      }
+    });
+    state.callAlertAudioNodes = [];
   }
 
   function ensureCallAlertAudio() {
