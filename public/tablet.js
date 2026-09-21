@@ -273,7 +273,7 @@ function renderResult(tickets, printJobs = []) {
   setPrintState();
   if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id));
   clearTimeout(state.resultResetTimer);
-  state.resultResetTimer = setTimeout(resetOperation, 5000);
+  state.resultResetTimer = setTimeout(resetOperation, 8000);
 }
 
 async function pollPrintJobs(jobIds) {

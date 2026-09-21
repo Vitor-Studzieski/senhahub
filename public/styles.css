@@ -5236,7 +5236,7 @@ textarea:focus {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: clamp(12px, 2.2vh, 22px);
+  gap: clamp(18px, 3.5vh, 34px);
   min-height: calc(100vh - 84px);
   padding: clamp(28px, 5vh, 60px) 0;
   text-align: center;
@@ -5246,7 +5246,7 @@ textarea:focus {
 .tablet-print-state[data-state="pending"],
 .tablet-print-state[data-state="printing"] { color: var(--vr-heading); }
 .tablet-print-state[data-state="failed"] { color: #bc3027; }
-.tablet-result-tickets { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; width: 100%; margin: 4px 0 2px; }
+.tablet-result-tickets { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; width: 100%; margin: 8px 0 2px; }
 .tablet-ticket-card {
   display: grid;
   align-content: center;
@@ -5254,6 +5254,7 @@ textarea:focus {
   gap: 12px;
   width: min(100%, 430px);
   min-height: 220px;
+  margin-inline: auto;
   padding: 28px 34px;
   border: 1px solid color-mix(in srgb, var(--vr-orange-primary) 28%, var(--vr-border));
   border-radius: 22px;
