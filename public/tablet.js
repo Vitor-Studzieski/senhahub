@@ -181,7 +181,7 @@ function renderPriorityOptions() {
       state.priorityReason = button.dataset.tabletPriority;
       elements.priorityOptions.querySelectorAll(".selected").forEach((item) => item.classList.remove("selected"));
       button.classList.add("selected");
-      setStep("confirm");
+      issueTicket();
     });
   });
 }
@@ -231,7 +231,7 @@ async function issueTicket() {
   requestButtons.forEach((button) => { button.disabled = true; });
   elements.issueButton.disabled = true;
   elements.issueButton.textContent = "Solicitando...";
-  elements.feedback.textContent = "Emitindo e imprimindo...";
+  elements.feedback.textContent = "";
   try {
     const operationKey = 'senhahub:issuance:tablet:' + (state.status?.user?.id || state.selectedSector.id);
     let body = {

@@ -118,6 +118,8 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.match(tabletScript, /ATENDIMENTO PREFERENCIAL/);
   assert.match(tabletScript, /function renderResultQr\(value\)/);
   assert.match(tabletScript, /setTimeout\(resetOperation, 5000\)/);
+  assert.match(tabletScript, /button\.classList\.add\("selected"\);\s*issueTicket\(\);/);
+  assert.doesNotMatch(tabletScript, /elements\.feedback\.textContent = "Emitindo e imprimindo\.\.\."/);
   assert.doesNotMatch(script, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);
   assert.match(script, /RESULT_DISPLAY_MS = 4000/);
   assert.match(script, /setTimeout\(resetOperation, RESULT_DISPLAY_MS\)/);
