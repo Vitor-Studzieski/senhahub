@@ -21,6 +21,7 @@ const legacyPageRedirects = {
   "/admin-totens.html": "/admin/totens",
   "/admin-usuarios.html": "/admin/usuarios",
   "/totem.html": "/totem",
+  "/tv-acougue.html": "/tv/acougue",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
 };

@@ -3707,6 +3707,14 @@ textarea:focus {
   background: #ff6770;
 }
 
+.tv-connection[data-state="offline"] b {
+  color: #d9252a;
+}
+
+.tv-connection[data-state="loading"] span {
+  background: var(--vr-orange-primary);
+}
+
 .tv-content {
   display: grid;
   grid-template-columns: minmax(0, 1.04fr) minmax(420px, .96fr);
@@ -4431,6 +4439,10 @@ textarea:focus {
 .tv-screen * {
   animation: none !important;
   transition: none !important;
+}
+
+.tv-screen .tv-current-call.tv-call-arrived {
+  animation: tv-call-arrived .9s ease !important;
 }
 
 .tv-header {

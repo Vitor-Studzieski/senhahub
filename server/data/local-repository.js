@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { query, withTransaction } = require("./local-postgres");
+const { sanitizeDisplayState } = require("../display-state");
 
 const WAITING_STATUSES = [
   "aguardando",
@@ -284,6 +285,10 @@ async function getLocalStaffState(user = null) {
       };
     })
   };
+}
+
+async function getLocalDisplayState(user = null) {
+  return sanitizeDisplayState(await getLocalStaffState(user));
 }
 
 async function callNextLocalTicket(sectorId, user = null, options = {}) {
@@ -1296,8 +1301,7 @@ function normalizeOptionalId(value) {
 function canAccessLocalSector(user, sectorId) {
   if (!user) return false;
   if (["manager", "admin"].includes(user.role)) return true;
-  if (user.role === "tv") return sectorId === "acougue";
-  return user.role === "attendant" && (user.sectorIds || []).includes(sectorId);
+  return ["attendant", "tv"].includes(user.role) && (user.sectorIds || []).includes(sectorId);
 }
 
 function canOperateLocalTicket(user, ticket) {
@@ -1485,6 +1489,7 @@ module.exports = {
   finishLocalTicket,
   getCustomerState,
   getLocalStaffState,
+  getLocalDisplayState,
   getLocalPublicTicket,
   getLocalTrackedTickets,
   getQueueSnapshot,

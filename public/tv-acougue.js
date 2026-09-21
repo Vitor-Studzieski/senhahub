@@ -37,7 +37,7 @@
     99: { label: "Trovoada forte" }
   };
   const state = {
-    lastCall: "",
+    lastCallSignature: "",
     userRole: "",
     sectorId: "",
     actionInFlight: false,
@@ -58,6 +58,7 @@
     weather: document.querySelector("#tvWeather"),
     weatherTemperature: document.querySelector("#tvWeatherTemperature"),
     weatherCondition: document.querySelector("#tvWeatherCondition"),
+    connection: document.querySelector("#tvConnection"),
     queueTitle: document.querySelector("#tvQueueTitle"),
     queueSubtitle: document.querySelector("#tvQueueSubtitle"),
     waitingSubtitle: document.querySelector("#tvWaitingSubtitle"),
@@ -99,6 +100,7 @@
   state.weatherTimer = window.setInterval(loadWeather, WEATHER_REFRESH_MS);
   state.playlistTimer = window.setInterval(loadPlaylist, PLAYLIST_REFRESH_MS);
   window.addEventListener("online", loadState);
+  window.addEventListener("offline", () => updateConnection("offline", "Offline"));
 
   async function loadState() {
     if (state.requestInFlight) return;
@@ -110,12 +112,21 @@
       state.sectorId = sector.id || "acougue";
       updateCallControls();
       renderQueue(sector);
+      updateConnection("online", "Online");
       if (elements.feedback) elements.feedback.textContent = "";
     } catch (error) {
+      updateConnection("offline", "Offline");
       if (elements.feedback) elements.feedback.textContent = error.message || "Não foi possível atualizar a fila.";
     } finally {
       state.requestInFlight = false;
     }
+  }
+
+  function updateConnection(status, label) {
+    if (!elements.connection) return;
+    elements.connection.dataset.state = status;
+    const text = elements.connection.querySelector("b");
+    if (text) text.textContent = label;
   }
 
   async function loadSession() {
@@ -129,7 +140,7 @@
   }
 
   function updateCallControls() {
-    const canControl = ["attendant", "manager", "admin"].includes(state.userRole);
+    const canControl = ["tv", "attendant", "manager", "admin"].includes(state.userRole);
     elements.callActionButtons.forEach((button) => {
       button.disabled = !canControl || !state.sectorId || state.actionInFlight;
       button.setAttribute("aria-disabled", String(button.disabled));
@@ -138,7 +149,9 @@
     if (state.actionInFlight) {
       elements.callControlsStatus.textContent = "Processando chamada...";
     } else if (canControl) {
-      elements.callControlsStatus.textContent = "Ações liberadas para este colaborador";
+      elements.callControlsStatus.textContent = state.userRole === "tv"
+        ? "Ações liberadas para esta TV"
+        : "Ações liberadas para este colaborador";
     } else {
       elements.callControlsStatus.textContent = "Entre como colaborador para usar";
     }
@@ -146,8 +159,8 @@
 
   async function executeCallAction(action) {
     if (!["previous", "again", "next"].includes(action) || state.actionInFlight) return;
-    if (!["attendant", "manager", "admin"].includes(state.userRole)) {
-      if (elements.feedback) elements.feedback.textContent = "Somente colaboradores podem controlar as chamadas.";
+    if (!["tv", "attendant", "manager", "admin"].includes(state.userRole)) {
+      if (elements.feedback) elements.feedback.textContent = "Somente contas TV ou colaboradores podem controlar as chamadas.";
       return;
     }
     state.actionInFlight = true;
@@ -180,25 +193,38 @@
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
     const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
-    const active = activeTickets.find((ticket) => ticket.ticket === recentCalls[0]?.ticket) || activeTickets[0];
-    const currentTicket = recentCalls[0]?.ticket || active?.ticket || (recentCalls.length ? sector.current : "--");
-    const latestCall = recentCalls[0]?.ticket || "";
-    const changed = Boolean(latestCall && latestCall !== state.lastCall);
+    const latestCall = recentCalls.find((call) => call.action === "senha_chamada") || null;
+    const active = activeTickets.find((ticket) => ticket.ticket === latestCall?.ticket)
+      || [...activeTickets].sort((left, right) => latestActivity(right) - latestActivity(left))[0]
+      || null;
+    const currentTicket = active?.ticket || latestCall?.ticket || (recentCalls.length ? sector.current : "--");
+    const latestCallSignature = latestCall ? `${latestCall.ticket || latestCall.ticketNumber || ""}|${latestCall.createdAt || ""}` : "";
+    const changed = Boolean(latestCallSignature && state.lastCallSignature && latestCallSignature !== state.lastCallSignature);
 
-    if (changed) {
-      state.lastCall = latestCall;
-      elements.currentCall?.classList.remove("tv-call-arrived");
-    }
+    if (latestCallSignature) state.lastCallSignature = latestCallSignature;
+    if (changed) triggerCallArrival();
     if (elements.queueTitle) elements.queueTitle.textContent = sectorLabel;
     if (elements.queueSubtitle) elements.queueSubtitle.textContent = `${storeLabel} · Senhas em tempo real`;
     if (elements.waitingSubtitle) elements.waitingSubtitle.textContent = `Próximas senhas de ${sectorLabel.toLowerCase()}`;
     elements.waitingCount.textContent = String(waiting.length).padStart(2, "0");
     elements.currentTicket.textContent = formatTicket(currentTicket, sector.prefix);
     elements.currentStatus.textContent = active ? (active.status === "em_atendimento" ? "Em atendimento" : "Dirija-se ao balcão") : "Aguardando próxima chamada";
-    elements.currentCustomer.textContent = active?.currentCustomerName || sector.currentCustomerName || (active ? "Atenção, sua senha foi chamada" : "Confira o painel para acompanhar sua vez");
+    elements.currentCustomer.textContent = active ? "Atenção, sua senha foi chamada" : "Confira o painel para acompanhar sua vez";
     elements.currentCall.dataset.state = active ? "active" : "idle";
     elements.recentCalls.innerHTML = recentCalls.length ? recentCalls.map((call, index) => callRow(call, sector, index === 0)).join("") : emptyRow("Nenhuma chamada recente");
     elements.waitingTickets.innerHTML = waiting.length ? waiting.slice(0, 5).map((ticket) => waitingRow(ticket, sector)).join("") : emptyRow("Nenhuma senha aguardando");
+  }
+
+  function latestActivity(ticket) {
+    return new Date(ticket.serviceStartedAt || ticket.calledAt || ticket.updatedAt || ticket.createdAt || 0).getTime() || 0;
+  }
+
+  function triggerCallArrival() {
+    if (!elements.currentCall) return;
+    elements.currentCall.classList.remove("tv-call-arrived");
+    void elements.currentCall.offsetWidth;
+    elements.currentCall.classList.add("tv-call-arrived");
+    window.setTimeout(() => elements.currentCall?.classList.remove("tv-call-arrived"), 1100);
   }
 
   function callRow(call, sector, latest) {

@@ -41,6 +41,7 @@ const {
 const { healthResponse } = require("../platform/production-readiness");
 const { fetchCurrentWeather } = require("./weather");
 const { fetchInstagramVideo } = require("./instagram-video");
+const { sanitizeDisplayState } = require("../display-state");
 
 const requestContextStorage = new AsyncLocalStorage();
 
@@ -134,6 +135,7 @@ const STAFF_SKIPPABLE_STATUSES = ["aguardando", "proximo", "chamado", "standby",
 const AUTHENTICATED_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv"];
 const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
+const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
 const TABLET_ACCESS_ROLES = ["attendant", "tablet"];
 const ADMIN_ROLES = ["manager", "admin"];
 const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
@@ -1599,7 +1601,7 @@ async function staffState(request) {
 async function displayState(request) {
   const user = await requireUser(request, DISPLAY_ROLES);
   if (user.response) return user.response;
-  return json({ source: "supabase", ...(await getStaffState(user)) });
+  return json({ source: "supabase", ...sanitizeDisplayState(await getStaffState(user)) }, 200, { "cache-control": "no-store" });
 }
 
 async function metrics(request) {
@@ -1671,7 +1673,7 @@ async function cancelTicketRoute(request, ticketId) {
 }
 
 async function callNextRoute(request, sectorId) {
-  const user = await requireUser(request, STAFF_ROLES);
+  const user = await requireUser(request, CALL_CONTROL_ROLES);
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
@@ -1681,7 +1683,7 @@ async function callNextRoute(request, sectorId) {
 }
 
 async function callControlRoute(request, sectorId) {
-  const user = await requireUser(request, STAFF_ROLES);
+  const user = await requireUser(request, CALL_CONTROL_ROLES);
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
@@ -2462,7 +2464,16 @@ async function createUser(body) {
   const name = String(body.name || "").trim();
   const role = ["customer", "attendant", "manager", "admin", "tv"].includes(body.role) ? body.role : "attendant";
   const profileRole = role === "tv" ? "customer" : role;
+  const sectorIds = [...new Set((Array.isArray(body.sectorIds) ? body.sectorIds : [])
+    .map((sectorId) => String(sectorId || "").trim())
+    .filter(Boolean))];
   if (!email || !name || !validateStrongPassword(password)) return fail("Informe nome, e-mail e senha com ao menos 12 caracteres, letras maiusculas, minusculas e numeros.");
+  if (role === "tv") {
+    const validSectorIds = new Set((await getSectors()).map((sector) => sector.id));
+    if (!sectorIds.length || sectorIds.some((sectorId) => !validSectorIds.has(sectorId))) {
+      return fail("A conta TV precisa estar vinculada a pelo menos um setor válido.");
+    }
+  }
   const passwordPolicy = await validatePasswordPolicy(password);
   if (passwordPolicy.error) return fail(passwordPolicy.error);
   const storeCode = normalizeStoreCode(body.storeCode);
@@ -2472,7 +2483,6 @@ async function createUser(body) {
   });
   if (auth.error || !auth.id) return fail(userCreationErrorMessage(auth));
   const profile = await upsert("profiles", { id: auth.id, email, name, role: profileRole, status: "active", store_code: storeCode }, "id");
-  const sectorIds = Array.isArray(body.sectorIds) ? body.sectorIds : [];
   await setUserSectorPermissions(auth.id, sectorIds);
   return { user: userDto({ ...profile, access_mode: role === "tv" ? "tv" : null, sectorIds, store_code: storeCode }) };
 }

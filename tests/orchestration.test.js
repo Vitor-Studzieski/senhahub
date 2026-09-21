@@ -743,6 +743,7 @@ test("atendente chama varias senhas em sequencia sem finalizar a anterior", asyn
 
 test("TV controla senha anterior, repeticao e proxima chamada", async () => {
   resetSectorTickets("acougue");
+  const tvCookie = await createStaffUser("tv-controle", "tv", ["acougue"]);
   const customers = await Promise.all([
     createCustomer("controle-tv-um"),
     createCustomer("controle-tv-dois"),
@@ -758,26 +759,26 @@ test("TV controla senha anterior, repeticao e proxima chamada", async () => {
   }
 
   try {
-    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie })).ticket.id, tickets[0].id);
-    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: adminCookie })).ticket.id, tickets[1].id);
+    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: tvCookie })).ticket.id, tickets[0].id);
+    assert.equal((await api("/api/sectors/acougue/call-next", { method: "POST", cookie: tvCookie })).ticket.id, tickets[1].id);
 
     const repeated = await api("/api/sectors/acougue/call-control", {
       method: "POST",
-      cookie: adminCookie,
+      cookie: tvCookie,
       body: { action: "again" }
     });
     assert.equal(repeated.ticket.id, tickets[1].id);
 
     const previous = await api("/api/sectors/acougue/call-control", {
       method: "POST",
-      cookie: adminCookie,
+      cookie: tvCookie,
       body: { action: "previous" }
     });
     assert.equal(previous.ticket.id, tickets[0].id);
 
     const next = await api("/api/sectors/acougue/call-control", {
       method: "POST",
-      cookie: adminCookie,
+      cookie: tvCookie,
       body: { action: "next" }
     });
     assert.equal(next.ticket.id, tickets[2].id);

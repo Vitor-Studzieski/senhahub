@@ -1,4 +1,4 @@
-import { getLocalStaffState } from "../../../../../server/data/local-repository.js";
+import { getLocalDisplayState } from "../../../../../server/data/local-repository.js";
 import { requireLocalUser } from "../../../../../server/platform/local-route-helpers.js";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(request) {
   try {
     return Response.json({
       source: "postgres-local",
-      ...(await getLocalStaffState(user.session.user))
+      ...(await getLocalDisplayState(user.session.user))
     }, {
       headers: { "cache-control": "no-store" }
     });

@@ -110,6 +110,7 @@ function needsAdminMetrics() {
 
 async function loadAdminState() {
   adminState = await api("/api/staff/state");
+  renderUserSectorPermissions();
   renderAdmin();
   renderDashboard();
   if (adminUsersLoaded) renderUsers();
@@ -704,12 +705,44 @@ function updateUserRoleFields() {
   const role = document.querySelector("#userRole")?.value || "";
   const permissions = document.querySelector("#userSectorPermissions");
   if (!permissions) return;
-  const restricted = ["tablet", "tv"].includes(role);
+  const restricted = role === "tablet";
   permissions.hidden = restricted;
+  const legend = permissions.querySelector("legend");
+  if (legend) legend.textContent = role === "tv" ? "Setores da TV" : "Setores autorizados";
   permissions.querySelectorAll("input[name=sectorIds]").forEach((input) => {
     input.disabled = restricted;
     if (restricted) input.checked = false;
   });
+}
+
+function renderUserSectorPermissions() {
+  const permissions = document.querySelector("#userSectorPermissions");
+  if (!permissions) return;
+  const selected = new Set([...permissions.querySelectorAll("input[name=sectorIds]:checked")].map((input) => input.value));
+  const sectors = Array.isArray(adminState.sectors) ? adminState.sectors : [];
+  const legend = document.createElement("legend");
+  legend.textContent = "Setores autorizados";
+  permissions.replaceChildren(legend);
+  if (!sectors.length) {
+    const empty = document.createElement("p");
+    empty.dataset.sectorPermissionsStatus = "empty";
+    empty.textContent = "Nenhum setor disponível.";
+    permissions.append(empty);
+    return;
+  }
+  sectors.forEach((sector) => {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "sectorIds";
+    input.value = sector.id;
+    input.checked = selected.has(String(sector.id));
+    const text = document.createElement("span");
+    text.textContent = sector.name || sector.id;
+    label.append(input, text);
+    permissions.append(label);
+  });
+  updateUserRoleFields();
 }
 
 async function saveSector(event) {

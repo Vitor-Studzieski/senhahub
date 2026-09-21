@@ -46,6 +46,7 @@ const {
 const { healthResponse, validateProductionEnvironment } = require("./platform/production-readiness");
 const { fetchCurrentWeather } = require("./integrations/weather");
 const { fetchInstagramVideo } = require("./integrations/instagram-video");
+const { sanitizeDisplayState } = require("./display-state");
 
 const ROOT = path.resolve(__dirname, "..");
 loadEnvFile(path.join(ROOT, ".env.local"));
@@ -170,7 +171,9 @@ const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 const AUTH_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv"];
 const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
+const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
 const ADMIN_ROLES = ["manager", "admin"];
+const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
 const ACTIVE_STATUSES = ["aguardando", "proximo", "chamado", "em_atendimento", "espera_inteligente", "standby"];
 const CALL_ELIGIBLE_STATUSES = ["aguardando", "proximo", "standby"];
 const QUEUE_WAITING_STATUSES = ["aguardando", "proximo", "espera_inteligente", "standby"];
@@ -1327,6 +1330,14 @@ async function handleApiInternal(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/display/state") {
+    const user = requireAuth(req, res, DISPLAY_ROLES);
+    if (!user) return;
+    syncQueueState();
+    sendJson(res, 200, { source: "sqlite", ...sanitizeDisplayState(getStaffState(user)) }, { "cache-control": "no-store" });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/tickets") {
     const user = requireAuth(req, res, CUSTOMER_ROLES);
     if (!user) return;
@@ -1408,7 +1419,7 @@ async function handleApiInternal(req, res, url) {
 
   const callNext = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-next$/);
   if (req.method === "POST" && callNext) {
-    const user = requireAuth(req, res, STAFF_ROLES);
+    const user = requireAuth(req, res, CALL_CONTROL_ROLES);
     if (!user) return;
     if (!verifyCsrf(req, res, user)) return;
     if (!canAccessSector(user, callNext[1])) {
@@ -1424,7 +1435,7 @@ async function handleApiInternal(req, res, url) {
 
   const callControl = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-control$/);
   if (req.method === "POST" && callControl) {
-    const user = requireAuth(req, res, STAFF_ROLES);
+    const user = requireAuth(req, res, CALL_CONTROL_ROLES);
     if (!user) return;
     if (!verifyCsrf(req, res, user)) return;
     if (!canAccessSector(user, callControl[1])) {
@@ -1882,6 +1893,7 @@ const LEGACY_PAGE_REDIRECTS = {
   "/admin-totens.html": "/admin/totens",
   "/admin-usuarios.html": "/admin/usuarios",
   "/totem.html": "/totem",
+  "/tv-acougue.html": "/tv/acougue",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
 };
@@ -2907,7 +2919,13 @@ async function createUser(body, { skipPasswordPolicy = false } = {}) {
   const email = String(body.email || "").trim().toLowerCase();
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
+  const sectorIds = [...new Set((Array.isArray(body.sectorIds) ? body.sectorIds : [])
+    .map((sectorId) => String(sectorId || "").trim())
+    .filter(Boolean))];
   if (!email || !name || !validateStrongPassword(password)) return fail("Informe nome, e-mail e senha com ao menos 12 caracteres, letras maiusculas, minusculas e numeros.");
+  if (role === "tv" && (!sectorIds.length || sectorIds.some((sectorId) => !getSector(sectorId)))) {
+    return fail("A conta TV precisa estar vinculada a pelo menos um setor válido.");
+  }
   if (!skipPasswordPolicy) {
     const passwordPolicy = await validatePasswordPolicy(password);
     if (passwordPolicy.error) return passwordPolicy;
@@ -2925,7 +2943,7 @@ async function createUser(body, { skipPasswordPolicy = false } = {}) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, name, email, role, hash, salt, "active", now, now);
 
-  setUserSectorPermissions(id, Array.isArray(body.sectorIds) ? body.sectorIds : []);
+  setUserSectorPermissions(id, sectorIds);
   registerEvent("usuario_criado", "user", id, null, null, { email, role });
   return { user: userDto(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) };
 }

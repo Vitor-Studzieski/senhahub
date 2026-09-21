@@ -325,14 +325,14 @@ async function createLocalManagedUser(body = {}) {
   }
   const passwordPolicy = await evaluatePasswordPolicy(password);
   if (!passwordPolicy.ok) return { error: passwordPolicyError(passwordPolicy).error };
-  const sectorIds = ["tablet", "tv"].includes(role)
+  const sectorIds = role === "tablet"
     ? []
     : (Array.isArray(body.sectorIds) ? [...new Set(body.sectorIds.map((value) => String(value).trim()).filter(Boolean))] : []);
   if (role === "attendant" && !sectorIds.length) {
     return { error: "Selecione ao menos um setor para o atendente." };
   }
-  if (["tablet", "tv"].includes(role) && sectorIds.length) {
-    return { error: "Os perfis tablet e TV não usam permissões de setor." };
+  if (role === "tv" && !sectorIds.length) {
+    return { error: "Selecione ao menos um setor para a TV." };
   }
   if (sectorIds.length) {
     const sectorResult = await query(

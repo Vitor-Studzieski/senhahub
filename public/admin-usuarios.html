@@ -41,7 +41,7 @@
                 <label>E-mail<input type="email" name="email" autocomplete="email" required /></label>
                 <label>Senha inicial<input type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}" title="Use no mínimo 12 caracteres, incluindo letras maiúsculas, minúsculas e números." autocomplete="new-password" required /></label>
                 <label>Perfil de acesso<select id="userRole" name="role"><option value="customer">Cliente</option><option value="attendant">Funcionário</option><option value="manager">Gestor</option><option value="tablet">Tablet · solicitação de senhas</option><option value="tv">TV · açougue</option></select></label>
-                <fieldset class="manager-checks" id="userSectorPermissions"><legend>Setores do atendente</legend><label><input type="checkbox" name="sectorIds" value="acougue" /><span>Açougue</span></label><label><input type="checkbox" name="sectorIds" value="frios" /><span>Frios</span></label><label><input type="checkbox" name="sectorIds" value="padaria" /><span>Padaria</span></label></fieldset>
+                <fieldset class="manager-checks" id="userSectorPermissions"><legend>Setores autorizados</legend><p data-sector-permissions-status="loading">Carregando setores…</p></fieldset>
                 <button class="manager-button" type="submit">Criar conta</button>
                 <p class="manager-form-feedback" data-user-feedback role="status" aria-live="polite"></p>
               </form>
