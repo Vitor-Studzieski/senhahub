@@ -73,3 +73,19 @@ test("conta TV pode usar os comandos de chamada sem ganhar acesso administrativo
   assert.match(standalone, /const ADMIN_ROLES = \["manager", "admin"\]/);
   assert.match(supabase, /const ADMIN_ROLES = \["manager", "admin"\]/);
 });
+
+test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir aviso sonoro", () => {
+  const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "public/tv-acougue.html"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "public/styles.css"), "utf8");
+
+  assert.match(html, /id="tvCallAlert"[^>]*aria-live="assertive"/);
+  assert.match(client, /const CALL_ALERT_DURATION_MS = 7000/);
+  assert.match(client, /showCallAlert\(sector, latestCall\)/);
+  assert.match(client, /state\.callAlertTimer = window\.setTimeout\(hideCallAlert, CALL_ALERT_DURATION_MS\)/);
+  assert.match(client, /AudioContext = window\.AudioContext \|\| window\.webkitAudioContext/);
+  assert.match(client, /ensureCallAlertAudio\(\)/);
+  assert.match(client, /function playCallAlertSound\(\)/);
+  assert.match(styles, /\.tv-call-alert\[hidden\]/);
+  assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
+});

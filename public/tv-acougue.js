@@ -1,5 +1,6 @@
 (function initializeButcherDisplay() {
   const POLL_INTERVAL_MS = 5000;
+  const CALL_ALERT_DURATION_MS = 7000;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
   const WAITING_STATUSES = new Set(["aguardando", "proximo", "espera_inteligente", "standby"]);
@@ -41,6 +42,8 @@
     userRole: "",
     sectorId: "",
     actionInFlight: false,
+    callAlertTimer: null,
+    audioContext: null,
     timer: null,
     requestInFlight: false,
     weatherTimer: null,
@@ -66,6 +69,9 @@
     waitingCount: document.querySelector("#tvWaitingCount"),
     waitingTickets: document.querySelector("#tvWaitingTickets"),
     currentCall: document.querySelector("#tvCurrentCall"),
+    callAlert: document.querySelector("#tvCallAlert"),
+    callAlertTicket: document.querySelector("#tvCallAlertTicket"),
+    callAlertSector: document.querySelector("#tvCallAlertSector"),
     currentStatus: document.querySelector("#tvCurrentStatus"),
     currentTicket: document.querySelector("#tvCurrentTicket"),
     currentCustomer: document.querySelector("#tvCurrentCustomer"),
@@ -163,6 +169,7 @@
       if (elements.feedback) elements.feedback.textContent = "Somente contas TV ou colaboradores podem controlar as chamadas.";
       return;
     }
+    ensureCallAlertAudio();
     state.actionInFlight = true;
     updateCallControls();
     const labels = {
@@ -213,6 +220,7 @@
     elements.currentCall.dataset.state = active ? "active" : "idle";
     elements.recentCalls.innerHTML = recentCalls.length ? recentCalls.map((call, index) => callRow(call, sector, index === 0)).join("") : emptyRow("Nenhuma chamada recente");
     elements.waitingTickets.innerHTML = waiting.length ? waiting.slice(0, 5).map((ticket) => waitingRow(ticket, sector)).join("") : emptyRow("Nenhuma senha aguardando");
+    if (changed) showCallAlert(sector, latestCall);
   }
 
   function latestActivity(ticket) {
@@ -225,6 +233,64 @@
     void elements.currentCall.offsetWidth;
     elements.currentCall.classList.add("tv-call-arrived");
     window.setTimeout(() => elements.currentCall?.classList.remove("tv-call-arrived"), 1100);
+  }
+
+  function showCallAlert(sector, call) {
+    if (!elements.callAlert || !call) return;
+    const ticket = formatTicket(call.ticket || call.ticketNumber, sector.prefix);
+    if (ticket === "--") return;
+    if (state.callAlertTimer) window.clearTimeout(state.callAlertTimer);
+    if (elements.callAlertTicket) elements.callAlertTicket.textContent = ticket;
+    if (elements.callAlertSector) elements.callAlertSector.textContent = `${displaySectorName(sector.name || sector.id)} · Dirija-se ao balcão`;
+    elements.callAlert.hidden = false;
+    elements.callAlert.dataset.state = "active";
+    playCallAlertSound();
+    state.callAlertTimer = window.setTimeout(hideCallAlert, CALL_ALERT_DURATION_MS);
+  }
+
+  function hideCallAlert() {
+    if (!elements.callAlert) return;
+    elements.callAlert.hidden = true;
+    elements.callAlert.dataset.state = "idle";
+    state.callAlertTimer = null;
+  }
+
+  function playCallAlertSound() {
+    const context = ensureCallAlertAudio();
+    if (!context) return;
+    const startBeeps = () => {
+      const startAt = context.currentTime;
+      [0, 0.18, 0.36].forEach((offset, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const start = startAt + offset;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(index === 2 ? 880 : 660, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.14);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 0.16);
+      });
+    };
+    const resume = context.state === "suspended" ? context.resume() : Promise.resolve();
+    resume.then(startBeeps).catch(() => {});
+  }
+
+  function ensureCallAlertAudio() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+    try {
+      state.audioContext ||= new AudioContext();
+      const context = state.audioContext;
+      if (context.state === "suspended") context.resume().catch(() => {});
+      return context;
+    } catch {
+      // O navegador pode bloquear áudio sem interação; o destaque visual continua ativo.
+      return null;
+    }
   }
 
   function callRow(call, sector, latest) {

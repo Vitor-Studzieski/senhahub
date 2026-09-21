@@ -4445,6 +4445,65 @@ textarea:focus {
   animation: tv-call-arrived .9s ease !important;
 }
 
+.tv-call-alert[hidden] {
+  display: none;
+}
+
+.tv-call-alert {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 5vw, 80px);
+  background: color-mix(in srgb, var(--vr-heading) 88%, transparent);
+}
+
+.tv-call-alert-card {
+  display: grid;
+  justify-items: center;
+  width: min(92vw, 920px);
+  border: 4px solid var(--vr-amber);
+  border-radius: clamp(18px, 2vw, 34px);
+  padding: clamp(28px, 6vw, 88px) clamp(24px, 5vw, 70px);
+  color: var(--vr-on-brand);
+  background: linear-gradient(145deg, var(--vr-orange-primary), var(--vr-heading));
+  box-shadow: 0 24px 90px color-mix(in srgb, var(--vr-heading) 65%, transparent);
+  text-align: center;
+}
+
+.tv-call-alert-card small {
+  color: var(--vr-amber-light);
+  font-size: clamp(16px, 2vw, 30px);
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.tv-call-alert-card strong {
+  margin: clamp(10px, 1.5vw, 20px) 0;
+  color: var(--vr-on-brand);
+  font-size: clamp(110px, 24vw, 320px);
+  font-weight: 950;
+  letter-spacing: .02em;
+  line-height: .82;
+}
+
+.tv-call-alert-card span {
+  color: color-mix(in srgb, var(--vr-on-brand) 86%, transparent);
+  font-size: clamp(17px, 2.1vw, 34px);
+  font-weight: 800;
+}
+
+.tv-screen .tv-call-alert-card {
+  animation: tv-call-alert-in .3s ease-out !important;
+}
+
+@keyframes tv-call-alert-in {
+  from { opacity: 0; transform: scale(.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 .tv-header {
   grid-template-columns: minmax(260px, 1fr) auto;
   min-height: clamp(92px, 10vh, 124px);
