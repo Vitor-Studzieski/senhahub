@@ -267,7 +267,7 @@
         oscillator.type = "sine";
         oscillator.frequency.setValueAtTime(index === 2 ? 880 : 660, start);
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.6, start + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.14);
         oscillator.connect(gain);
         gain.connect(context.destination);

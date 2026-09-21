@@ -78,6 +78,7 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "public/tv-acougue.html"), "utf8");
   const styles = fs.readFileSync(path.join(root, "public/styles.css"), "utf8");
+  const layout = fs.readFileSync(path.join(root, "app/layout.jsx"), "utf8");
 
   assert.match(html, /id="tvCallAlert"[^>]*aria-live="assertive"/);
   assert.match(client, /const CALL_ALERT_DURATION_MS = 7000/);
@@ -86,6 +87,8 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   assert.match(client, /AudioContext = window\.AudioContext \|\| window\.webkitAudioContext/);
   assert.match(client, /ensureCallAlertAudio\(\)/);
   assert.match(client, /function playCallAlertSound\(\)/);
+  assert.match(client, /exponentialRampToValueAtTime\(0\.6/);
   assert.match(styles, /\.tv-call-alert\[hidden\]/);
   assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
+  assert.match(layout, /styles\.css\?v=20260921\.7/);
 });
