@@ -51,7 +51,7 @@
     "@supabase/supabase-js": "2.112.3",
     "next": "16.3.4",
     "pg": "^8.23.0",
-    "react": "19.2.6",
+    "react": "19.3.0",
     "react-dom": "19.2.6",
     "serialport": "13.0.0",
     "web-push": "3.6.7"
