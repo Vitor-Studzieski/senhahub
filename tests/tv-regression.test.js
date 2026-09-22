@@ -69,6 +69,7 @@ test("TV oculta os blocos removidos do layout público", () => {
   assert.doesNotMatch(html, /Senhas em tempo real|SENHAS CHAMADAS|Aguarde sua chamada|tv-speaker/);
   assert.doesNotMatch(html, /Fique atento ao painel|Próximas senhas|tv-current-call|Controle do colaborador/);
   assert.doesNotMatch(html, /AO VIVO|tv-live-badge|tv-queue-status/);
+  assert.doesNotMatch(html, /Programação da tela|tv-playlist-panel|tv-playlist-list/);
   assert.doesNotMatch(client, /queueSubtitle|waitingSubtitle|currentCustomer/);
 });
 
