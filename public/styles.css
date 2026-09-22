@@ -108,7 +108,7 @@ p {
   top: 60px;
   right: 14px;
   left: 14px;
-  z-index: 30;
+  z-index: 9999;
   display: grid;
   grid-template-columns: 34px 1fr;
   gap: 10px;
@@ -4315,11 +4315,15 @@ textarea:focus {
 .tv-call-alert {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100dvh;
   z-index: 30;
   display: grid;
   place-items: center;
-  padding: clamp(24px, 5vw, 80px);
-  background: #fff;
+  padding: 0;
+  background: #fff !important;
+  overflow: hidden;
 }
 
 .tv-call-alert-card {
@@ -4366,6 +4370,17 @@ textarea:focus {
 
 .tv-screen .tv-call-alert-card {
   animation: tv-call-alert-in .3s ease-out !important;
+}
+
+.tv-screen .tv-call-controls-actions button.is-ready {
+  animation: tv-call-button-pulse 1s ease-in-out infinite !important;
+  border-color: var(--tv-highlight);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tv-highlight) 26%, transparent), 0 0 28px color-mix(in srgb, var(--tv-highlight) 68%, transparent);
+}
+
+@keyframes tv-call-button-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.025); filter: brightness(1.3); }
 }
 
 @keyframes tv-call-alert-in {

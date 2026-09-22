@@ -1,9 +1,9 @@
 (function initializeButcherDisplay() {
   const POLL_INTERVAL_MS = 5000;
   const CALL_ALERT_DURATION_MS = 7000;
-  const CALL_ALERT_SOUND_INTERVAL_MS = 480;
-  const CALL_ALERT_SOUND_PULSE_MS = 300;
-  const CALL_ALERT_SOUND_GAIN = 0.9;
+  const CALL_ALERT_SOUND_INTERVAL_MS = 360;
+  const CALL_ALERT_SOUND_PULSE_MS = 260;
+  const CALL_ALERT_SOUND_GAIN = 1.25;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
   const WEATHER_CONFIG = {
@@ -48,6 +48,8 @@
     audioContext: null,
     callAlertAudioStopTimer: null,
     callAlertAudioNodes: [],
+    callAlertAudioMaster: null,
+    hasAvailableTicket: false,
     timer: null,
     requestInFlight: false,
     weatherTimer: null,
@@ -115,8 +117,8 @@
       const sector = payload.sectors?.[0];
       if (!sector) throw new Error("A fila deste atendimento ainda não está disponível.");
       state.sectorId = sector.id || "acougue";
-      updateCallControls();
       renderQueue(sector);
+      updateCallControls();
       updateConnection("online", "Online");
       if (elements.feedback) elements.feedback.textContent = "";
     } catch (error) {
@@ -146,10 +148,17 @@
 
   function updateCallControls() {
     const canControl = ["tv", "attendant", "manager", "admin"].includes(state.userRole);
+    const nextButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === "next");
     elements.callActionButtons.forEach((button) => {
       button.disabled = !canControl || !state.sectorId || state.actionInFlight;
       button.setAttribute("aria-disabled", String(button.disabled));
     });
+    if (nextButton) {
+      const isReady = canControl && state.hasAvailableTicket && !state.actionInFlight;
+      nextButton.classList.toggle("is-ready", isReady);
+      nextButton.dataset.state = isReady ? "ready" : "idle";
+      nextButton.setAttribute("aria-label", isReady ? "Chamar próxima senha disponível" : "Chamar próxima senha");
+    }
     if (!elements.callControlsStatus) return;
     if (state.actionInFlight) {
       elements.callControlsStatus.textContent = "Processando chamada...";
@@ -182,6 +191,17 @@
         body: { action }
       });
       await loadState();
+      // A chamada originada na própria TV must show the alert immediately,
+      // even if the next state poll has not received the new event yet.
+      if (result.ticket && elements.callAlert?.hidden) {
+        const ticket = result.ticket.ticket || result.ticket.code || result.ticket.ticketNumber;
+        if (ticket) {
+          showCallAlert(
+            { id: state.sectorId, name: elements.queueTitle?.textContent || "Açougue", prefix: String(ticket).match(/^[A-Z]+/i)?.[0] || "A" },
+            { ticket, createdAt: result.ticket.calledAt || new Date().toISOString() }
+          );
+        }
+      }
       if (elements.feedback) elements.feedback.textContent = result.ticket ? labels[action] : (result.message || "Nenhuma senha disponível para esta ação.");
     } catch (error) {
       if (elements.feedback) elements.feedback.textContent = error.message || "Não foi possível executar a chamada.";
@@ -193,6 +213,7 @@
 
   function renderQueue(sector) {
     const sectorLabel = displaySectorName(sector.name || sector.id);
+    state.hasAvailableTicket = (sector.tickets || []).some((ticket) => ["aguardando", "proximo", "standby"].includes(ticket.status));
     const recentCalls = [...(sector.recentCalls || [])]
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
@@ -242,9 +263,9 @@
   }
 
   function playCallAlertSound() {
+    stopCallAlertSound();
     const context = ensureCallAlertAudio();
     if (!context) return;
-    stopCallAlertSound();
     const startAlert = () => {
       const startAt = context.currentTime + 0.02;
       const endAt = startAt + CALL_ALERT_DURATION_MS / 1000;
@@ -260,7 +281,7 @@
         gain.gain.exponentialRampToValueAtTime(CALL_ALERT_SOUND_GAIN, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, pulseEnd);
         oscillator.connect(gain);
-        gain.connect(context.destination);
+        gain.connect(state.callAlertAudioMaster || context.destination);
         oscillator.start(start);
         oscillator.stop(pulseEnd + 0.01);
         state.callAlertAudioNodes.push(oscillator);
@@ -291,6 +312,14 @@
       }
     });
     state.callAlertAudioNodes = [];
+    if (state.callAlertAudioMaster) {
+      try {
+        state.callAlertAudioMaster.disconnect();
+      } catch {
+        // O contexto pode já ter sido encerrado pelo navegador.
+      }
+      state.callAlertAudioMaster = null;
+    }
   }
 
   function ensureCallAlertAudio() {
@@ -299,6 +328,12 @@
     try {
       state.audioContext ||= new AudioContext();
       const context = state.audioContext;
+      if (!state.callAlertAudioMaster) {
+        const master = context.createGain();
+        master.gain.value = CALL_ALERT_SOUND_GAIN;
+        master.connect(context.destination);
+        state.callAlertAudioMaster = master;
+      }
       if (context.state === "suspended") context.resume().catch(() => {});
       return context;
     } catch {

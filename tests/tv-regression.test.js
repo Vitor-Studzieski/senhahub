@@ -56,6 +56,9 @@ test("TV atualiza conexão, identifica re-chamadas e dispara destaque visual", (
   assert.match(client, /updateConnection\("offline", "Offline"\)/);
   assert.match(client, /latestCallSignature/);
   assert.match(client, /showCallAlert\(sector, latestCall\)/);
+  assert.match(client, /showCallAlert\(\n\s*\{ id: state\.sectorId/);
+  assert.match(client, /state\.hasAvailableTicket =/);
+  assert.match(client, /nextButton\.classList\.toggle\("is-ready", isReady\)/);
   assert.doesNotMatch(client, /active\?\.currentCustomerName/);
 });
 
@@ -124,17 +127,19 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   assert.match(client, /AudioContext = window\.AudioContext \|\| window\.webkitAudioContext/);
   assert.match(client, /ensureCallAlertAudio\(\)/);
   assert.match(client, /function playCallAlertSound\(\)/);
-  assert.match(client, /const CALL_ALERT_SOUND_INTERVAL_MS = 480/);
-  assert.match(client, /const CALL_ALERT_SOUND_PULSE_MS = 300/);
-  assert.match(client, /const CALL_ALERT_SOUND_GAIN = 0\.9/);
+  assert.match(client, /const CALL_ALERT_SOUND_INTERVAL_MS = 360/);
+  assert.match(client, /const CALL_ALERT_SOUND_PULSE_MS = 260/);
+  assert.match(client, /const CALL_ALERT_SOUND_GAIN = 1\.25/);
   assert.match(client, /oscillator\.type = "square"/);
   assert.match(client, /state\.callAlertAudioStopTimer = window\.setTimeout\(stopCallAlertSound, CALL_ALERT_DURATION_MS \+ 150\)/);
   assert.match(client, /stopCallAlertSound\(\)/);
   assert.match(styles, /\.tv-call-alert\[hidden\]/);
-  assert.match(styles, /\.tv-call-alert\s*\{[\s\S]*?inset: 0;[\s\S]*?background: #fff;/);
+  assert.match(styles, /\.tv-call-alert\s*\{[\s\S]*?inset: 0;[\s\S]*?background: #fff !important;/);
   assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
+  assert.match(styles, /\.tv-screen \.tv-call-controls-actions button\.is-ready/);
+  assert.match(styles, /@keyframes tv-call-button-pulse/);
   assert.match(layout, /styles\.css\?v=20260922\.1/);
-  assert.match(page, /tv-acougue\.js\?v=20260922\.2/);
+  assert.match(page, /tv-acougue\.js\?v=20260922\.3/);
 });
 
 test("biblioteca de conteúdos da TV é restrita ao marketing e alimenta a reprodução", () => {
