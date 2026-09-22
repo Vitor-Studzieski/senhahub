@@ -287,7 +287,8 @@ function allowedNextForRole(role, next) {
     manager: "/",
     admin: "/",
     tablet: "/tablet",
-    tv: "/tv/acougue"
+    tv: "/tv/acougue",
+    marketing: "/marketing/conteudos-tv"
   }[role] || "/";
   const normalizedRole = role === "admin" ? "manager" : role;
   if (!next) return home;
@@ -296,5 +297,6 @@ function allowedNextForRole(role, next) {
   if (role === "customer" && next === "/") return next;
   if (role === "tablet" && next === "/tablet") return next;
   if (role === "tv" && next === "/tv/acougue") return next;
+  if (role === "marketing" && next === "/marketing/conteudos-tv") return next;
   return home;
 }

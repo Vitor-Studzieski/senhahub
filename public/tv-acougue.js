@@ -6,7 +6,6 @@
   const CALL_ALERT_SOUND_GAIN = 0.9;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
-  const WAITING_STATUSES = new Set(["aguardando", "proximo", "espera_inteligente", "standby"]);
   const WEATHER_CONFIG = {
     city: "Pompéia, SP",
   };
@@ -68,23 +67,18 @@
     weatherCondition: document.querySelector("#tvWeatherCondition"),
     connection: document.querySelector("#tvConnection"),
     queueTitle: document.querySelector("#tvQueueTitle"),
-    queueSubtitle: document.querySelector("#tvQueueSubtitle"),
-    waitingSubtitle: document.querySelector("#tvWaitingSubtitle"),
     recentCalls: document.querySelector("#tvRecentCalls"),
-    waitingCount: document.querySelector("#tvWaitingCount"),
-    waitingTickets: document.querySelector("#tvWaitingTickets"),
-    currentCall: document.querySelector("#tvCurrentCall"),
+    currentTicket: document.querySelector("#tvCurrentTicket"),
+    currentStatus: document.querySelector("#tvCurrentStatus"),
     callAlert: document.querySelector("#tvCallAlert"),
     callAlertTicket: document.querySelector("#tvCallAlertTicket"),
     callAlertSector: document.querySelector("#tvCallAlertSector"),
-    currentStatus: document.querySelector("#tvCurrentStatus"),
-    currentTicket: document.querySelector("#tvCurrentTicket"),
-    currentCustomer: document.querySelector("#tvCurrentCustomer"),
     callControlsStatus: document.querySelector("#tvCallControlsStatus"),
     callActionButtons: [...document.querySelectorAll("[data-tv-call-action]")],
     feedback: document.querySelector("#tvFeedback"),
     videoStage: document.querySelector("#tvVideoStage"),
     video: document.querySelector("#tvPlaylistVideo"),
+    image: document.querySelector("#tvPlaylistImage"),
     videoPlaceholder: document.querySelector("#tvVideoPlaceholder"),
     videoLabel: document.querySelector("#tvVideoLabel"),
     videoCounter: document.querySelector("#tvVideoCounter"),
@@ -199,45 +193,31 @@
 
   function renderQueue(sector) {
     const sectorLabel = displaySectorName(sector.name || sector.id);
-    const storeLabel = storeName(sector.storeCode || sector.store_code || sector.name);
-    const waiting = (sector.tickets || []).filter((ticket) => WAITING_STATUSES.has(ticket.status));
     const recentCalls = [...(sector.recentCalls || [])]
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
-    const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
     const latestCall = recentCalls.find((call) => call.action === "senha_chamada") || null;
-    const active = activeTickets.find((ticket) => ticket.ticket === latestCall?.ticket)
+    const latestCallTicket = latestCall?.ticket || latestCall?.ticketNumber || "";
+    const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
+    const active = activeTickets.find((ticket) => (ticket.ticket || ticket.ticketNumber) === latestCallTicket)
       || [...activeTickets].sort((left, right) => latestActivity(right) - latestActivity(left))[0]
       || null;
-    const currentTicket = active?.ticket || latestCall?.ticket || (recentCalls.length ? sector.current : "--");
+    const currentTicket = active?.ticket || active?.ticketNumber || latestCallTicket || (recentCalls.length ? sector.current : "--");
     const latestCallSignature = latestCall ? `${latestCall.ticket || latestCall.ticketNumber || ""}|${latestCall.createdAt || ""}` : "";
     const changed = Boolean(latestCallSignature && state.lastCallSignature && latestCallSignature !== state.lastCallSignature);
 
     if (latestCallSignature) state.lastCallSignature = latestCallSignature;
-    if (changed) triggerCallArrival();
     if (elements.queueTitle) elements.queueTitle.textContent = sectorLabel;
-    if (elements.queueSubtitle) elements.queueSubtitle.textContent = `${storeLabel} · Senhas em tempo real`;
-    if (elements.waitingSubtitle) elements.waitingSubtitle.textContent = `Próximas senhas de ${sectorLabel.toLowerCase()}`;
-    elements.waitingCount.textContent = String(waiting.length).padStart(2, "0");
-    elements.currentTicket.textContent = formatTicket(currentTicket, sector.prefix);
-    elements.currentStatus.textContent = active ? (active.status === "em_atendimento" ? "Em atendimento" : "Dirija-se ao balcão") : "Aguardando próxima chamada";
-    elements.currentCustomer.textContent = active ? "Atenção, sua senha foi chamada" : "Confira o painel para acompanhar sua vez";
-    elements.currentCall.dataset.state = active ? "active" : "idle";
+    if (elements.currentTicket) elements.currentTicket.textContent = formatTicket(currentTicket, sector.prefix);
+    if (elements.currentStatus) elements.currentStatus.textContent = active
+      ? (active.status === "em_atendimento" ? "Em atendimento" : "Dirija-se ao balcão")
+      : "Aguardando próxima chamada";
     elements.recentCalls.innerHTML = recentCalls.length ? recentCalls.map((call, index) => callRow(call, sector, index === 0)).join("") : emptyRow("Nenhuma chamada recente");
-    elements.waitingTickets.innerHTML = waiting.length ? waiting.slice(0, 5).map((ticket) => waitingRow(ticket, sector)).join("") : emptyRow("Nenhuma senha aguardando");
     if (changed) showCallAlert(sector, latestCall);
   }
 
   function latestActivity(ticket) {
     return new Date(ticket.serviceStartedAt || ticket.calledAt || ticket.updatedAt || ticket.createdAt || 0).getTime() || 0;
-  }
-
-  function triggerCallArrival() {
-    if (!elements.currentCall) return;
-    elements.currentCall.classList.remove("tv-call-arrived");
-    void elements.currentCall.offsetWidth;
-    elements.currentCall.classList.add("tv-call-arrived");
-    window.setTimeout(() => elements.currentCall?.classList.remove("tv-call-arrived"), 1100);
   }
 
   function showCallAlert(sector, call) {
@@ -333,11 +313,6 @@
     return `<div class="tv-call-row ${latest ? "is-latest" : ""}"><span class="tv-call-sector">${escapeHtml(displaySectorName(sector.name || sector.id).toUpperCase())}</span><strong>${escapeHtml(ticket)}</strong><time>${time}</time></div>`;
   }
 
-  function waitingRow(ticket, sector) {
-    const position = Number(ticket.position) > 0 ? `${ticket.position}º` : "--";
-    return `<div class="tv-waiting-row"><strong>${escapeHtml(formatTicket(ticket.ticket || ticket.ticketNumber, sector.prefix))}</strong><span>${escapeHtml(position)} na fila</span></div>`;
-  }
-
   function updateClock() {
     const now = new Date();
     if (elements.clock) elements.clock.textContent = now.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
@@ -368,7 +343,8 @@
 
   async function loadPlaylist() {
     try {
-      const response = await fetch("/data/tv-playlist.json", { cache: "no-store" });
+      let response = await fetch("/api/tv/media", { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) response = await fetch("/data/tv-playlist.json", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !Array.isArray(payload.items)) throw new Error("Playlist indisponível");
       const playlist = payload.items
@@ -378,7 +354,7 @@
           title: String(item.title || `Vídeo ${index + 1}`).trim(),
           src: item.src.trim(),
           videoUrl: typeof item.videoUrl === "string" ? item.videoUrl.trim() : "",
-          type: item.type === "instagram" || isInstagramUrl(item.src) ? "instagram" : "video",
+          type: item.type === "image" ? "image" : (item.type === "instagram" || isInstagramUrl(item.src) ? "instagram" : "video"),
           orientation: item.orientation === "portrait" ? "portrait" : "landscape",
           order: Number.isFinite(Number(item.order)) ? Number(item.order) : index,
           durationSeconds: Math.max(15, Number(item.durationSeconds) || 30)
@@ -406,7 +382,7 @@
     }
     elements.playlistList.innerHTML = state.playlist.map((item, index) => `
       <div class="tv-playlist-item" data-video-id="${escapeHtml(item.id)}">
-        <span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(item.title)}</strong><small>${item.type === "instagram" ? "Instagram" : (item.orientation === "portrait" ? "Vertical" : "Horizontal")}</small>
+        <span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(item.title)}</strong><small>${item.type === "instagram" ? "Instagram" : item.type === "image" ? "Imagem" : (item.orientation === "portrait" ? "Vertical" : "Horizontal")}</small>
       </div>
     `).join("");
     if (elements.playlistStatus) elements.playlistStatus.textContent = `${state.playlist.length} ${state.playlist.length === 1 ? "vídeo ativo" : "vídeos ativos"}`;
@@ -436,12 +412,28 @@
     if (elements.videoLabel) elements.videoLabel.textContent = item.title;
     if (elements.videoCounter) elements.videoCounter.textContent = `${nextIndex + 1}/${state.playlist.length}`;
     document.querySelectorAll(".tv-playlist-item").forEach((row) => row.classList.toggle("is-active", row.dataset.videoId === item.id));
+    const isImage = item.type === "image";
     const isInstagram = item.type === "instagram";
+    if (elements.image) {
+      elements.image.hidden = !isImage;
+      elements.image.removeAttribute("src");
+    }
     if (elements.video) {
-      elements.video.hidden = false;
+      elements.video.hidden = isImage;
       elements.video.pause();
       elements.video.removeAttribute("src");
       elements.video.load();
+    }
+    if (isImage) {
+      if (!elements.image) return;
+      elements.image.onload = () => {
+        if (state.playlist[state.currentVideoIndex] !== item) return;
+        if (elements.videoStage) elements.videoStage.dataset.state = "playing";
+        state.mediaAdvanceTimer = window.setTimeout(playNextVideo, item.durationSeconds * 1000);
+      };
+      elements.image.onerror = handleVideoError;
+      elements.image.src = item.src;
+      return;
     }
     if (isInstagram) {
       resolveVideoSource(item)
@@ -496,6 +488,10 @@
   function showEmptyPlaylist(status) {
     if (state.mediaAdvanceTimer) window.clearTimeout(state.mediaAdvanceTimer);
     if (elements.videoStage) elements.videoStage.dataset.state = "empty";
+    if (elements.image) {
+      elements.image.hidden = true;
+      elements.image.removeAttribute("src");
+    }
     if (elements.video) {
       elements.video.hidden = false;
       elements.video.pause();
@@ -509,11 +505,6 @@
 
   function displaySectorName(value) {
     return String(value || "Atendimento").replace(/\s+-\s+Loja\s+[12]$/i, "").trim() || "Atendimento";
-  }
-
-  function storeName(value) {
-    const match = String(value || "").match(/loja[- ]?([12])/i);
-    return match ? `Loja ${match[1]}` : "Loja Pompeia";
   }
 
   function isInstagramUrl(value) {

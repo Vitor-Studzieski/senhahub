@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conteúdos da TV - SenhaHub</title>
+  </head>
+  <body class="manager-page">
+    <div class="manager-shell tv-content-manager-shell">
+      <aside class="manager-sidebar">
+        <div class="manager-brand"><img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" /><div><strong>SenhaHub</strong><span>Painel do marketing</span></div></div>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a class="active" href="/marketing/conteudos-tv"><span aria-hidden="true">▣</span><span>Conteúdos da TV</span><small>01</small></a>
+          <a href="/tv/acougue"><span aria-hidden="true">▤</span><span>Visualizar TV</span><small>02</small></a>
+        </nav>
+        <div class="manager-sidebar-note">Publique vídeos e imagens da loja. A TV atualiza a programação automaticamente.</div>
+      </aside>
+
+      <main class="manager-main">
+        <header class="manager-topbar">
+          <div><p class="manager-eyebrow">Comunicação Pompeia</p><h1>Conteúdos da TV</h1><p>Faça a manutenção da programação sem precisar editar o sistema.</p></div>
+          <div class="manager-actions">
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Storage protegido</span></span>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
+          </div>
+        </header>
+
+        <section class="manager-section-title">
+          <div><p class="manager-eyebrow">Biblioteca de mídia</p><h2>Programação exibida nas TVs</h2><p>Envie MP4 ou imagens, organize a ordem e ative somente o que deve aparecer no ar.</p></div>
+        </section>
+
+        <section class="manager-management-grid tv-content-manager-grid">
+          <article class="manager-panel">
+            <div class="manager-panel-header"><div><h3>Adicionar conteúdo</h3><p>O arquivo é enviado diretamente para o Storage seguro do projeto.</p></div></div>
+            <div class="manager-panel-body">
+              <form class="manager-form" id="tvMediaUploadForm">
+                <label>Arquivo<input id="tvMediaFile" type="file" accept="video/mp4,video/webm,image/jpeg,image/png,image/webp" required /></label>
+                <label>Título<input id="tvMediaTitle" name="title" maxlength="120" placeholder="Ex.: Sexta Grill" required /></label>
+                <div class="tv-media-form-row">
+                  <label>Orientação<select id="tvMediaOrientation"><option value="portrait">Vertical</option><option value="landscape">Horizontal</option><option value="square">Quadrado</option></select></label>
+                  <label>Tempo da imagem (s)<input id="tvMediaDuration" type="number" min="5" max="3600" value="10" /></label>
+                </div>
+                <button class="manager-button" type="submit">Enviar e publicar</button>
+                <p class="manager-form-feedback" id="tvMediaUploadFeedback" role="status" aria-live="polite"></p>
+                <div class="tv-media-progress" id="tvMediaProgress" hidden><span></span></div>
+              </form>
+            </div>
+          </article>
+
+          <article class="manager-panel manager-users-panel">
+            <div class="manager-panel-header"><div><h3>Como funciona</h3><p>Controle simples para o dia a dia do marketing.</p></div></div>
+            <div class="manager-panel-body tv-media-help">
+              <p><strong>Publicar:</strong> envie o arquivo, revise o título e deixe-o ativo.</p>
+              <p><strong>Trocar:</strong> desative o conteúdo antigo e ative o novo. A TV atualiza em até cinco minutos.</p>
+              <p><strong>Remover:</strong> use “Excluir” para apagar o registro e o arquivo do Storage.</p>
+              <a class="manager-button secondary" href="/tv/acougue">Abrir a tela da TV</a>
+            </div>
+          </article>
+        </section>
+
+        <section class="manager-panel tv-media-library-panel">
+          <div class="manager-panel-header"><div><h3>Biblioteca publicada</h3><p id="tvMediaLibraryStatus" role="status" aria-live="polite">Carregando conteúdos…</p></div><button class="manager-button secondary" id="tvMediaRefresh" type="button">Atualizar</button></div>
+          <div class="manager-panel-body"><div class="tv-media-library" id="tvMediaLibrary"><p class="manager-empty">Consultando o Storage…</p></div></div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

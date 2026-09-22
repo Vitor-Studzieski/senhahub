@@ -12,7 +12,7 @@ const ACTIVE_STATUSES = [
 ];
 const TERMINAL_STATUSES = ["atendido", "cancelado", "expirado"];
 
-const USER_ROLES = new Set(["customer", "attendant", "manager", "admin", "tablet", "tv"]);
+const USER_ROLES = new Set(["customer", "attendant", "manager", "admin", "tablet", "tv", "marketing"]);
 const SECTOR_STATUSES = new Set(["open", "paused", "closed"]);
 
 async function getLocalCustomerHistory(customerId) {
@@ -325,7 +325,7 @@ async function createLocalManagedUser(body = {}) {
   }
   const passwordPolicy = await evaluatePasswordPolicy(password);
   if (!passwordPolicy.ok) return { error: passwordPolicyError(passwordPolicy).error };
-  const sectorIds = role === "tablet"
+  const sectorIds = ["tablet", "marketing"].includes(role)
     ? []
     : (Array.isArray(body.sectorIds) ? [...new Set(body.sectorIds.map((value) => String(value).trim()).filter(Boolean))] : []);
   if (role === "attendant" && !sectorIds.length) {

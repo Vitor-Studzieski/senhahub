@@ -3563,7 +3563,6 @@ textarea:focus {
 .tv-header-meta,
 .tv-queue-heading,
 .tv-card-title,
-.tv-current-label,
 .tv-promo-topline,
 .tv-promo-heading,
 .tv-promo-note,
@@ -3633,14 +3632,6 @@ textarea:focus {
   letter-spacing: .01em;
 }
 
-.tv-speaker {
-  color: var(--tv-highlight);
-  font-size: clamp(27px, 2.8vw, 48px);
-  font-weight: 900;
-  letter-spacing: -.4em;
-  transform: rotate(180deg);
-}
-
 .tv-header-meta {
   justify-content: flex-end;
   flex-wrap: wrap;
@@ -3686,9 +3677,7 @@ textarea:focus {
   text-transform: uppercase;
 }
 
-.tv-connection span,
-.tv-live-badge span,
-.tv-current-pulse {
+.tv-connection span {
   display: block;
   width: 8px;
   height: 8px;
@@ -3696,9 +3685,7 @@ textarea:focus {
   background: var(--vr-orange-primary);
 }
 
-.tv-connection[data-state="online"] span,
-.tv-live-badge span,
-.tv-current-call[data-state="active"] .tv-current-pulse {
+.tv-connection[data-state="online"] span {
   background: #3ce18d;
   box-shadow: 0 0 0 4px rgba(60, 225, 141, .15);
 }
@@ -3751,26 +3738,6 @@ textarea:focus {
   line-height: 1;
 }
 
-.tv-queue-heading > div:first-child > span {
-  display: block;
-  margin-top: 6px;
-  color: color-mix(in srgb, var(--vr-on-brand) 62%, transparent);
-  font-size: clamp(11px, .85vw, 16px);
-  font-weight: 600;
-}
-
-.tv-live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid rgba(60, 225, 141, .35);
-  border-radius: 999px;
-  color: #c8ffe2;
-  font-size: clamp(9px, .7vw, 13px);
-  letter-spacing: .1em;
-}
-
 .tv-queue-columns {
   display: grid;
   grid-template-columns: 1.05fr .95fr;
@@ -3819,13 +3786,11 @@ textarea:focus {
   font-weight: 600;
 }
 
-.tv-call-list,
-.tv-waiting-list {
+.tv-call-list {
   display: grid;
 }
 
-.tv-call-row,
-.tv-waiting-row {
+.tv-call-row {
   display: grid;
   align-items: center;
   border-bottom: 1px solid color-mix(in srgb, var(--vr-border) 10%, transparent);
@@ -3838,8 +3803,7 @@ textarea:focus {
   padding: 8px 16px;
 }
 
-.tv-call-row:last-child,
-.tv-waiting-row:last-child {
+.tv-call-row:last-child {
   border-bottom: 0;
 }
 
@@ -3870,43 +3834,6 @@ textarea:focus {
   font-weight: 700;
 }
 
-.tv-waiting-total {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 14px 16px 7px;
-}
-
-.tv-waiting-total strong {
-  color: var(--vr-on-brand);
-  font-size: clamp(36px, 3vw, 58px);
-  line-height: .9;
-}
-
-.tv-waiting-total span {
-  color: color-mix(in srgb, var(--vr-on-brand) 66%, transparent);
-  font-size: clamp(9px, .7vw, 13px);
-  font-weight: 700;
-}
-
-.tv-waiting-row {
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  min-height: clamp(34px, 4vh, 52px);
-  padding: 6px 16px;
-}
-
-.tv-waiting-row strong {
-  color: var(--vr-on-brand);
-  font-size: clamp(15px, 1.2vw, 24px);
-}
-
-.tv-waiting-row span {
-  color: color-mix(in srgb, var(--vr-on-brand) 58%, transparent);
-  font-size: clamp(9px, .65vw, 13px);
-  font-weight: 600;
-}
-
 .tv-empty-row {
   padding: 22px 16px;
   color: color-mix(in srgb, var(--vr-on-brand) 55%, transparent);
@@ -3914,123 +3841,67 @@ textarea:focus {
   font-weight: 600;
 }
 
-.tv-current-call {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px 18px;
-  margin-top: clamp(14px, 1.5vw, 26px);
-  border: 2px solid color-mix(in srgb, var(--vr-amber) 36%, transparent);
-  border-radius: clamp(12px, 1vw, 20px);
-  padding: clamp(14px, 1.6vw, 28px) clamp(18px, 2vw, 34px);
-  background: linear-gradient(110deg, color-mix(in srgb, var(--vr-amber) 17%, transparent), color-mix(in srgb, var(--vr-orange-primary) 50%, transparent));
-}
-
-.tv-current-call.tv-call-arrived {
-  animation: tv-call-arrived .9s ease;
-}
-
-@keyframes tv-call-arrived {
-  0%, 100% { box-shadow: 0 0 0 color-mix(in srgb, var(--vr-amber) 0%, transparent); }
-  35% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--vr-amber) 18%, transparent); }
-}
-
-.tv-current-label {
-  gap: 12px;
-  min-width: 0;
-}
-
-.tv-current-label small,
-.tv-current-customer {
-  display: block;
-  color: color-mix(in srgb, var(--vr-on-brand) 66%, transparent);
-  font-size: clamp(9px, .7vw, 13px);
-  font-weight: 700;
-}
-
-.tv-current-label strong {
-  display: block;
-  margin-top: 5px;
-  overflow: hidden;
-  color: var(--vr-on-brand);
-  font-size: clamp(12px, 1vw, 19px);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tv-current-ticket {
-  color: var(--tv-highlight);
-  font-size: clamp(34px, 3.5vw, 70px);
-  font-weight: 900;
-  letter-spacing: .02em;
-  line-height: .9;
-}
-
-.tv-current-customer {
-  grid-column: 1 / -1;
-  margin-left: 20px;
-  color: color-mix(in srgb, var(--vr-on-brand) 78%, transparent);
-}
-
-.tv-call-controls {
-  margin-top: clamp(12px, 1.2vw, 20px);
-  border: 1px solid color-mix(in srgb, var(--vr-amber) 42%, transparent);
-  border-radius: clamp(10px, .8vw, 16px);
-  padding: clamp(10px, 1vw, 16px);
-  background: color-mix(in srgb, var(--vr-surface-muted) 88%, var(--vr-amber));
-}
-
-.tv-call-controls-heading {
+.tv-current-ticket-card {
   display: flex;
+  flex-direction: column;
+}
+
+.tv-current-ticket-content {
+  display: flex;
+  flex: 1;
+  min-height: clamp(190px, 22vh, 280px);
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+  text-align: center;
 }
 
-.tv-call-controls-heading small,
-.tv-call-controls-heading span {
-  color: var(--vr-heading);
-  font-size: clamp(8px, .62vw, 12px);
-  font-weight: 700;
+.tv-current-ticket-content strong {
+  color: #000;
+  font-size: clamp(72px, 6vw, 120px);
+  font-weight: 950;
+  letter-spacing: .02em;
+  line-height: .86;
 }
 
-.tv-call-controls-heading strong {
-  display: block;
-  margin-top: 3px;
-  color: var(--tv-navy);
-  font-size: clamp(12px, .9vw, 17px);
+.tv-current-ticket-content span {
+  color: #000;
+  font-size: clamp(13px, 1vw, 19px);
+  font-weight: 800;
 }
 
 .tv-call-controls-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: clamp(14px, 1.2vw, 20px);
 }
 
-  .tv-call-controls-actions button {
-    min-height: clamp(36px, 3.6vw, 54px);
-    border: 1px solid color-mix(in srgb, var(--tv-navy) 85%, transparent);
-    border-radius: 9px;
-    padding: 8px 10px;
-    color: var(--vr-on-brand);
-    background: var(--tv-navy);
-    cursor: pointer;
-    font: inherit;
-    font-size: clamp(10px, .72vw, 14px);
+.tv-call-controls-actions button {
+  min-height: clamp(42px, 4vw, 58px);
+  border: 1px solid color-mix(in srgb, var(--tv-navy) 85%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--vr-on-brand);
+  background: var(--tv-navy);
+  cursor: pointer;
+  font: inherit;
+  font-size: clamp(11px, .8vw, 15px);
   font-weight: 800;
   transition: background .15s ease, opacity .15s ease, transform .15s ease;
 }
 
-  .tv-call-controls-actions button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--tv-navy) 86%, var(--vr-surface-muted));
-    transform: translateY(-1px);
-  }
+.tv-call-controls-actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tv-navy) 86%, var(--vr-surface-muted));
+  transform: translateY(-1px);
+}
 
-  .tv-call-controls-actions button:disabled {
-    cursor: not-allowed;
-    opacity: .86;
-  }
+.tv-call-controls-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .86;
+}
 
 .tv-promo-area {
   position: relative;
@@ -4372,10 +4243,6 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .tv-call-controls-actions {
-    grid-template-columns: 1fr;
-  }
-
   .tv-promo-area {
     min-height: auto;
   }
@@ -4441,10 +4308,6 @@ textarea:focus {
   transition: none !important;
 }
 
-.tv-screen .tv-current-call.tv-call-arrived {
-  animation: tv-call-arrived .9s ease !important;
-}
-
 .tv-call-alert[hidden] {
   display: none;
 }
@@ -4493,6 +4356,12 @@ textarea:focus {
   color: color-mix(in srgb, var(--vr-on-brand) 86%, transparent);
   font-size: clamp(17px, 2.1vw, 34px);
   font-weight: 800;
+}
+
+@media (max-width: 680px) {
+  .tv-call-controls-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tv-screen .tv-call-alert-card {
@@ -4552,7 +4421,6 @@ textarea:focus {
   color: var(--tv-navy);
 }
 
-.tv-speaker,
 .tv-clock span {
   color: var(--tv-highlight);
 }
@@ -4583,56 +4451,9 @@ textarea:focus {
   color: var(--tv-red);
 }
 
-.tv-queue-heading > div:first-child > span {
-  color: var(--vr-heading);
-}
-
-.tv-queue-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-left: clamp(18px, 3vw, 52px);
-  gap: clamp(12px, 1.4vw, 24px);
-}
-
-.tv-queue-called {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 9px;
-}
-
-.tv-queue-called .tv-speaker {
-  font-size: clamp(20px, 1.8vw, 32px);
-}
-
-.tv-queue-called strong {
-  display: block;
-  color: var(--tv-navy);
-  font-size: clamp(11px, .85vw, 16px);
-  font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.tv-queue-called small {
-  display: block;
-  margin-top: 4px;
-  color: var(--vr-heading);
-  font-size: clamp(8px, .62vw, 12px);
-  font-weight: 700;
-}
-
 .tv-queue-heading h1,
 .tv-card-title h2 {
   color: var(--tv-navy);
-}
-
-.tv-live-badge {
-  border-color: rgba(21, 128, 61, .28);
-  color: #166534;
 }
 
 .tv-queue-card {
@@ -4648,7 +4469,6 @@ textarea:focus {
 
 .tv-card-title p,
 .tv-call-row time,
-.tv-waiting-row span,
 .tv-empty-row {
   color: var(--vr-heading);
 }
@@ -4657,8 +4477,7 @@ textarea:focus {
   color: var(--tv-navy);
 }
 
-.tv-call-row,
-.tv-waiting-row {
+.tv-call-row {
   border-bottom-color: var(--vr-border);
 }
 
@@ -4670,28 +4489,8 @@ textarea:focus {
   color: var(--tv-red);
 }
 
-.tv-call-row strong,
-.tv-waiting-total strong,
-.tv-waiting-row strong {
+.tv-call-row strong {
   color: var(--tv-navy);
-}
-
-.tv-current-call {
-  border-color: color-mix(in srgb, var(--vr-amber) 58%, transparent);
-  background: var(--vr-orange-light);
-}
-
-.tv-current-label small,
-.tv-current-customer {
-  color: var(--vr-heading);
-}
-
-.tv-current-label strong {
-  color: var(--tv-navy);
-}
-
-.tv-current-ticket {
-  color: var(--tv-red);
 }
 
 .tv-promo-area {
@@ -4928,7 +4727,8 @@ textarea:focus {
   box-shadow: 0 12px 26px color-mix(in srgb, var(--vr-heading) 10%, transparent);
 }
 
-.tv-video-stage video {
+.tv-video-stage video,
+.tv-video-stage img {
   display: block;
   width: 100%;
   height: 100%;
@@ -4938,11 +4738,14 @@ textarea:focus {
 }
 
 .tv-video-stage[data-state="empty"] video,
-.tv-video-stage[data-state="loading"] video {
+.tv-video-stage[data-state="loading"] video,
+.tv-video-stage[data-state="empty"] img,
+.tv-video-stage[data-state="loading"] img {
   visibility: hidden;
 }
 
-.tv-video-stage[data-orientation="portrait"] video {
+.tv-video-stage[data-orientation="portrait"] video,
+.tv-video-stage[data-orientation="portrait"] img {
   object-fit: contain;
 }
 
@@ -4953,7 +4756,8 @@ textarea:focus {
     var(--vr-heading);
 }
 
-.tv-video-stage[data-orientation="portrait"] video {
+.tv-video-stage[data-orientation="portrait"] video,
+.tv-video-stage[data-orientation="portrait"] img {
   position: relative;
   z-index: 1;
   width: auto;
@@ -13137,4 +12941,152 @@ textarea:focus-visible,
 .totem-choice-priority .totem-choice-marker {
   background: color-mix(in srgb, var(--red) 16%, var(--vr-surface));
   color: var(--red) !important;
+}
+
+/* Biblioteca de conteúdos da TV */
+.tv-content-manager-shell .manager-nav a > span:first-child {
+  width: 22px;
+  color: var(--yellow);
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.tv-content-manager-grid {
+  align-items: stretch;
+}
+
+.tv-media-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tv-media-help {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.tv-media-help p {
+  margin: 0;
+  color: var(--vr-muted);
+  line-height: 1.5;
+}
+
+.tv-media-help strong {
+  color: var(--vr-ink);
+}
+
+.tv-media-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ececf2;
+}
+
+.tv-media-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--yellow);
+  transition: width 180ms ease;
+}
+
+.manager-form-feedback[data-state="error"] {
+  color: var(--red);
+}
+
+.manager-form-feedback[data-state="success"] {
+  color: var(--green);
+}
+
+.tv-media-library-panel {
+  margin-top: 24px;
+}
+
+.tv-media-library {
+  display: grid;
+  gap: 14px;
+}
+
+.tv-media-library-item {
+  display: grid;
+  grid-template-columns: 138px minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--vr-border);
+  border-radius: 16px;
+  background: var(--vr-surface);
+}
+
+.tv-media-library-item.is-inactive {
+  opacity: .7;
+}
+
+.tv-media-thumb {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0b0b29;
+}
+
+.tv-media-thumb img,
+.tv-media-thumb video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tv-media-library-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.tv-media-library-fields label,
+.tv-media-library-fields input {
+  min-width: 0;
+}
+
+.tv-media-library-fields small {
+  color: var(--vr-muted);
+}
+
+.tv-media-library-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.manager-button.danger {
+  border-color: color-mix(in srgb, var(--red) 30%, var(--vr-border));
+  color: var(--red);
+}
+
+@media (max-width: 900px) {
+  .tv-media-library-item {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+
+  .tv-media-library-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .tv-media-form-row,
+  .tv-media-library-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-media-library-item {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-media-library-actions {
+    grid-column: auto;
+  }
 }

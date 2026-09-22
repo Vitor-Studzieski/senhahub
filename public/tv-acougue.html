@@ -37,46 +37,29 @@
       <section class="tv-content">
         <section class="tv-queue-area" aria-labelledby="tvQueueTitle">
           <div class="tv-queue-heading">
-            <div><p>Atendimento</p><h1 id="tvQueueTitle">--</h1><span id="tvQueueSubtitle">Senhas em tempo real</span></div>
-            <div class="tv-queue-status">
-              <div class="tv-queue-called">
-                <span class="tv-speaker" aria-hidden="true">◖))</span>
-                <div><strong>SENHAS CHAMADAS</strong><small>Aguarde sua chamada</small></div>
-              </div>
-              <div class="tv-live-badge"><span></span><b>AO VIVO</b></div>
-            </div>
+            <div><p>Atendimento</p><h1 id="tvQueueTitle">--</h1></div>
           </div>
 
           <div class="tv-queue-columns">
             <article class="tv-queue-card tv-latest-card">
-              <div class="tv-card-title"><span class="tv-card-icon tv-card-icon-call">⌁</span><div><h2>Últimas chamadas</h2><p>Fique atento ao painel</p></div></div>
+              <div class="tv-card-title"><span class="tv-card-icon tv-card-icon-call">⌁</span><div><h2>Últimas chamadas</h2></div></div>
               <div class="tv-call-list" id="tvRecentCalls" aria-live="polite"><div class="tv-empty-row">Carregando chamadas...</div></div>
             </article>
 
-            <article class="tv-queue-card tv-waiting-card">
-              <div class="tv-card-title"><span class="tv-card-icon tv-card-icon-wait">#</span><div><h2>Aguardando</h2><p id="tvWaitingSubtitle">Próximas senhas</p></div></div>
-              <div class="tv-waiting-total"><strong id="tvWaitingCount">--</strong><span>pessoas na fila</span></div>
-              <div class="tv-waiting-list" id="tvWaitingTickets"><div class="tv-empty-row">Consultando fila...</div></div>
+            <article class="tv-queue-card tv-current-ticket-card">
+              <div class="tv-card-title"><span class="tv-card-icon tv-card-icon-wait">#</span><div><h2>Senha atual</h2></div></div>
+              <div class="tv-current-ticket-content" aria-live="polite">
+                <strong id="tvCurrentTicket">--</strong>
+                <span id="tvCurrentStatus">Aguardando próxima chamada</span>
+              </div>
             </article>
           </div>
 
-          <div class="tv-current-call" id="tvCurrentCall" data-state="idle">
-            <div class="tv-current-label"><span class="tv-current-pulse"></span><div><small>Senha atual</small><strong id="tvCurrentStatus">Aguardando próxima chamada</strong></div></div>
-            <strong class="tv-current-ticket" id="tvCurrentTicket">--</strong>
-            <div class="tv-current-customer" id="tvCurrentCustomer">Confira o painel para acompanhar sua vez</div>
+          <div class="tv-call-controls-actions" aria-label="Comandos de chamada">
+            <button type="button" data-tv-call-action="again" disabled>↻ <span>Chamar novamente</span></button>
+            <button type="button" data-tv-call-action="next" disabled>→ <span>Chamar próxima</span></button>
           </div>
 
-          <section class="tv-call-controls" id="tvCallControls" aria-labelledby="tvCallControlsTitle">
-            <div class="tv-call-controls-heading">
-              <div><small>Controle do colaborador</small><strong id="tvCallControlsTitle">Comandos de chamada</strong></div>
-              <span id="tvCallControlsStatus">Entre como colaborador para usar</span>
-            </div>
-            <div class="tv-call-controls-actions">
-              <button type="button" data-tv-call-action="previous" disabled>↶ <span>Chamar anterior</span></button>
-              <button type="button" data-tv-call-action="again" disabled>↻ <span>Chamar novamente</span></button>
-              <button type="button" data-tv-call-action="next" disabled>→ <span>Chamar próxima</span></button>
-            </div>
-          </section>
         </section>
 
         <aside class="tv-media-area" aria-labelledby="tvMediaTitle">
@@ -86,6 +69,7 @@
           </div>
           <div class="tv-video-stage" id="tvVideoStage" data-state="empty">
             <video id="tvPlaylistVideo" playsinline muted autoplay preload="metadata" aria-label="Vídeo da playlist da loja"></video>
+            <img id="tvPlaylistImage" hidden alt="Conteúdo da loja" />
             <div class="tv-video-placeholder" id="tvVideoPlaceholder">
               <span class="tv-video-placeholder-icon" aria-hidden="true">▶</span>
               <strong>Nenhum vídeo disponível</strong>

@@ -168,7 +168,7 @@ const STANDBY_SECONDS = 10 * 60;
 const TICKET_MIN_NUMBER = 0;
 const TICKET_MAX_NUMBER = 999;
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
-const AUTH_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv"];
+const AUTH_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv", "marketing"];
 const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
 const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
@@ -1915,6 +1915,7 @@ async function handlePage(req, res, url) {
     "/admin/setores": ADMIN_ROLES,
     "/admin/totens": ADMIN_ROLES,
     "/admin/usuarios": ADMIN_ROLES,
+    "/marketing/conteudos-tv": ["marketing", ...ADMIN_ROLES],
     "/tablet": ["tablet", "attendant"],
     "/tv/acougue": ["tv", ...STAFF_ROLES]
   };
@@ -3018,23 +3019,24 @@ function hasAnyRole(user, roles) {
 function roleHome(user) {
   if (hasAnyRole(user, ["tv"])) return "/tv/acougue";
   if (hasAnyRole(user, ["tablet"])) return "/tablet";
+  if (hasAnyRole(user, ["marketing"])) return "/marketing/conteudos-tv";
   if (hasAnyRole(user, ["attendant"])) return "/attendant";
   return "/";
 }
 
 function applySecurityHeaders(req, res) {
-  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com";
+  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co";
   const nonce = crypto.randomBytes(16).toString("base64url");
   const scriptSrc = dev ? `'self' 'nonce-${nonce}' 'unsafe-eval'` : `'self' 'nonce-${nonce}'`;
   res.setHeader("content-security-policy", [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     "style-src 'self' https://fonts.googleapis.com",
-    "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com",
+    "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
     `connect-src ${connectSrc}`,
     "font-src 'self' https://fonts.gstatic.com",
     "worker-src 'self'",
-    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:",
+    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:",
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

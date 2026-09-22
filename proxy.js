@@ -8,6 +8,7 @@ const pageRoles = {
   "/admin/setores": ["manager", "admin"],
   "/admin/totens": ["manager", "admin"],
   "/admin/usuarios": ["manager", "admin"],
+  "/marketing/conteudos-tv": ["marketing", "manager", "admin"],
   "/tablet": ["tablet", "attendant"],
   "/tv/acougue": ["tv", "attendant", "manager", "admin"]
 };
@@ -63,6 +64,7 @@ function rolesForPath(pathname) {
   if (pathname === "/attendant" || pathname.startsWith("/attendant/")) return ["attendant", "manager", "admin"];
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return ["manager", "admin"];
   if (pathname === "/tv/acougue") return ["tv", "attendant", "manager", "admin"];
+  if (pathname === "/marketing/conteudos-tv") return ["marketing", "manager", "admin"];
   if (pathname === "/") return pageRoles["/"];
   return null;
 }
@@ -101,11 +103,11 @@ function buildContentSecurityPolicy(nonce) {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'${development ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' https://fonts.googleapis.com",
-    "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com",
-    `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com${development ? " ws: http://localhost:*" : ""}`,
+    "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
+    `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co${development ? " ws: http://localhost:*" : ""}`,
     "font-src 'self' https://fonts.gstatic.com",
     "worker-src 'self'",
-    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:",
+    "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:",
     "frame-src 'self' https://www.instagram.com",
     "manifest-src 'self'",
     "object-src 'none'",
@@ -224,6 +226,7 @@ function normalizeRole(role) {
 function roleHome(user) {
   if (normalizeRole(user.role) === "tv") return "/tv/acougue";
   if (normalizeRole(user.role) === "tablet") return "/tablet";
+  if (normalizeRole(user.role) === "marketing") return "/marketing/conteudos-tv";
   return normalizeRole(user.role) === "attendant" ? "/attendant" : "/";
 }
 
@@ -232,6 +235,7 @@ export const config = {
     "/",
     "/attendant/:path*",
     "/admin/:path*",
+    "/marketing/conteudos-tv",
     "/tablet/:path*",
     "/tv/acougue",
     "/login",

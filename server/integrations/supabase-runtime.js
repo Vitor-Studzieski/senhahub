@@ -74,6 +74,7 @@ const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
   "shopping_signals",
   "ticket_counters",
   "tickets",
+  "tv_media",
   "web_push_subscriptions"
 ]);
 const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
@@ -132,13 +133,23 @@ const QUEUE_WAITING_STATUSES = ["aguardando", "proximo", "espera_inteligente", "
 const CALL_BLOCKING_STATUSES = ["chamado", "em_atendimento"];
 const CUSTOMER_CANCELABLE_STATUSES = ["aguardando", "proximo", "chamado", "espera_inteligente", "standby"];
 const STAFF_SKIPPABLE_STATUSES = ["aguardando", "proximo", "chamado", "standby", "espera_inteligente"];
-const AUTHENTICATED_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv"];
+const AUTHENTICATED_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv", "marketing"];
 const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
 const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
 const TABLET_ACCESS_ROLES = ["attendant", "tablet"];
 const ADMIN_ROLES = ["manager", "admin"];
+const MEDIA_MANAGEMENT_ROLES = ["marketing", ...ADMIN_ROLES];
 const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
+const TV_MEDIA_BUCKET = "tv-media";
+const TV_MEDIA_MAX_BYTES = 512 * 1024 * 1024;
+const TV_MEDIA_MIME_TYPES = new Map([
+  ["video/mp4", { mediaType: "video", extension: ".mp4", defaultDuration: 30 }],
+  ["video/webm", { mediaType: "video", extension: ".webm", defaultDuration: 30 }],
+  ["image/jpeg", { mediaType: "image", extension: ".jpg", defaultDuration: 10 }],
+  ["image/png", { mediaType: "image", extension: ".png", defaultDuration: 10 }],
+  ["image/webp", { mediaType: "image", extension: ".webp", defaultDuration: 10 }]
+]);
 const SKIP_REASONS = new Set(["cliente_ausente", "cancelamento", "erro_operacional"]);
 const PRIORITY_CATEGORIES = new Set([
   "deficiencia_ou_mobilidade_reduzida",
@@ -263,6 +274,13 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "POST" && url.pathname === "/api/auth/register") return registerCustomer(request);
     if (request.method === "POST" && url.pathname === "/api/auth/logout") return logout(request);
     if (request.method === "GET" && url.pathname === "/api/auth/me") return me(request);
+    if (request.method === "GET" && url.pathname === "/api/tv/media") return tvMediaListRoute(request, url);
+    if (request.method === "POST" && url.pathname === "/api/tv/media/upload-intent") return tvMediaUploadIntentRoute(request);
+    const tvMediaAction = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/(complete)$/i);
+    if (tvMediaAction && request.method === "POST") return tvMediaCompleteRoute(request, tvMediaAction[1]);
+    const tvMediaItem = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})$/i);
+    if (tvMediaItem && request.method === "PATCH") return tvMediaUpdateRoute(request, tvMediaItem[1]);
+    if (tvMediaItem && request.method === "DELETE") return tvMediaDeleteRoute(request, tvMediaItem[1]);
     if (request.method === "GET" && url.pathname === "/api/tablet/status") return tabletStatus(request);
     if (request.method === "POST" && url.pathname === "/api/tablet/tickets") return tabletTickets(request);
     const tabletPrintJob = url.pathname.match(/^\/api\/tablet\/print-jobs\/([^/]+)$/);
@@ -703,6 +721,205 @@ async function logout(request) {
 async function me(request) {
   const user = await getAuthUser(request);
   return json({ user: user ? userDto(user) : null, csrfToken: user?.csrf_token || null });
+}
+
+async function tvMediaListRoute(request, url) {
+  const manage = url.searchParams.get("manage") === "1";
+  const user = await requireUser(request, manage ? MEDIA_MANAGEMENT_ROLES : DISPLAY_ROLES);
+  if (user.response) return user.response;
+  const filters = manage ? "" : "&active=eq.true&upload_status=eq.ready";
+  const rows = await select("tv_media", `select=*&order=sort_order.asc,created_at.asc${filters}`);
+  return json({ items: rows.map(tvMediaDto), bucket: TV_MEDIA_BUCKET }, 200, { "cache-control": "no-store" });
+}
+
+async function tvMediaUploadIntentRoute(request) {
+  const user = await requireUser(request, MEDIA_MANAGEMENT_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+
+  const body = await readJson(request);
+  const mimeType = String(body.mimeType || "").trim().toLowerCase();
+  const definition = TV_MEDIA_MIME_TYPES.get(mimeType);
+  const fileSize = Number(body.fileSize);
+  if (!definition || !Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > TV_MEDIA_MAX_BYTES) {
+    return json({ error: "Arquivo inválido. Envie MP4/WebM ou imagem JPG/PNG/WebP de até 512 MB." }, 400);
+  }
+
+  const title = cleanLimitedText(body.title, 120) || cleanMediaTitle(body.fileName);
+  if (!title) return json({ error: "Informe um título para o conteúdo." }, 400);
+  const orientation = normalizeMediaOrientation(body.orientation);
+  const durationSeconds = normalizeMediaDuration(body.durationSeconds, definition.defaultDuration);
+  const current = await select("tv_media", "select=sort_order&order=sort_order.desc&limit=1");
+  const sortOrder = Math.max(0, Number(current[0]?.sort_order || 0) + 1);
+  const id = crypto.randomUUID();
+  const storagePath = `tv/${id}${definition.extension}`;
+  let media;
+
+  try {
+    await ensureTvMediaBucket();
+    media = await insert("tv_media", {
+      id,
+      title,
+      storage_path: storagePath,
+      media_type: definition.mediaType,
+      mime_type: mimeType,
+      file_size: fileSize,
+      orientation,
+      duration_seconds: durationSeconds,
+      sort_order: sortOrder,
+      active: false,
+      upload_status: "pending",
+      created_by: user.id,
+      updated_at: isoNow()
+    });
+    const signed = await storageRequest(`/storage/v1/object/upload/sign/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${storagePath}`)}`, {
+      method: "POST",
+      headers: { "x-upsert": "false" },
+      body: {}
+    });
+    if (!signed.ok) throw new Error(signed.error || "Não foi possível preparar o upload.");
+    const relativeUrl = signed.payload?.url || signed.payload?.signedUrl || signed.payload?.signedURL;
+    const uploadUrl = relativeUrl && /^https?:\/\//i.test(relativeUrl)
+      ? relativeUrl
+      : `${SUPABASE_URL}/storage/v1${String(relativeUrl || "").startsWith("/") ? relativeUrl : `/${relativeUrl || ""}`}`;
+    if (!uploadUrl || uploadUrl === SUPABASE_URL) throw new Error("O Supabase não retornou uma URL de upload.");
+    return json({ item: tvMediaDto(media), uploadUrl }, 201, { "cache-control": "no-store" });
+  } catch (error) {
+    if (media?.id) await remove("tv_media", media.id).catch(() => {});
+    throw error;
+  }
+}
+
+async function tvMediaCompleteRoute(request, mediaId) {
+  const user = await requireUser(request, MEDIA_MANAGEMENT_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
+  if (!media) return json({ error: "Conteúdo não encontrado." }, 404);
+  const stored = await storageRequest(`/storage/v1/object/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${media.storage_path}`)}`, { method: "HEAD" });
+  if (!stored.ok) return json({ error: "O arquivo ainda não foi enviado por completo." }, 409);
+  const body = await readJson(request);
+  const active = body.active === undefined ? true : Boolean(body.active);
+  const updated = await update("tv_media", media.id, { active, upload_status: "ready", uploaded_at: isoNow(), updated_at: isoNow() });
+  return json({ item: tvMediaDto(updated) }, 200, { "cache-control": "no-store" });
+}
+
+async function tvMediaUpdateRoute(request, mediaId) {
+  const user = await requireUser(request, MEDIA_MANAGEMENT_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
+  if (!media) return json({ error: "Conteúdo não encontrado." }, 404);
+  const body = await readJson(request);
+  const patch = {};
+  if (body.title !== undefined) {
+    const title = cleanLimitedText(body.title, 120);
+    if (!title) return json({ error: "O título não pode ficar vazio." }, 400);
+    patch.title = title;
+  }
+  if (body.active !== undefined) patch.active = Boolean(body.active);
+  if (body.orientation !== undefined) patch.orientation = normalizeMediaOrientation(body.orientation);
+  if (body.durationSeconds !== undefined) patch.duration_seconds = normalizeMediaDuration(body.durationSeconds, media.media_type === "image" ? 10 : 30);
+  if (body.sortOrder !== undefined) {
+    const sortOrder = Number(body.sortOrder);
+    if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) return json({ error: "A ordem precisa ser um número inteiro positivo." }, 400);
+    patch.sort_order = sortOrder;
+  }
+  if (!Object.keys(patch).length) return json({ item: tvMediaDto(media) });
+  patch.updated_at = isoNow();
+  return json({ item: tvMediaDto(await update("tv_media", media.id, patch)) }, 200, { "cache-control": "no-store" });
+}
+
+async function tvMediaDeleteRoute(request, mediaId) {
+  const user = await requireUser(request, MEDIA_MANAGEMENT_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
+  if (!media) return json({ error: "Conteúdo não encontrado." }, 404);
+  const removed = await storageRequest(`/storage/v1/object/remove/${encodeURIComponent(TV_MEDIA_BUCKET)}`, {
+    method: "POST",
+    body: { prefixes: [media.storage_path] }
+  });
+  if (!removed.ok && removed.status !== 404) return json({ error: "Não foi possível remover o arquivo do Storage." }, 502);
+  await remove("tv_media", media.id);
+  return json({ ok: true }, 200, { "cache-control": "no-store" });
+}
+
+function tvMediaDto(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    src: tvMediaPublicUrl(row.storage_path),
+    type: row.media_type,
+    mimeType: row.mime_type,
+    fileSize: Number(row.file_size || 0),
+    orientation: row.orientation,
+    durationSeconds: Number(row.duration_seconds || 30),
+    order: Number(row.sort_order || 0),
+    active: Boolean(row.active),
+    uploadStatus: row.upload_status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function tvMediaPublicUrl(storagePath) {
+  return `${SUPABASE_URL}/storage/v1/object/public/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${storagePath}`)}`;
+}
+
+async function ensureTvMediaBucket() {
+  const existing = await storageRequest(`/storage/v1/bucket/${encodeURIComponent(TV_MEDIA_BUCKET)}`);
+  if (existing.ok) return existing.payload;
+  if (existing.status !== 404) throw new Error(existing.error || "Não foi possível consultar o Storage.");
+  const created = await storageRequest("/storage/v1/bucket", {
+    method: "POST",
+    body: {
+      id: TV_MEDIA_BUCKET,
+      name: TV_MEDIA_BUCKET,
+      public: true,
+      file_size_limit: String(TV_MEDIA_MAX_BYTES),
+      allowed_mime_types: [...TV_MEDIA_MIME_TYPES.keys()]
+    }
+  });
+  if (!created.ok && created.status !== 409) throw new Error(created.error || "Não foi possível criar o bucket de mídia.");
+  return created.payload;
+}
+
+async function storageRequest(pathname, options = {}) {
+  const method = options.method || "GET";
+  const response = await fetch(`${SUPABASE_URL}${pathname}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      ...(options.body ? { "content-type": "application/json" } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const text = await response.text();
+  const payload = parseSupabasePayload(text);
+  return { ok: response.ok, status: response.status, payload, error: response.ok ? null : supabaseErrorMessage(payload, response) };
+}
+
+function encodeStoragePath(pathname) {
+  return String(pathname || "").split("/").map(encodeURIComponent).join("/");
+}
+
+function cleanMediaTitle(fileName) {
+  return cleanLimitedText(String(fileName || "").replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " "), 120);
+}
+
+function normalizeMediaOrientation(value) {
+  return ["portrait", "landscape", "square"].includes(String(value || "").toLowerCase())
+    ? String(value).toLowerCase()
+    : "portrait";
+}
+
+function normalizeMediaDuration(value, fallback) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) return fallback;
+  return Math.min(3600, Math.max(5, Math.round(duration)));
 }
 
 async function internalJobsRoute(request, context = null) {
@@ -2462,9 +2679,9 @@ async function createUser(body) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const name = String(body.name || "").trim();
-  const role = ["customer", "attendant", "manager", "admin", "tv"].includes(body.role) ? body.role : "attendant";
+  const role = ["customer", "attendant", "manager", "admin", "tv", "marketing"].includes(body.role) ? body.role : "attendant";
   const profileRole = role === "tv" ? "customer" : role;
-  const sectorIds = [...new Set((Array.isArray(body.sectorIds) ? body.sectorIds : [])
+  const sectorIds = role === "marketing" ? [] : [...new Set((Array.isArray(body.sectorIds) ? body.sectorIds : [])
     .map((sectorId) => String(sectorId || "").trim())
     .filter(Boolean))];
   if (!email || !name || !validateStrongPassword(password)) return fail("Informe nome, e-mail e senha com ao menos 12 caracteres, letras maiusculas, minusculas e numeros.");

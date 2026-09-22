@@ -54,8 +54,43 @@ test("TV atualiza conexão, identifica re-chamadas e dispara destaque visual", (
   assert.match(client, /updateConnection\("online", "Online"\)/);
   assert.match(client, /updateConnection\("offline", "Offline"\)/);
   assert.match(client, /latestCallSignature/);
-  assert.match(client, /triggerCallArrival\(\)/);
+  assert.match(client, /showCallAlert\(sector, latestCall\)/);
   assert.doesNotMatch(client, /active\?\.currentCustomerName/);
+});
+
+test("TV oculta os blocos removidos do layout público", () => {
+  const html = fs.readFileSync(path.join(root, "public/tv-acougue.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
+
+  assert.doesNotMatch(html, /Senhas em tempo real|SENHAS CHAMADAS|Aguarde sua chamada|tv-speaker/);
+  assert.doesNotMatch(html, /Fique atento ao painel|Próximas senhas|tv-current-call|Controle do colaborador/);
+  assert.doesNotMatch(html, /AO VIVO|tv-live-badge|tv-queue-status/);
+  assert.doesNotMatch(client, /queueSubtitle|waitingSubtitle|currentCustomer/);
+});
+
+test("card de aguardando exibe a senha atual", () => {
+  const html = fs.readFileSync(path.join(root, "public/tv-acougue.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "public/styles.css"), "utf8");
+
+  assert.match(html, /<h2>Senha atual<\/h2>/);
+  assert.match(html, /id="tvCurrentTicket"/);
+  assert.match(html, /id="tvCurrentStatus"/);
+  assert.doesNotMatch(html, /tvWaitingCount|tvWaitingTickets|pessoas na fila/);
+  assert.match(client, /elements\.currentTicket\.textContent = formatTicket\(currentTicket, sector\.prefix\)/);
+  assert.match(client, /elements\.currentStatus\.textContent/);
+  assert.match(styles, /\.tv-current-ticket-content\s+strong\s*\{[\s\S]*?color: #000;/);
+  assert.match(styles, /\.tv-current-ticket-content\s+span\s*\{[\s\S]*?color: #000;/);
+});
+
+test("TV exibe somente os comandos de repetir e chamar a próxima senha", () => {
+  const html = fs.readFileSync(path.join(root, "public/tv-acougue.html"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "public/styles.css"), "utf8");
+
+  assert.match(html, /data-tv-call-action="again"[^>]*>[^<]*↻/);
+  assert.match(html, /data-tv-call-action="next"[^>]*>[^<]*→/);
+  assert.doesNotMatch(html, /data-tv-call-action="previous"/);
+  assert.match(styles, /\.tv-call-controls-actions\s*\{/);
 });
 
 test("conta TV pode usar os comandos de chamada sem ganhar acesso administrativo", () => {
@@ -96,5 +131,25 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   assert.match(styles, /\.tv-call-alert\[hidden\]/);
   assert.match(styles, /\.tv-call-alert\s*\{[\s\S]*?inset: 0;[\s\S]*?background: #fff;/);
   assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
-  assert.match(layout, /styles\.css\?v=20260921\.8/);
+  assert.match(layout, /styles\.css\?v=20260922\.1/);
+});
+
+test("biblioteca de conteúdos da TV é restrita ao marketing e alimenta a reprodução", () => {
+  const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260922090000_tv_content_library.sql"), "utf8");
+  const runtime = fs.readFileSync(path.join(root, "server/integrations/supabase-runtime.js"), "utf8");
+  const proxy = fs.readFileSync(path.join(root, "proxy.js"), "utf8");
+  const page = fs.readFileSync(path.join(root, "app/marketing/conteudos-tv/page.jsx"), "utf8");
+  const client = fs.readFileSync(path.join(root, "public/marketing-tv.js"), "utf8");
+
+  assert.match(migration, /add value if not exists 'marketing'/);
+  assert.match(migration, /create table if not exists public\.tv_media/);
+  assert.match(migration, /enable row level security/);
+  assert.match(runtime, /const MEDIA_MANAGEMENT_ROLES = \["marketing", \.\.\.ADMIN_ROLES\]/);
+  assert.match(runtime, /tvMediaUploadIntentRoute/);
+  assert.match(runtime, /storage\/v1\/object\/upload\/sign/);
+  assert.match(runtime, /tvMediaDeleteRoute/);
+  assert.match(proxy, /"\/marketing\/conteudos-tv": \["marketing", "manager", "admin"\]/);
+  assert.match(page, /marketing-tv\.html/);
+  assert.match(client, /\/api\/tv\/media\?manage=1/);
+  assert.match(client, /O plano atual do Supabase bloqueou este arquivo/);
 });

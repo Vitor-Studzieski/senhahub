@@ -705,7 +705,7 @@ function updateUserRoleFields() {
   const role = document.querySelector("#userRole")?.value || "";
   const permissions = document.querySelector("#userSectorPermissions");
   if (!permissions) return;
-  const restricted = role === "tablet";
+  const restricted = ["tablet", "marketing"].includes(role);
   permissions.hidden = restricted;
   const legend = permissions.querySelector("legend");
   if (legend) legend.textContent = role === "tv" ? "Setores da TV" : "Setores autorizados";
@@ -868,7 +868,7 @@ function priorityReasonLabel(value) {
 }
 
 function roleLabel(role) {
-  return { customer: "Cliente", attendant: "Funcionário", manager: "Gestor", admin: "Gestor", tablet: "Tablet", tv: "TV · Açougue" }[role] || role;
+  return { customer: "Cliente", attendant: "Funcionário", manager: "Gestor", admin: "Gestor", marketing: "Marketing · TV", tablet: "Tablet", tv: "TV · Açougue" }[role] || role;
 }
 
 function setText(selector, value) {
