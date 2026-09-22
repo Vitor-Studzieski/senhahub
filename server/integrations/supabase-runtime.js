@@ -42,6 +42,7 @@ const { healthResponse } = require("../platform/production-readiness");
 const { fetchCurrentWeather } = require("./weather");
 const { fetchInstagramVideo } = require("./instagram-video");
 const { sanitizeDisplayState } = require("../display-state");
+const { transcodeSupabaseVideo } = require("./tv-media-transcoder");
 
 const requestContextStorage = new AsyncLocalStorage();
 
@@ -752,7 +753,7 @@ async function tvMediaUploadIntentRoute(request) {
   const current = await select("tv_media", "select=sort_order&order=sort_order.desc&limit=1");
   const sortOrder = Math.max(0, Number(current[0]?.sort_order || 0) + 1);
   const id = crypto.randomUUID();
-  const storagePath = `tv/${id}${definition.extension}`;
+  const storagePath = `tv/${id}${definition.mediaType === "video" ? ".mp4" : definition.extension}`;
   let media;
 
   try {
@@ -796,11 +797,43 @@ async function tvMediaCompleteRoute(request, mediaId) {
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
   if (!media) return json({ error: "Conteúdo não encontrado." }, 404);
-  const stored = await storageRequest(`/storage/v1/object/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${media.storage_path}`)}`, { method: "HEAD" });
-  if (!stored.ok) return json({ error: "O arquivo ainda não foi enviado por completo." }, 409);
   const body = await readJson(request);
   const active = body.active === undefined ? true : Boolean(body.active);
-  const updated = await update("tv_media", media.id, { active, upload_status: "ready", uploaded_at: isoNow(), updated_at: isoNow() });
+  let converted = null;
+  const sourceStoragePath = media.storage_path;
+  const targetStoragePath = media.media_type === "video"
+    ? `tv/${media.id}.h264.mp4`
+    : sourceStoragePath;
+  try {
+    const stored = await storageRequest(`/storage/v1/object/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${sourceStoragePath}`)}`, { method: "HEAD" });
+    if (!stored.ok) return json({ error: "O arquivo ainda não foi enviado por completo." }, 409);
+    if (media.media_type === "video") {
+      converted = await transcodeSupabaseVideo({
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        bucket: TV_MEDIA_BUCKET,
+        sourceStoragePath,
+        targetStoragePath
+      });
+    }
+  } catch (error) {
+    console.error("tv_media_transcode_failed", error);
+    return json({ error: "Não foi possível converter o vídeo para um formato compatível com a TV. Tente novamente." }, 422);
+  }
+  const updated = await update("tv_media", media.id, {
+    active,
+    ...(converted ? { storage_path: converted.storagePath } : {}),
+    upload_status: "ready",
+    uploaded_at: isoNow(),
+    updated_at: isoNow(),
+    ...(converted ? { mime_type: converted.mimeType, file_size: converted.fileSize } : {})
+  });
+  if (converted && converted.storagePath !== sourceStoragePath) {
+    await storageRequest(`/storage/v1/object/${encodeURIComponent(TV_MEDIA_BUCKET)}`, {
+      method: "DELETE",
+      body: { prefixes: [sourceStoragePath] }
+    }).catch((error) => console.error("tv_media_source_cleanup_failed", error));
+  }
   return json({ item: tvMediaDto(updated) }, 200, { "cache-control": "no-store" });
 }
 
@@ -836,8 +869,8 @@ async function tvMediaDeleteRoute(request, mediaId) {
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
   if (!media) return json({ error: "Conteúdo não encontrado." }, 404);
-  const removed = await storageRequest(`/storage/v1/object/remove/${encodeURIComponent(TV_MEDIA_BUCKET)}`, {
-    method: "POST",
+  const removed = await storageRequest(`/storage/v1/object/${encodeURIComponent(TV_MEDIA_BUCKET)}`, {
+    method: "DELETE",
     body: { prefixes: [media.storage_path] }
   });
   if (!removed.ok && removed.status !== 404) return json({ error: "Não foi possível remover o arquivo do Storage." }, 502);

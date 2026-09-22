@@ -27,6 +27,7 @@ const contentSecurityPolicy = [
 
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["@ffmpeg-installer/ffmpeg"],
   async rewrites() {
     return { beforeFiles: [] };
   },

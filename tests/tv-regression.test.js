@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { sanitizeDisplayState } = require("../server/display-state");
+const { buildFfmpegArgs } = require("../server/integrations/tv-media-transcoder");
 
 const root = path.join(__dirname, "..");
 
@@ -152,4 +153,22 @@ test("biblioteca de conteúdos da TV é restrita ao marketing e alimenta a repro
   assert.match(page, /marketing-tv\.html/);
   assert.match(client, /\/api\/tv\/media\?manage=1/);
   assert.match(client, /O plano atual do Supabase bloqueou este arquivo/);
+});
+
+test("vídeos enviados para a TV são normalizados para H.264 e AAC", () => {
+  const args = buildFfmpegArgs("/tmp/source", "/tmp/output.mp4");
+  const runtime = fs.readFileSync(path.join(root, "server/integrations/supabase-runtime.js"), "utf8");
+  const client = fs.readFileSync(path.join(root, "public/marketing-tv.js"), "utf8");
+  const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
+
+  assert.deepEqual(args.slice(args.indexOf("-c:v"), args.indexOf("-pix_fmt") + 2), ["-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p"]);
+  assert.match(args.join(" "), /-c:a aac/);
+  assert.match(args.join(" "), /-movflags \+faststart/);
+  assert.match(runtime, /transcodeSupabaseVideo/);
+  assert.match(runtime, /mime_type: converted\.mimeType/);
+  assert.doesNotMatch(runtime, /storage\/v1\/object\/remove/);
+  assert.match(runtime, /storage\/v1\/object\/\$\{encodeURIComponent\(TV_MEDIA_BUCKET\)\}/);
+  assert.match(runtime, /method: "DELETE"/);
+  assert.match(client, /Convertendo para o formato compatível com a TV/);
+  assert.match(packageJson, /"@ffmpeg-installer\/ffmpeg": "1\.1\.0"/);
 });

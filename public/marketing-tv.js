@@ -89,6 +89,7 @@
         throw new Error("O Storage não aceitou o arquivo.");
       }
       setProgress(82);
+      if (file.type.startsWith("video/")) setFeedback("Convertendo para o formato compatível com a TV…", false);
       await api(`/api/tv/media/${encodeURIComponent(intent.item.id)}/complete`, { method: "POST", body: { active: true } });
       setProgress(100);
       setFeedback("Conteúdo publicado. A TV atualizará a programação automaticamente.", false);
