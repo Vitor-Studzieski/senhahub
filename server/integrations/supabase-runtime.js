@@ -3835,7 +3835,7 @@ function withRequestId(response, requestId) {
 
 function securityHeaders(extra = {}) {
   return {
-    "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
     "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
