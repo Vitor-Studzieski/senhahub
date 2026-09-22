@@ -353,6 +353,7 @@
           id: String(item.id || `video-${index + 1}`),
           title: String(item.title || `Vídeo ${index + 1}`).trim(),
           src: item.src.trim(),
+          sourceKey: playlistSourceKey(item.src.trim()),
           videoUrl: typeof item.videoUrl === "string" ? item.videoUrl.trim() : "",
           type: item.type === "image" ? "image" : (item.type === "instagram" || isInstagramUrl(item.src) ? "instagram" : "video"),
           orientation: item.orientation === "portrait" ? "portrait" : "landscape",
@@ -360,8 +361,16 @@
           durationSeconds: Math.max(15, Number(item.durationSeconds) || 30)
         }))
         .sort((left, right) => left.order - right.order);
-      const signature = playlist.map((item) => `${item.id}|${item.src}|${item.videoUrl}|${item.type}|${item.orientation}|${item.order}|${item.title}|${item.durationSeconds}`).join("||");
-      if (signature === state.playlistSignature) return;
+      const signature = playlist.map((item) => `${item.id}|${item.sourceKey}|${item.videoUrl}|${item.type}|${item.orientation}|${item.order}|${item.title}|${item.durationSeconds}`).join("||");
+      if (signature === state.playlistSignature) {
+        // Refresh short-lived stream URLs without replacing the objects used by
+        // the current player and without restarting a video already in progress.
+        state.playlist.forEach((currentItem) => {
+          const freshItem = playlist.find((item) => item.id === currentItem.id);
+          if (freshItem) currentItem.src = freshItem.src;
+        });
+        return;
+      }
       state.playlistSignature = signature;
       state.playlist = playlist;
       state.failedVideos.clear();
@@ -509,6 +518,18 @@
 
   function isInstagramUrl(value) {
     return /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\//i.test(String(value || "").trim());
+  }
+
+  function playlistSourceKey(value) {
+    try {
+      const source = new URL(value, window.location.origin);
+      if (source.pathname.startsWith("/api/tv/media/") && source.pathname.endsWith("/stream")) {
+        source.searchParams.delete("token");
+      }
+      return `${source.pathname}${source.search}${source.hash}`;
+    } catch {
+      return value;
+    }
   }
 
   async function resolveVideoSource(item) {

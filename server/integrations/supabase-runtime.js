@@ -143,6 +143,7 @@ const ADMIN_ROLES = ["manager", "admin"];
 const MEDIA_MANAGEMENT_ROLES = ["marketing", ...ADMIN_ROLES];
 const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
 const TV_MEDIA_BUCKET = "tv-media";
+const TV_MEDIA_STREAM_TTL_SECONDS = 30 * 60;
 const TV_MEDIA_MAX_BYTES = 512 * 1024 * 1024;
 const TV_MEDIA_MIME_TYPES = new Map([
   ["video/mp4", { mediaType: "video", extension: ".mp4", defaultDuration: 30 }],
@@ -278,7 +279,7 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "GET" && url.pathname === "/api/tv/media") return tvMediaListRoute(request, url);
     if (request.method === "POST" && url.pathname === "/api/tv/media/upload-intent") return tvMediaUploadIntentRoute(request);
     const tvMediaStream = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/stream$/i);
-    if (tvMediaStream && ["GET", "HEAD"].includes(request.method)) return tvMediaStreamRoute(request, tvMediaStream[1]);
+    if (tvMediaStream && ["GET", "HEAD"].includes(request.method)) return tvMediaStreamRoute(request, tvMediaStream[1], url);
     const tvMediaAction = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/(complete)$/i);
     if (tvMediaAction && request.method === "POST") return tvMediaCompleteRoute(request, tvMediaAction[1]);
     const tvMediaItem = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})$/i);
@@ -732,12 +733,23 @@ async function tvMediaListRoute(request, url) {
   if (user.response) return user.response;
   const filters = manage ? "" : "&active=eq.true&upload_status=eq.ready";
   const rows = await select("tv_media", `select=*&order=sort_order.asc,created_at.asc${filters}`);
-  return json({ items: rows.map((row) => tvMediaDto(row, { stream: !manage })), bucket: TV_MEDIA_BUCKET }, 200, { "cache-control": "no-store" });
+  return json({
+    items: rows.map((row) => tvMediaDto(row, {
+      stream: !manage,
+      streamToken: !manage && row.media_type === "video" ? createTvMediaStreamToken(row.id) : ""
+    })),
+    bucket: TV_MEDIA_BUCKET
+  }, 200, { "cache-control": "no-store" });
 }
 
-async function tvMediaStreamRoute(request, mediaId) {
-  const user = await requireUser(request, DISPLAY_ROLES);
-  if (user.response) return user.response;
+async function tvMediaStreamRoute(request, mediaId, url) {
+  // Smart TVs do not reliably forward the application session cookie to a
+  // media element request. The playlist endpoint authenticates the TV and
+  // gives it a short-lived, media-specific bearer token instead.
+  if (!verifyTvMediaStreamToken(mediaId, url.searchParams.get("token"))) {
+    const user = await requireUser(request, DISPLAY_ROLES);
+    if (user.response) return user.response;
+  }
   const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
   if (!media || media.media_type !== "video" || !media.active || media.upload_status !== "ready") {
     return json({ error: "Vídeo não disponível." }, 404);
@@ -761,6 +773,29 @@ async function tvMediaStreamRoute(request, mediaId) {
   headers.set("accept-ranges", "bytes");
   headers.set("cache-control", "private, max-age=3600");
   return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers });
+}
+
+function tvMediaStreamSecret() {
+  return String(process.env.TV_MEDIA_STREAM_SECRET || SUPABASE_SERVICE_ROLE_KEY || "");
+}
+
+function createTvMediaStreamToken(mediaId) {
+  const expiresAt = Math.floor(Date.now() / 1000) + TV_MEDIA_STREAM_TTL_SECONDS;
+  const payload = `${mediaId}.${expiresAt}`;
+  const signature = crypto.createHmac("sha256", tvMediaStreamSecret()).update(payload).digest("base64url");
+  return `${expiresAt}.${signature}`;
+}
+
+function verifyTvMediaStreamToken(mediaId, token) {
+  const [expiresText, signature] = String(token || "").split(".");
+  const expiresAt = Number(expiresText);
+  const secret = tvMediaStreamSecret();
+  if (!secret || !Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
+  if (!/^[A-Za-z0-9_-]{40,}$/.test(signature || "")) return false;
+  const expected = crypto.createHmac("sha256", secret).update(`${mediaId}.${expiresAt}`).digest("base64url");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 async function tvMediaUploadIntentRoute(request) {
@@ -913,7 +948,7 @@ function tvMediaDto(row, options = {}) {
     id: row.id,
     title: row.title,
     src: options.stream && row.media_type === "video"
-      ? `/api/tv/media/${row.id}/stream`
+      ? `/api/tv/media/${row.id}/stream?token=${encodeURIComponent(options.streamToken || "")}`
       : tvMediaPublicUrl(row.storage_path),
     type: row.media_type,
     mimeType: row.mime_type,
