@@ -11,7 +11,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 async function main() {
   const rows = await supabaseJson(`/rest/v1/tv_media?select=id,title,storage_path,media_type,mime_type,file_size&media_type=eq.video&active=eq.true&upload_status=eq.ready&order=created_at.asc`);
   for (const media of rows) {
-    const targetStoragePath = `tv/${media.id}.h264.mp4`;
+    const targetStoragePath = `tv/${media.id}.tv.mp4`;
     if (media.storage_path === targetStoragePath && media.mime_type === "video/mp4") {
       console.log(`Já normalizado: ${media.title}`);
       continue;

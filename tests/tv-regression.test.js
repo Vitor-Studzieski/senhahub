@@ -161,11 +161,17 @@ test("vídeos enviados para a TV são normalizados para H.264 e AAC", () => {
   const client = fs.readFileSync(path.join(root, "public/marketing-tv.js"), "utf8");
   const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
 
-  assert.deepEqual(args.slice(args.indexOf("-c:v"), args.indexOf("-pix_fmt") + 2), ["-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p"]);
+  assert.match(args.join(" "), /-c:v libx264/);
+  assert.match(args.join(" "), /-profile:v baseline/);
+  assert.match(args.join(" "), /-level 3\.1/);
+  assert.match(args.join(" "), /scale=w='min\(720,iw\)':h=-2,format=yuv420p/);
   assert.match(args.join(" "), /-c:a aac/);
   assert.match(args.join(" "), /-movflags \+faststart/);
   assert.match(runtime, /transcodeSupabaseVideo/);
   assert.match(runtime, /mime_type: converted\.mimeType/);
+  assert.match(runtime, /tvMediaStreamRoute/);
+  assert.match(runtime, /accept-ranges/);
+  assert.match(runtime, /\/api\/tv\/media\/\$\{row\.id\}\/stream/);
   assert.doesNotMatch(runtime, /storage\/v1\/object\/remove/);
   assert.match(runtime, /storage\/v1\/object\/\$\{encodeURIComponent\(TV_MEDIA_BUCKET\)\}/);
   assert.match(runtime, /method: "DELETE"/);

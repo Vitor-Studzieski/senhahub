@@ -277,6 +277,8 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "GET" && url.pathname === "/api/auth/me") return me(request);
     if (request.method === "GET" && url.pathname === "/api/tv/media") return tvMediaListRoute(request, url);
     if (request.method === "POST" && url.pathname === "/api/tv/media/upload-intent") return tvMediaUploadIntentRoute(request);
+    const tvMediaStream = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/stream$/i);
+    if (tvMediaStream && ["GET", "HEAD"].includes(request.method)) return tvMediaStreamRoute(request, tvMediaStream[1]);
     const tvMediaAction = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/(complete)$/i);
     if (tvMediaAction && request.method === "POST") return tvMediaCompleteRoute(request, tvMediaAction[1]);
     const tvMediaItem = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})$/i);
@@ -730,7 +732,35 @@ async function tvMediaListRoute(request, url) {
   if (user.response) return user.response;
   const filters = manage ? "" : "&active=eq.true&upload_status=eq.ready";
   const rows = await select("tv_media", `select=*&order=sort_order.asc,created_at.asc${filters}`);
-  return json({ items: rows.map(tvMediaDto), bucket: TV_MEDIA_BUCKET }, 200, { "cache-control": "no-store" });
+  return json({ items: rows.map((row) => tvMediaDto(row, { stream: !manage })), bucket: TV_MEDIA_BUCKET }, 200, { "cache-control": "no-store" });
+}
+
+async function tvMediaStreamRoute(request, mediaId) {
+  const user = await requireUser(request, DISPLAY_ROLES);
+  if (user.response) return user.response;
+  const media = (await select("tv_media", `select=*&id=eq.${encodeURIComponent(mediaId)}&limit=1`))[0];
+  if (!media || media.media_type !== "video" || !media.active || media.upload_status !== "ready") {
+    return json({ error: "Vídeo não disponível." }, 404);
+  }
+  const range = request.headers.get("range");
+  const upstream = await fetch(`${SUPABASE_URL}/storage/v1/object/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${media.storage_path}`)}`, {
+    method: request.method,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      ...(range ? { range } : {})
+    }
+  });
+  if (!upstream.ok && upstream.status !== 206) return json({ error: "Não foi possível carregar o vídeo." }, upstream.status === 404 ? 404 : 502);
+  const headers = new Headers();
+  ["content-length", "content-range", "etag", "last-modified"].forEach((name) => {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  });
+  headers.set("content-type", media.mime_type || "video/mp4");
+  headers.set("accept-ranges", "bytes");
+  headers.set("cache-control", "private, max-age=3600");
+  return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers });
 }
 
 async function tvMediaUploadIntentRoute(request) {
@@ -802,7 +832,7 @@ async function tvMediaCompleteRoute(request, mediaId) {
   let converted = null;
   const sourceStoragePath = media.storage_path;
   const targetStoragePath = media.media_type === "video"
-    ? `tv/${media.id}.h264.mp4`
+    ? `tv/${media.id}.tv.mp4`
     : sourceStoragePath;
   try {
     const stored = await storageRequest(`/storage/v1/object/${encodeStoragePath(`${TV_MEDIA_BUCKET}/${sourceStoragePath}`)}`, { method: "HEAD" });
@@ -878,11 +908,13 @@ async function tvMediaDeleteRoute(request, mediaId) {
   return json({ ok: true }, 200, { "cache-control": "no-store" });
 }
 
-function tvMediaDto(row) {
+function tvMediaDto(row, options = {}) {
   return {
     id: row.id,
     title: row.title,
-    src: tvMediaPublicUrl(row.storage_path),
+    src: options.stream && row.media_type === "video"
+      ? `/api/tv/media/${row.id}/stream`
+      : tvMediaPublicUrl(row.storage_path),
     type: row.media_type,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size || 0),
