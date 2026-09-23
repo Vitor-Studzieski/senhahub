@@ -45,7 +45,7 @@ namespace SenhaHub.PrintAgent.Setup
 
         public InstallerForm()
         {
-            Text = "Instalação do agente x86 1.2.5 — SenhaHub";
+            Text = "Instalação do agente MP-4200 TH x86 1.2.8 — SenhaHub";
             ClientSize = new Size(620, 430);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -93,7 +93,7 @@ namespace SenhaHub.PrintAgent.Setup
             log.SetBounds(20, 285, 575, 120);
             Controls.Add(log);
 
-            WriteLog("Agente oficial: x86/1.2.5.");
+            WriteLog("Agente oficial: x86/1.2.8 — Bematech MP-4200 TH.");
 
             Load += delegate { LoadPorts(); };
         }
@@ -110,8 +110,9 @@ namespace SenhaHub.PrintAgent.Setup
             var selected = printerPort.Text;
             printerPort.Items.Clear();
             foreach (var port in SerialPort.GetPortNames().OrderBy(p => p)) printerPort.Items.Add(port);
-            if (printerPort.Items.Count == 0) printerPort.Text = string.IsNullOrWhiteSpace(selected) ? "COM3" : selected;
+            if (printerPort.Items.Count == 0) printerPort.Text = string.IsNullOrWhiteSpace(selected) ? "COM5" : selected;
             else if (printerPort.Items.Contains(selected)) printerPort.SelectedItem = selected;
+            else if (printerPort.Items.Contains("COM5")) printerPort.SelectedItem = "COM5";
             else if (printerPort.Items.Contains("COM3")) printerPort.SelectedItem = "COM3";
             else if (printerPort.Items.Contains("COM4")) printerPort.SelectedItem = "COM4";
             else printerPort.SelectedIndex = 0;
@@ -195,6 +196,7 @@ namespace SenhaHub.PrintAgent.Setup
                 StopAndRemoveService();
                 RunSc("create \"" + ServiceName + "\" binPath= \"\\\"" + agentPath + "\\\" --service\" start= auto obj= LocalSystem DisplayName= \"" + ServiceDisplayName + "\"");
                 RunSc("description \"" + ServiceName + "\" \"Serviço de impressão do SenhaHub para Bematech MP-4200 TH\"");
+                ConfigureServiceRecovery();
                 StartService();
                 RunIcacls(root);
 
@@ -240,7 +242,7 @@ namespace SenhaHub.PrintAgent.Setup
 
                 LoadPorts();
                 var port = printerPort.Text.Trim();
-                if (port.Length == 0) port = "COM3";
+                if (port.Length == 0) port = "COM5";
                 var printerName = WindowsRawPrinterProbe.FindBematechPrinter();
                 if (printerName.Length == 0)
                     throw new InvalidOperationException("O driver foi instalado, mas nenhuma fila Bematech apareceu. Se o instalador pediu, conclua a criação da impressora e tente novamente.");
@@ -509,8 +511,15 @@ exit 0
 
             RunSc("create \"" + ServiceName + "\" binPath= \"\\\"" + agentPath + "\\\" --service\" start= auto obj= LocalSystem DisplayName= \"" + ServiceDisplayName + "\"");
             RunSc("description \"" + ServiceName + "\" \"Serviço de impressão do SenhaHub para Bematech MP-4200 TH\"");
+            ConfigureServiceRecovery();
             StartService();
             RunIcacls(root);
+        }
+
+        private static void ConfigureServiceRecovery()
+        {
+            RunSc("failure \"" + ServiceName + "\" reset= 86400 actions= restart/60000/restart/60000/restart/60000");
+            RunSc("failureflag \"" + ServiceName + "\" 1");
         }
 
         private string ExtractDriverPayload()

@@ -6,6 +6,8 @@ O totem e os antigos tablets, agora mini PCs Windows, emitem senhas fisicas por 
 
 Para a MP-4000 TH FI, consulte o agente específico em [windows/print-agent-totem](../windows/print-agent-totem). Ele mantém as mesmas regras da fila v2, mas usa `9600`, 8 bits, sem paridade, 1 stop bit e RTS/CTS. O QR Code da MP-4200 não é enviado à MP-4000; a URL de acompanhamento sai como texto.
 
+O instalador do Totem inclui o driver USB/COM Bematech 4.0.2 para Windows x64 e x86, registra automaticamente a variante adequada pelo `pnputil` e consulta a fila de impressão a cada 2 segundos. Em RS-232 físico, o adaptador serial ainda precisa criar a porta COM.
+
 ## Componentes entregues
 
 - `/totem`: interface para escolher o setor e emitir a senha.

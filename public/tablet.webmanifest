@@ -1,0 +1,27 @@
+{
+  "id": "/tablet",
+  "name": "SenhaHub - Emissão de senhas",
+  "short_name": "SenhaHub Tablet",
+  "description": "Emissão de senhas físicas do atendimento.",
+  "start_url": "/tablet",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#F3F3F3",
+  "theme_color": "#FF7200",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icons/senhahub-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/senhahub-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

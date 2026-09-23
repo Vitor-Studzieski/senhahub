@@ -1,14 +1,16 @@
-# Agente x86 do SenhaHub — versão oficial 1.2.5
+# Agente x86 do SenhaHub — versão oficial 1.2.8
 
 Este agente é uma alternativa para o mini PC com Windows de 32 bits e processador baseado em x64. Ele não usa Node.js nem o pacote `serialport`: é um executável C# para .NET Framework 4.8, compilado com `PlatformTarget=x86`, e envia ESC/POS diretamente para a porta serial virtual da Bematech.
 
-A versão oficial e homologada para os mini PCs é a `x86/1.2.5`. Ela usa a API nativa de comunicação do Windows e o fluxo de impressão Bematech validado no mini PC da Loja 2. Não use instaladores antigos (`1.0.x` ou `1.1.x`) em novos equipamentos.
+A versão oficial para os mini PCs é a `x86/1.2.8`. Ela usa a API nativa de comunicação do Windows e o fluxo de impressão Bematech validado no mini PC da Loja 2. O serviço monitora o avanço do agente e, se ficar sem progresso por cinco minutos, encerra o processo para o Windows Service Recovery reiniciá-lo. Falhas fatais também encerram o processo; a recuperação do Windows tenta três reinicializações com intervalos de um minuto.
 
 ## Versão homologada
 
-A versão `x86/1.2.5` desta pasta é a única versão homologada para os mini PCs com Windows e a Bematech MP-4200 TH. Ela instala o serviço `SenhaHubPrintAgentX86`, inicia automaticamente com o Windows e foi validada imprimindo uma senha real pelo SenhaHub.
+A versão `x86/1.2.8` desta pasta é a versão atual do agente para mini PCs com Windows e a Bematech MP-4200 TH. Ao abrir o executável, ele solicita elevação do Windows, atualiza o serviço existente, instala o driver Bematech USB/COM ou Spooler se a dependência configurada estiver ausente, preserva o pareamento e o journal, configura a recuperação automática e inicia o serviço. O pacote inclui os dois instaladores de driver.
 
-Use exclusivamente o instalador versionado `SenhaHub.PrintAgent.Setup-x86-v1.2.5.exe` nos próximos mini PCs. Para cada equipamento novo, gere um código de pareamento próprio no SenhaHub; o código é temporário, de uso único e expira em dez minutos.
+Use o instalador versionado `SenhaHub.PrintAgent.Setup-x86-v1.2.8.exe` nos próximos mini PCs. Para cada equipamento novo, gere um código de pareamento próprio no SenhaHub; o código é temporário, de uso único e expira em dez minutos.
+
+Para atualizar o mini PC existente, basta executar `SenhaHub.PrintAgent-x86-v1.2.8.exe` e aceitar a solicitação do Windows. O próprio executável atualiza o serviço e verifica/instala o driver de impressão necessário, sem refazer o pareamento. Execute quando não houver impressão em andamento.
 
 ## Compilar
 
@@ -28,12 +30,12 @@ Em um Windows com Visual Studio ou Build Tools instalados, abra o PowerShell nes
 .\build-installer.ps1
 ```
 
-O script compila o agente e gera o instalador em `installer\bin\Release\SenhaHub.PrintAgent.Setup.exe`, além das cópias versionadas `artifacts\SenhaHub.PrintAgent-x86-v1.2.5.exe` e `artifacts\SenhaHub.PrintAgent.Setup-x86-v1.2.5.exe`. O instalador pede o servidor, o código de pareamento e a porta, testa a Bematech, grava a configuração, instala o agente como serviço `SenhaHubPrintAgentX86` e inicia o serviço automaticamente.
+O script compila o agente com os drivers embutidos e gera `artifacts\SenhaHub.PrintAgent-x86-v1.2.8.exe` e `artifacts\SenhaHub.PrintAgent.Setup-x86-v1.2.8.exe`. Em uma instalação nova, o instalador pede o servidor, um código de pareamento próprio e a porta, testa a Bematech, grava a configuração, instala o agente como serviço `SenhaHubPrintAgentX86` e inicia o serviço automaticamente.
 
 O instalador gerado pelo workflow embute os drivers oficiais USB/COM e Spooler x86 da MP-4200 TH. O botão `Instalar driver + agente` usa o Spooler do Windows, localiza a fila Bematech, envia um teste e pede confirmação do papel; o serviço só é instalado depois da confirmação física.
 Em atualizações, ele remove o serviço, o executável, a configuração, as filas e os drivers de impressão Bematech/MP-4200 antigos e limpa os instaladores temporários que ele próprio extraiu. A pasta de estado é preservada para manter o pareamento e impedir reimpressões duplicadas; drivers USB genéricos não são removidos automaticamente. Durante a remoção, o Spooler do Windows é reiniciado para liberar um driver antigo em uso.
 
-O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`. Depois de enviar as alterações ao GitHub, execute `SenhaHub Print Agent x86` em **Actions** e baixe o artefato `senhahub-print-agent-x86-v1.2.5-installer`. Assim, não é necessário instalar Visual Studio ou Build Tools no computador usado para operar o mini PC.
+O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`. Depois de enviar as alterações ao GitHub, execute `SenhaHub Print Agent x86` em **Actions** e baixe o artefato de instalação da versão 1.2.8. Assim, não é necessário instalar Visual Studio ou Build Tools no computador usado para operar o mini PC.
 
 ## Parear com o SenhaHub
 
@@ -54,7 +56,7 @@ O repositório também possui o workflow `.github/workflows/print-agent-x86.yml`
     .\install.ps1
 ```
 
-O primeiro início usa o código de enrollment, recebe uma sessão restrita do dispositivo e armazena essa sessão cifrada com DPAPI no computador. O código não é usado novamente. O agente envia a senha pela COM4, confirma o resultado na fila v2 e mantém um journal local para recuperação após queda de energia ou internet.
+O primeiro início usa o código de enrollment, recebe uma sessão restrita do dispositivo e armazena essa sessão cifrada com DPAPI no computador. O código não é usado novamente. O agente envia a senha pela COM5, confirma o resultado na fila v2 e mantém um journal local para recuperação após queda de energia ou internet.
 
 ## Arquivos locais
 
@@ -62,7 +64,10 @@ O primeiro início usa o código de enrollment, recebe uma sessão restrita do d
 agent.env
 data\print-agent-x86\agent-state.bin
 data\print-agent-x86\print-agent-x86.log
+agent-watchdog.log
 ```
+
+O `agent-watchdog.log` registra o motivo quando o monitor detecta falta de progresso e força o Windows a reiniciar o serviço.
 
 O instalador restringe esses arquivos ao `SYSTEM` e aos administradores locais. Nunca envie `agent.env` ou `agent-state.bin` para o Git.
 

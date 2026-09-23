@@ -7,9 +7,9 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>SenhaHub.PrintAgent.Setup</RootNamespace>
     <AssemblyName>SenhaHub.PrintAgent.Setup</AssemblyName>
-    <AssemblyVersion>1.2.5.0</AssemblyVersion>
-    <FileVersion>1.2.5.0</FileVersion>
-    <InformationalVersion>x86/1.2.5</InformationalVersion>
+    <AssemblyVersion>1.2.8.0</AssemblyVersion>
+    <FileVersion>1.2.8.0</FileVersion>
+    <InformationalVersion>x86/1.2.8</InformationalVersion>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

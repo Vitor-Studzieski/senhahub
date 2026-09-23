@@ -98,7 +98,7 @@ class SqlitePrintQueue {
   }
   if(name!=='finish_print_job_v2')error('unsupported_command');
   const attempt=this.db.prepare('SELECT * FROM print_job_attempts WHERE lease_id=?').get(j.lease_id);
-  if(attempt.finish_outcome){if(attempt.finish_outcome!==a.p_outcome)error('finish_conflict');return JSON.parse(attempt.finish_result);}
+  if(attempt.finish_outcome){if(attempt.finish_outcome==='printed')return JSON.parse(attempt.finish_result);if(attempt.finish_outcome!==a.p_outcome)error('finish_conflict');return JSON.parse(attempt.finish_result);}
   if(!['printed','unknown','before_send'].includes(a.p_outcome))error('invalid_print_outcome');
   if(a.p_outcome==='before_send'&&['retry_wait','failed'].includes(j.status)&&!j.send_started_at&&!j.resolved_at){const result={ok:true,job:j,nextAttemptAt:j.next_attempt_at};this.update('print_job_attempts',attempt.id,{finish_outcome:a.p_outcome,finish_result:JSON.stringify(result)});return result;}
   if(j.resolved_at||!ACTIVE.includes(j.status))error('invalid_print_transition');

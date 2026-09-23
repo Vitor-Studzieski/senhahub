@@ -29,6 +29,8 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: senhahub-print-agent-x86-v1.2.5-installer
-          path: windows/print-agent-x86/artifacts/SenhaHub.PrintAgent.Setup-x86-v1.2.5.exe
+          name: senhahub-print-agent-x86-v1.2.8
+          path: |
+            windows/print-agent-x86/artifacts/SenhaHub.PrintAgent-x86-v1.2.8.exe
+            windows/print-agent-x86/artifacts/SenhaHub.PrintAgent.Setup-x86-v1.2.8.exe
           if-no-files-found: error

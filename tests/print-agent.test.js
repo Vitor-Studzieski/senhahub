@@ -77,6 +77,8 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   const page = fs.readFileSync(path.resolve(__dirname, "../app/totem/page.jsx"), "utf8");
   const tabletHtml = fs.readFileSync(path.resolve(__dirname, "../public/tablet.html"), "utf8");
   const tabletScript = fs.readFileSync(path.resolve(__dirname, "../public/tablet.js"), "utf8");
+  const tabletLayout = fs.readFileSync(path.resolve(__dirname, "../app/tablet/layout.jsx"), "utf8");
+  const tabletManifest = fs.readFileSync(path.resolve(__dirname, "../public/tablet.webmanifest"), "utf8");
   const attendant = fs.readFileSync(path.resolve(__dirname, "../public/attendant.js"), "utf8");
   const trackingHtml = fs.readFileSync(path.resolve(__dirname, "../public/acompanhar.html"), "utf8");
   const trackingScript = fs.readFileSync(path.resolve(__dirname, "../public/acompanhar.js"), "utf8");
@@ -113,11 +115,17 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.match(tabletHtml, /id="tabletResultQr"/);
   assert.match(tabletHtml, /Senha concluída/);
   assert.match(tabletHtml, /Use o SenhaHub pelo QR Code/);
-  assert.doesNotMatch(tabletHtml, /Solicitação concluída|Nova solicitação|Senha aguardando a Bematech/);
+  assert.match(tabletHtml, /id="tabletPrintStatus"/);
+  assert.match(tabletHtml, /id="tabletNewRequest"/);
+  assert.match(tabletLayout, /manifest: "\/tablet\.webmanifest"/);
+  assert.match(tabletManifest, /"start_url": "\/tablet"/);
+  assert.match(tabletManifest, /"id": "\/tablet"/);
   assert.match(tabletScript, /ATENDIMENTO PADRÃO/);
   assert.match(tabletScript, /ATENDIMENTO PREFERENCIAL/);
   assert.match(tabletScript, /function renderResultQr\(value\)/);
-  assert.match(tabletScript, /setTimeout\(resetOperation, 8000\)/);
+  assert.match(tabletScript, /PRINTED_RESULT_DISPLAY_MS = 4000/);
+  assert.match(tabletScript, /state\.printPollDelayMs = PRINT_POLL_INITIAL_MS/);
+  assert.doesNotMatch(tabletScript, /setTimeout\(resetOperation, 8000\)/);
   assert.match(tabletScript, /button\.classList\.add\("selected"\);\s*issueTicket\(\);/);
   assert.doesNotMatch(tabletScript, /elements\.feedback\.textContent = "Emitindo e imprimindo\.\.\."/);
   assert.doesNotMatch(script, /Entre na fila comum do setor|Para quem tem direito ao atendimento prioritário/);

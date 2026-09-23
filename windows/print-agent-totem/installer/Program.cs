@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.IO.Ports;
 using System.Linq;
 using System.Reflection;
@@ -33,6 +34,7 @@ namespace SenhaHub.PrintAgent.Totem.Setup
     {
         private const string ServiceName = "SenhaHubPrintAgentTotem";
         private const string ServiceDisplayName = "SenhaHub Print Agent Totem MP-4000 TH FI";
+        private const string DriverPackageName = "Driver_USB_Bematech-V4.0.2.zip";
         private readonly TextBox apiUrl = new TextBox();
         private readonly TextBox enrollmentCode = new TextBox();
         private readonly ComboBox printerPort = new ComboBox();
@@ -79,7 +81,7 @@ namespace SenhaHub.PrintAgent.Totem.Setup
             testButton.Click += delegate { TestPrinter(); };
             Controls.Add(testButton);
 
-            installButton.Text = "Instalar agente do totem";
+            installButton.Text = "Instalar driver + agente";
             installButton.SetBounds(190, 245, 210, 32);
             installButton.Click += delegate { InstallAgent(); };
             Controls.Add(installButton);
@@ -90,7 +92,7 @@ namespace SenhaHub.PrintAgent.Totem.Setup
             log.SetBounds(20, 295, 610, 120);
             Controls.Add(log);
 
-            WriteLog("Perfil: totem-mp4000-th-fi/1.0.0; protocolo fiscal com ACK/ST1/ST2.");
+            WriteLog("Perfil: totem-mp4000-th-fi/1.0.1; protocolo fiscal com ACK/ST1/ST2.");
             Load += delegate { LoadPorts(); };
         }
 
@@ -152,15 +154,14 @@ namespace SenhaHub.PrintAgent.Totem.Setup
                 SetStatus("Informe o código de pareamento.", true);
                 return;
             }
-            if (port.Length == 0)
-            {
-                SetStatus("Informe a porta da impressora.", true);
-                return;
-            }
-
             try
             {
                 SetBusy(true);
+                SetStatus("Instalando o driver USB/COM da Bematech...", false);
+                InstallUsbDriver();
+                LoadPorts();
+                port = printerPort.Text.Trim();
+                if (port.Length == 0) throw new InvalidOperationException("Nenhuma porta COM foi encontrada. Desconecte e reconecte a MP-4000 TH FI e clique em Atualizar portas.");
                 SetStatus("Validando a impressora antes de instalar...", false);
                 Mp4000Probe.Send(port, DiagnosticReceipt());
                 var confirm = MessageBox.Show(
@@ -191,7 +192,7 @@ namespace SenhaHub.PrintAgent.Totem.Setup
                     .AppendLine("PRINT_SERIAL_PARITY=none")
                     .AppendLine("PRINT_SERIAL_STOP_BITS=1")
                     .AppendLine("PRINT_SERIAL_RTSCTS=1")
-                    .AppendLine("PRINT_POLL_INTERVAL_MS=1000")
+                    .AppendLine("PRINT_POLL_INTERVAL_MS=2000")
                     .AppendLine("PRINT_AGENT_STATE_DIR=" + state)
                     .ToString();
                 File.WriteAllText(Path.Combine(root, "agent.env"), env, new UTF8Encoding(false));
@@ -254,6 +255,53 @@ namespace SenhaHub.PrintAgent.Totem.Setup
             return stream;
         }
 
+        private static Stream OpenDriverPayload()
+        {
+            var name = Assembly.GetExecutingAssembly().GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("." + DriverPackageName, StringComparison.OrdinalIgnoreCase));
+            if (name == null) throw new InvalidOperationException("O pacote do driver Bematech não foi incluído neste instalador.");
+            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+            if (stream == null) throw new InvalidOperationException("Não foi possível ler o pacote do driver Bematech.");
+            return stream;
+        }
+
+        private void InstallUsbDriver()
+        {
+            var staging = Path.Combine(Path.GetTempPath(), "SenhaHubBematechDriver-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            try
+            {
+                using (var source = OpenDriverPayload())
+                using (var archive = new MemoryStream())
+                {
+                    source.CopyTo(archive);
+                    archive.Position = 0;
+                    using (var zip = new ZipArchive(archive, ZipArchiveMode.Read))
+                    {
+                        zip.ExtractToDirectory(staging);
+                    }
+                }
+
+                var architectureFolder = Environment.Is64BitOperatingSystem ? "W10_x64" : "W10_x86";
+                var inf = Directory.GetFiles(staging, "bematech-usbcom.inf", SearchOption.AllDirectories)
+                    .FirstOrDefault(path => path.IndexOf(architectureFolder, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (inf == null) throw new InvalidOperationException("Não foi encontrado o INF do driver Bematech para " + architectureFolder + ".");
+
+                var result = RunProcess(
+                    WindowsTool("pnputil.exe"),
+                    "/add-driver \"" + inf + "\" /install",
+                    false);
+                if (result.ExitCode != 0 && result.ExitCode != 3010)
+                    throw new InvalidOperationException("O pnputil terminou com o código " + result.ExitCode + ": " + (result.Error + "\n" + result.Output).Trim());
+
+                WriteLog("Driver Bematech USB/COM 4.0.2 instalado para " + architectureFolder + ".");
+            }
+            finally
+            {
+                TryDeleteDirectory(staging);
+            }
+        }
+
         private static void StopAndRemoveService()
         {
             var query = RunSc("query \"" + ServiceName + "\"", false);
@@ -279,11 +327,33 @@ namespace SenhaHub.PrintAgent.Totem.Setup
 
         private static ProcessResult RunSc(string arguments, bool failOnError = true)
         {
+            return RunProcess(WindowsTool("sc.exe"), arguments, failOnError);
+        }
+
+        private static string WindowsTool(string name)
+        {
+            var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var candidates = new[]
+            {
+                Path.Combine(windows, "Sysnative", name),
+                Path.Combine(windows, "System32", name),
+                Path.Combine(windows, "SysWOW64", name),
+                Path.Combine(Environment.SystemDirectory, name)
+            };
+            var path = candidates
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(File.Exists);
+            if (path == null) throw new FileNotFoundException("Ferramenta do Windows não encontrada: " + name, name);
+            return path;
+        }
+
+        private static ProcessResult RunProcess(string fileName, string arguments, bool failOnError = true)
+        {
             var info = new ProcessStartInfo
             {
-                FileName = Path.Combine(Environment.SystemDirectory, "sc.exe"),
+                FileName = fileName,
                 Arguments = arguments,
-                WorkingDirectory = Environment.SystemDirectory,
+                WorkingDirectory = Path.GetDirectoryName(fileName) ?? Environment.SystemDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -299,11 +369,23 @@ namespace SenhaHub.PrintAgent.Totem.Setup
             }
         }
 
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, true);
+            }
+            catch
+            {
+                // A temporary driver directory is best-effort cleanup only.
+            }
+        }
+
         private static void RunIcacls(string path)
         {
             var info = new ProcessStartInfo
             {
-                FileName = Path.Combine(Environment.SystemDirectory, "icacls.exe"),
+                FileName = WindowsTool("icacls.exe"),
                 Arguments = "\"" + path + "\" /inheritance:r /grant:r *S-1-5-18:F *S-1-5-32-544:F /T",
                 WorkingDirectory = Environment.SystemDirectory,
                 UseShellExecute = false,

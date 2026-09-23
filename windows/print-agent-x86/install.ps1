@@ -35,6 +35,11 @@ $BinPath = '"' + $Executable + '" --service'
 & sc.exe create $ServiceName "binPath= $BinPath" "start= auto" "obj= LocalSystem" "DisplayName= SenhaHub Print Agent x86" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar o serviço $ServiceName." }
 & sc.exe description $ServiceName "Serviço de impressão do SenhaHub para Bematech MP-4200 TH." | Out-Null
+& sc.exe failure $ServiceName "reset= 86400" "actions= restart/60000/restart/60000/restart/60000" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível configurar a recuperação automática do serviço $ServiceName." }
+& sc.exe failureflag $ServiceName 1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível ativar a recuperação por falha do serviço $ServiceName." }
 & sc.exe start $ServiceName | Out-Null
 Write-Host "Agente x86 instalado e iniciado."
+Write-Host "Recuperação automática configurada: três reinicializações com intervalo de 60 segundos."
 Write-Host "Logs: $StateDirectory\print-agent-x86.log"

@@ -1,16 +1,19 @@
 const PRIORITY_CATEGORIES = [
-  { id: "idoso_60_mais", label: "Idosos acima de 60+ anos", image: "/assets/tablet-priority/idoso.jpg" },
-  { id: "crianca_de_colo", label: "Pessoas com criança de colo", image: "/assets/tablet-priority/crianca-de-colo.webp" },
-  { id: "gestante", label: "Gestantes", image: "/assets/tablet-priority/gestante.webp" },
-  { id: "deficiencia", label: "Pessoas com deficiência", image: "/assets/tablet-priority/acessibilidade.webp" },
-  { id: "deficiencia_oculta", label: "Deficiência ocultas", image: "/assets/tablet-priority/deficiencia-oculta.jpg" },
-  { id: "autismo", label: "Portadores de autismo", image: "/assets/tablet-priority/autismo.png" },
-  { id: "mobilidade_reduzida", label: "Pessoas com mobilidade reduzida", image: "/assets/tablet-priority/mobilidade-reduzida.jpg" },
-  { id: "comorbidades", label: "Pessoas com comorbidades", image: "/assets/tablet-priority/comorbidade.jpeg" },
-  { id: "doador_de_sangue", label: "Doadores de sangue", image: "/assets/tablet-priority/doador-de-sangue.png" },
-  { id: "fibromialgia", label: "Fibromialgia", image: "/assets/tablet-priority/fibromialgia.png" }
+  { id: "idoso_60_mais", label: "60 ANOS OU MAIS", image: "/assets/tablet-priority/idoso.jpg" },
+  { id: "crianca_de_colo", label: "CRIANÇA DE COLO", labelLines: ["CRIANÇA DE", "COLO"], image: "/assets/tablet-priority/crianca-de-colo.webp" },
+  { id: "gestante", label: "GESTANTE", image: "/assets/tablet-priority/gestante.webp" },
+  { id: "deficiencia", label: "PESSOAS COM DEFICIÊNCIA", image: "/assets/tablet-priority/acessibilidade.webp" },
+  { id: "deficiencia_oculta", label: "DEFICIÊNCIA NÃO APARENTE", image: "/assets/tablet-priority/deficiencia-oculta.jpg" },
+  { id: "autismo", label: "PESSOAS AUTISTAS", labelLines: ["PESSOAS", "AUTISTAS"], image: "/assets/tablet-priority/autismo.png" },
+  { id: "mobilidade_reduzida", label: "MOBILIDADE REDUZIDA", image: "/assets/tablet-priority/mobilidade-reduzida.jpg" },
+  { id: "comorbidades", label: "COMORBIDADES", image: "/assets/tablet-priority/comorbidade.jpeg" },
+  { id: "doador_de_sangue", label: "DOADORES DE SANGUE", image: "/assets/tablet-priority/doador-de-sangue.png" },
+  { id: "fibromialgia", label: "FIBROMIALGIA", image: "/assets/tablet-priority/fibromialgia.png" }
 ];
 const PWA_FALLBACK_URL = "https://senhahub.vercel.app/";
+const PRINT_POLL_INITIAL_MS = 1200;
+const PRINT_POLL_MAX_MS = 10000;
+const PRINTED_RESULT_DISPLAY_MS = 4000;
 
 const tabletStorage = (() => {
   try {
@@ -56,6 +59,7 @@ const state = {
   printJobs: [],
   printJobStatuses: new Map(),
   printPollTimer: null,
+  printPollDelayMs: PRINT_POLL_INITIAL_MS,
   resultResetTimer: null,
   refreshTimer: null
 };
@@ -75,7 +79,8 @@ const elements = {
   confirmSummary: document.querySelector("#tabletConfirmSummary"),
   issueButton: document.querySelector("#tabletIssueButton"),
   resultTickets: document.querySelector("#tabletResultTickets"),
-  printStatus: document.querySelector("#tabletPrintStatus")
+  printStatus: document.querySelector("#tabletPrintStatus"),
+  newRequestButton: document.querySelector("#tabletNewRequest")
 };
 
 document.querySelectorAll("[data-tablet-type]").forEach((button) => {
@@ -173,7 +178,7 @@ function renderPriorityOptions() {
   elements.priorityOptions.innerHTML = PRIORITY_CATEGORIES.map((category) => `
     <button class="tablet-priority" type="button" data-tablet-priority="${category.id}">
       <img class="tablet-priority-image" src="${category.image}" alt="" loading="lazy" />
-      <strong>${escapeHtml(category.label)}</strong>
+      <strong>${(category.labelLines || [category.label]).map(escapeHtml).join("<br>")}</strong>
     </button>
   `).join("");
   elements.priorityOptions.querySelectorAll("[data-tablet-priority]").forEach((button) => {
@@ -271,12 +276,12 @@ function renderResult(tickets, printJobs = []) {
   const trackingUrl = printJobs[0]?.payload?.trackUrl || state.status?.appUrl || PWA_FALLBACK_URL;
   renderResultQr(trackingUrl);
   setPrintState();
-  if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id));
-  clearTimeout(state.resultResetTimer);
-  state.resultResetTimer = setTimeout(resetOperation, 8000);
+  if (elements.newRequestButton) elements.newRequestButton.hidden = true;
+  state.printPollDelayMs = PRINT_POLL_INITIAL_MS;
+  if (printJobs.length) pollPrintJobs(printJobs.map((job) => job.id), PRINT_POLL_INITIAL_MS);
 }
 
-async function pollPrintJobs(jobIds) {
+async function pollPrintJobs(jobIds, delayMs = PRINT_POLL_INITIAL_MS) {
   clearTimeout(state.printPollTimer);
   const results = await Promise.all(jobIds.map(async (jobId) => {
     try {
@@ -289,8 +294,19 @@ async function pollPrintJobs(jobIds) {
   if (elements.result.hidden) return;
   results.forEach((result) => state.printJobStatuses.set(result.jobId, result.status));
   setPrintState(results);
-  if (results.some((result) => ["pending", "leased", "printing", "retry_wait", "unavailable"].includes(result.status))) {
-    state.printPollTimer = setTimeout(() => pollPrintJobs(jobIds), 1200);
+  const statuses = results.map((result) => result.status);
+  if (statuses.includes("printed")) {
+    clearTimeout(state.resultResetTimer);
+    state.resultResetTimer = setTimeout(resetOperation, PRINTED_RESULT_DISPLAY_MS);
+    return;
+  }
+  if (statuses.includes("failed")) {
+    if (elements.newRequestButton) elements.newRequestButton.hidden = false;
+    return;
+  }
+  if (statuses.some((status) => ["pending", "leased", "printing", "retry_wait", "unavailable"].includes(status))) {
+    state.printPollDelayMs = Math.min(PRINT_POLL_MAX_MS, Math.max(PRINT_POLL_INITIAL_MS, delayMs * 2));
+    state.printPollTimer = setTimeout(() => pollPrintJobs(jobIds, state.printPollDelayMs), state.printPollDelayMs);
   }
 }
 
@@ -323,12 +339,18 @@ function resetOperation() {
   clearTimeout(state.printPollTimer);
   clearTimeout(state.resultResetTimer);
   state.printPollTimer = null;
+  state.printPollDelayMs = PRINT_POLL_INITIAL_MS;
   state.resultResetTimer = null;
   state.serviceType = null;
   state.priorityReason = null;
   state.issueIdempotencyKey = null;
   state.printJobs = [];
   state.printJobStatuses = new Map();
+  if (elements.printStatus) {
+    elements.printStatus.dataset.state = "pending";
+    elements.printStatus.textContent = "Senha aguardando a Bematech.";
+  }
+  if (elements.newRequestButton) elements.newRequestButton.hidden = true;
   if (elements.resultQr) elements.resultQr.innerHTML = "";
   document.querySelectorAll("[data-tablet-type], .tablet-priority").forEach((item) => item.classList.remove("selected"));
   setStep("type");

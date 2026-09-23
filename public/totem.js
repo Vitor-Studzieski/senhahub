@@ -7,27 +7,25 @@
     {
       id: "normal",
       label: "ATENDIMENTO PADRÃO",
-      marker: "N",
       className: "totem-choice-normal"
     },
     {
       id: "preferencial",
       label: "ATENDIMENTO PREFERENCIAL",
-      marker: "P",
       className: "totem-choice-priority"
     }
   ];
   const PRIORITY_CATEGORIES = [
-    { id: "idoso_60_mais", label: "Idosos acima de 60+ anos", image: "/assets/tablet-priority/idoso.jpg" },
-    { id: "crianca_de_colo", label: "Pessoas com criança de colo", image: "/assets/tablet-priority/crianca-de-colo.webp" },
-    { id: "gestante", label: "Gestantes", image: "/assets/tablet-priority/gestante.webp" },
-    { id: "deficiencia", label: "Pessoas com deficiência", image: "/assets/tablet-priority/acessibilidade.webp" },
-    { id: "deficiencia_oculta", label: "Deficiência ocultas", image: "/assets/tablet-priority/deficiencia-oculta.jpg" },
-    { id: "autismo", label: "Portadores de autismo", image: "/assets/tablet-priority/autismo.png" },
-    { id: "mobilidade_reduzida", label: "Pessoas com mobilidade reduzida", image: "/assets/tablet-priority/mobilidade-reduzida.jpg" },
-    { id: "comorbidades", label: "Pessoas com comorbidades", image: "/assets/tablet-priority/comorbidade.jpeg" },
-    { id: "doador_de_sangue", label: "Doadores de sangue", image: "/assets/tablet-priority/doador-de-sangue.png" },
-    { id: "fibromialgia", label: "Fibromialgia", image: "/assets/tablet-priority/fibromialgia.png" }
+    { id: "idoso_60_mais", label: "60 ANOS OU MAIS", image: "/assets/tablet-priority/idoso.jpg" },
+    { id: "crianca_de_colo", label: "CRIANÇA DE COLO", labelLines: ["CRIANÇA DE", "COLO"], image: "/assets/tablet-priority/crianca-de-colo.webp" },
+    { id: "gestante", label: "GESTANTE", image: "/assets/tablet-priority/gestante.webp" },
+    { id: "deficiencia", label: "PESSOAS COM DEFICIÊNCIA", image: "/assets/tablet-priority/acessibilidade.webp" },
+    { id: "deficiencia_oculta", label: "DEFICIÊNCIA NÃO APARENTE", image: "/assets/tablet-priority/deficiencia-oculta.jpg" },
+    { id: "autismo", label: "PESSOAS AUTISTAS", labelLines: ["PESSOAS", "AUTISTAS"], image: "/assets/tablet-priority/autismo.png" },
+    { id: "mobilidade_reduzida", label: "MOBILIDADE REDUZIDA", image: "/assets/tablet-priority/mobilidade-reduzida.jpg" },
+    { id: "comorbidades", label: "COMORBIDADES", image: "/assets/tablet-priority/comorbidade.jpeg" },
+    { id: "doador_de_sangue", label: "DOADORES DE SANGUE", image: "/assets/tablet-priority/doador-de-sangue.png" },
+    { id: "fibromialgia", label: "FIBROMIALGIA", image: "/assets/tablet-priority/fibromialgia.png" }
   ];
   const totemStorage = (() => {
     try {
@@ -302,9 +300,7 @@
     if (!elements.serviceOptions) return;
     elements.serviceOptions.innerHTML = SERVICE_TYPES.map((service) => `
       <button class="totem-choice ${service.className || ""}" type="button" data-service-type="${service.id}">
-        <span class="totem-choice-marker" aria-hidden="true">${service.marker}</span>
         <span class="totem-choice-content"><strong>${escapeHtml(service.label)}</strong></span>
-        <span class="totem-choice-arrow" aria-hidden="true">&#8594;</span>
       </button>
     `).join("");
     elements.serviceOptions.querySelectorAll("[data-service-type]").forEach((button) => {
@@ -316,7 +312,7 @@
     elements.priorityOptions.innerHTML = PRIORITY_CATEGORIES.map((category) => `
       <button class="totem-priority-option" type="button" data-priority-category="${category.id}">
         <img class="totem-priority-image" src="${category.image}" alt="" loading="lazy" />
-        <strong>${escapeHtml(category.label)}</strong>
+        <strong>${(category.labelLines || [category.label]).map(escapeHtml).join("<br>")}</strong>
       </button>
     `).join("");
     elements.priorityOptions.querySelectorAll("[data-priority-category]").forEach((button) => {

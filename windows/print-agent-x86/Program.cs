@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing.Printing;
 using System.IO;
 using System.IO.Ports;
@@ -12,11 +13,13 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.ServiceProcess;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using System.Windows.Forms;
 
 namespace SenhaHub.PrintAgent.X86
 {
@@ -31,17 +34,19 @@ namespace SenhaHub.PrintAgent.X86
         public const string DefaultPrinterPort = "COM3";
         public const int DefaultBaudRate = 9600;
         public const bool DefaultRtsCts = true;
+        public const int DefaultPollIntervalMs = 2000;
         public const string DefaultStateDirectory = "data\\print-agent-totem";
         public const string StateLogFile = "print-agent-totem.log";
 #else
         public const string DisplayName = "Agente x86";
-        public const string Version = "windows-x86/1.2.5";
+        public const string Version = "windows-x86/1.2.8";
         public const string ServiceName = "SenhaHubPrintAgentX86";
         public const string ServiceDisplayName = "SenhaHub Print Agent x86";
         public const string DefaultPrinterMode = "native-serial";
-        public const string DefaultPrinterPort = "COM4";
+        public const string DefaultPrinterPort = "COM5";
         public const int DefaultBaudRate = 115200;
         public const bool DefaultRtsCts = false;
+        public const int DefaultPollIntervalMs = 5000;
         public const string DefaultStateDirectory = "data\\print-agent-x86";
         public const string StateLogFile = "print-agent-x86.log";
 #endif
@@ -55,11 +60,17 @@ namespace SenhaHub.PrintAgent.X86
         {
             try
             {
+                if (args.Any(a => string.Equals(a, "--update-agent-elevated", StringComparison.OrdinalIgnoreCase)))
+                    return AgentUpdater.RunElevated();
+
                 if (args.Any(a => string.Equals(a, "--service", StringComparison.OrdinalIgnoreCase)) || !Environment.UserInteractive)
                 {
                     ServiceBase.Run(new PrintAgentService(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.env")));
                     return 0;
                 }
+
+                if (args.Length == 0)
+                    return AgentUpdater.Launch();
 
                 Console.OutputEncoding = Encoding.UTF8;
                 Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e)
@@ -116,27 +127,36 @@ namespace SenhaHub.PrintAgent.X86
             });
 
             var failures = 0;
+            var bootstrapped = false;
             while (!cancellationToken.IsCancellationRequested)
             {
+                ServiceHeartbeat.Pulse();
                 try
                 {
+                    if (!bootstrapped)
+                    {
+                        await api.CommandAsync("bootstrap", new Dictionary<string, object>());
+                        bootstrapped = true;
+                    }
                     await worker.RunCycleAsync();
                     failures = 0;
-                    await Task.Delay(config.PollIntervalMs, cancellationToken);
+                    await DelayWithHeartbeatAsync(config.PollIntervalMs, cancellationToken);
                 }
                 catch (ApiException error) when (error.StatusCode == 401 || error.StatusCode == 403)
                 {
+                    bootstrapped = false;
                     failures++;
                     log.Error("Dispositivo sem autorização; o journal foi preservado.", new Dictionary<string, object>
                     {
-                        { "status", error.StatusCode }
+                        { "status", error.StatusCode },
+                        { "message", error.Message.Length > 240 ? error.Message.Substring(0, 240) : error.Message }
                     });
-                    await Task.Delay(Math.Min(600000, 30000 * Math.Min(16, failures)), cancellationToken);
+                    await DelayWithHeartbeatAsync(Math.Min(600000, 30000 * Math.Min(16, failures)), cancellationToken);
                 }
                 catch (NeedsReviewException error)
                 {
                     log.Error(error.Message, null);
-                    await Task.Delay(60000, cancellationToken);
+                    await DelayWithHeartbeatAsync(60000, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -144,18 +164,32 @@ namespace SenhaHub.PrintAgent.X86
                 }
                 catch (Exception error)
                 {
+                    bootstrapped = false;
                     failures++;
                     log.Error("Ciclo de impressão interrompido.", new Dictionary<string, object>
                     {
                         { "message", error.Message },
                         { "failures", failures }
                     });
-                    await Task.Delay(Math.Min(300000, 15000 * Math.Min(16, failures)), cancellationToken);
+                    await DelayWithHeartbeatAsync(Math.Min(300000, 15000 * Math.Min(16, failures)), cancellationToken);
                 }
             }
 
             log.Info(AgentProfile.DisplayName + " encerrado.", null);
             return 0;
+        }
+
+        private static async Task DelayWithHeartbeatAsync(int milliseconds, CancellationToken cancellationToken)
+        {
+            var remaining = Math.Max(0, milliseconds);
+            while (remaining > 0)
+            {
+                ServiceHeartbeat.Pulse();
+                var slice = Math.Min(15000, remaining);
+                await Task.Delay(slice, cancellationToken);
+                remaining -= slice;
+            }
+            ServiceHeartbeat.Pulse();
         }
 
         internal static Task<int> RunServiceAsync(AgentConfig config, CancellationToken cancellationToken)
@@ -180,6 +214,8 @@ namespace SenhaHub.PrintAgent.X86
         private readonly string configPath;
         private readonly CancellationTokenSource stop = new CancellationTokenSource();
         private Thread workerThread;
+        private System.Threading.Timer watchdog;
+        private int stopping;
 
         public PrintAgentService(string configPath)
         {
@@ -192,14 +228,19 @@ namespace SenhaHub.PrintAgent.X86
 
         protected override void OnStart(string[] args)
         {
+            Interlocked.Exchange(ref stopping, 0);
+            ServiceHeartbeat.Pulse();
             workerThread = new Thread(RunWorker);
             workerThread.IsBackground = true;
             workerThread.Start();
+            watchdog = new System.Threading.Timer(CheckWorkerHealth, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         }
 
         protected override void OnStop()
         {
+            Interlocked.Exchange(ref stopping, 1);
             stop.Cancel();
+            if (watchdog != null) watchdog.Dispose();
             if (workerThread != null && workerThread.IsAlive) workerThread.Join(TimeSpan.FromSeconds(20));
         }
 
@@ -215,6 +256,8 @@ namespace SenhaHub.PrintAgent.X86
             {
                 var config = AgentConfig.Load(configPath);
                 Program.RunServiceAsync(config, stop.Token).GetAwaiter().GetResult();
+                if (!stop.IsCancellationRequested)
+                    FailService("O ciclo do agente terminou sem uma solicitação de parada do serviço.");
             }
             catch (Exception error)
             {
@@ -231,6 +274,277 @@ namespace SenhaHub.PrintAgent.X86
                 {
                     // Preserve the service process even when startup diagnostics cannot be written.
                 }
+                if (!stop.IsCancellationRequested)
+                    FailService("O trabalhador do agente encerrou após uma falha. O Windows deve reiniciar o serviço. " + error.Message, error);
+            }
+        }
+
+        private void CheckWorkerHealth(object state)
+        {
+            if (stop.IsCancellationRequested || Interlocked.CompareExchange(ref stopping, 0, 0) != 0) return;
+            if (workerThread == null || !workerThread.IsAlive)
+            {
+                FailService("A thread do agente encerrou inesperadamente.");
+                return;
+            }
+
+            var inactiveFor = ServiceHeartbeat.InactiveFor;
+            if (inactiveFor >= TimeSpan.FromMinutes(5))
+                FailService("O agente não avançou por " + Math.Round(inactiveFor.TotalMinutes, 1) + " minutos; reiniciando pelo Windows Service Recovery.");
+        }
+
+        private void FailService(string reason)
+        {
+            FailService(reason, null);
+        }
+
+        private void FailService(string reason, Exception error)
+        {
+            if (stop.IsCancellationRequested || Interlocked.CompareExchange(ref stopping, 1, 0) != 0) return;
+            try
+            {
+                var directory = Path.GetDirectoryName(configPath);
+                if (!string.IsNullOrEmpty(directory))
+                    File.AppendAllText(Path.Combine(directory, "agent-watchdog.log"), DateTime.Now.ToString("o") + " " + reason + Environment.NewLine, Encoding.UTF8);
+            }
+            catch { }
+            if (error == null) Environment.FailFast(reason);
+            else Environment.FailFast(reason, error);
+        }
+    }
+
+    internal static class AgentUpdater
+    {
+        private const string ServiceName = "SenhaHubPrintAgentX86";
+        private const string InstalledFileName = "SenhaHub.PrintAgent.X86.exe";
+
+        public static int Launch()
+        {
+            try
+            {
+                if (IsAdministrator()) return RunElevated();
+
+                var currentExe = Process.GetCurrentProcess().MainModule.FileName;
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = currentExe,
+                    Arguments = "--update-agent-elevated",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                });
+                return 0;
+            }
+            catch (Win32Exception error) when (error.NativeErrorCode == 1223)
+            {
+                MessageBox.Show("A atualização foi cancelada. Nenhuma alteração foi feita.", "Agente SenhaHub", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return 1;
+            }
+            catch (Exception error)
+            {
+                ShowError(error);
+                return 1;
+            }
+        }
+
+        public static int RunElevated()
+        {
+            try
+            {
+                if (!IsAdministrator())
+                    throw new InvalidOperationException("O Windows não iniciou o atualizador com privilégios de administrador.");
+
+                var dependencyNote = UpdateInstalledAgent();
+                MessageBox.Show(
+                    "Agente atualizado para a versão 1.2.8.\r\n\r\n" +
+                    "A recuperação automática está configurada e o serviço foi iniciado.\r\n" +
+                    "O pareamento e os dados locais foram preservados.\r\n\r\n" + dependencyNote,
+                    "Atualização concluída",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return 0;
+            }
+            catch (Exception error)
+            {
+                ShowError(error);
+                return 1;
+            }
+        }
+
+        private static string UpdateInstalledAgent()
+        {
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SenhaHub", "PrintAgentX86");
+            var installedExe = Path.Combine(root, InstalledFileName);
+            var backupExe = installedExe + ".previous";
+            var sourceExe = Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName);
+
+            if (!File.Exists(installedExe))
+                throw new FileNotFoundException("Não encontrei uma instalação existente do agente em " + installedExe + ". Instale e pareie o agente antes de atualizá-lo.");
+
+            using (var service = new ServiceController(ServiceName))
+            {
+                service.Refresh();
+                var serviceStatus = service.Status;
+                var backupCreated = false;
+
+                if (serviceStatus != ServiceControllerStatus.Stopped)
+                {
+                    service.Stop();
+                    service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(45));
+                }
+
+                try
+                {
+                    var dependencyNote = EnsurePrinterDependency(AgentConfig.Load(Path.Combine(root, "agent.env")));
+                    if (!string.Equals(sourceExe, Path.GetFullPath(installedExe), StringComparison.OrdinalIgnoreCase))
+                    {
+                        File.Copy(installedExe, backupExe, true);
+                        backupCreated = true;
+                        var stagedExe = installedExe + ".new";
+                        try
+                        {
+                            File.Copy(sourceExe, stagedExe, true);
+                            File.Copy(stagedExe, installedExe, true);
+                        }
+                        finally
+                        {
+                            if (File.Exists(stagedExe)) File.Delete(stagedExe);
+                        }
+                    }
+
+                    RunSc("failure " + ServiceName + " reset= 86400 actions= restart/60000/restart/60000/restart/60000");
+                    RunSc("failureflag " + ServiceName + " 1");
+
+                    service.Refresh();
+                    if (service.Status != ServiceControllerStatus.Running) service.Start();
+                    service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(45));
+                    return dependencyNote;
+                }
+                catch
+                {
+                    if (backupCreated && File.Exists(backupExe)) File.Copy(backupExe, installedExe, true);
+                    try
+                    {
+                        service.Refresh();
+                        if (service.Status != ServiceControllerStatus.Running) service.Start();
+                    }
+                    catch { }
+                    throw;
+                }
+            }
+        }
+
+        private static string EnsurePrinterDependency(AgentConfig config)
+        {
+            if (config.PrinterMode == "native-serial" || config.PrinterMode == "serial")
+            {
+                if (SerialPort.GetPortNames().Any(port => string.Equals(port, config.PrinterPort, StringComparison.OrdinalIgnoreCase)))
+                    return "Driver Bematech/USB-Serial: dependência já disponível.";
+
+                RunBundledInstaller(
+                    ".Bematech_USBCOM_v4.0.2_2018-09-05.exe",
+                    "Bematech_USBCOM_v4.0.2_2018-09-05.exe");
+                return "Instalador do driver Bematech USB/COM executado. Se a porta ainda não aparecer, confira o cabo USB e a porta COM no Gerenciador de Dispositivos.";
+            }
+
+            if (config.PrinterMode == "spooler")
+            {
+                if (PrinterSettings.InstalledPrinters.Cast<string>().Any(name => string.Equals(name, config.PrinterName, StringComparison.OrdinalIgnoreCase)))
+                    return "Driver e fila Bematech: dependências já disponíveis.";
+
+                RunBundledInstaller(
+                    ".BematechSpoolerDrivers_x86_v5.0.0.4.exe",
+                    "BematechSpoolerDrivers_x86_v5.0.0.4.exe");
+                return "Instalador do driver Spooler Bematech executado. Se a fila não aparecer, conclua a criação da impressora no Windows.";
+            }
+
+            return "O modo de impressão configurado não requer instalação adicional de driver por este atualizador.";
+        }
+
+        private static void RunBundledInstaller(string resourceSuffix, string fileName)
+        {
+            var resourceName = typeof(AgentUpdater).Assembly.GetManifestResourceNames()
+                .FirstOrDefault(name => name.EndsWith(resourceSuffix, StringComparison.OrdinalIgnoreCase));
+            if (resourceName == null)
+                throw new InvalidOperationException("O pacote não contém a dependência necessária: " + fileName + ". Gere o executável completo pelo build-installer.ps1.");
+
+            var directory = Path.Combine(Path.GetTempPath(), "SenhaHubPrintAgentDependencies");
+            Directory.CreateDirectory(directory);
+            var installerPath = Path.Combine(directory, fileName);
+            using (var source = typeof(AgentUpdater).Assembly.GetManifestResourceStream(resourceName))
+            using (var target = File.Create(installerPath)) source.CopyTo(target);
+
+            var info = new ProcessStartInfo
+            {
+                FileName = installerPath,
+                WorkingDirectory = directory,
+                UseShellExecute = true
+            };
+            using (var process = Process.Start(info))
+            {
+                process.WaitForExit();
+                if (process.ExitCode != 0 && process.ExitCode != 3010)
+                    throw new InvalidOperationException("A instalação da dependência " + fileName + " terminou com o código " + process.ExitCode + ".");
+            }
+        }
+
+        private static void RunSc(string arguments)
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "sc.exe"),
+                Arguments = arguments,
+                WorkingDirectory = Environment.SystemDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using (var process = Process.Start(info))
+            {
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                    throw new InvalidOperationException((error + Environment.NewLine + output).Trim());
+            }
+        }
+
+        private static bool IsAdministrator()
+        {
+            using (var identity = WindowsIdentity.GetCurrent())
+            {
+                var principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+        }
+
+        private static void ShowError(Exception error)
+        {
+            MessageBox.Show(
+                "Não foi possível atualizar o agente.\r\n\r\n" + error.Message +
+                "\r\n\r\nSe uma impressão estava em andamento, aguarde e tente novamente.",
+                "Falha na atualização",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    internal static class ServiceHeartbeat
+    {
+        private static long lastPulse = Stopwatch.GetTimestamp();
+
+        public static void Pulse()
+        {
+            Interlocked.Exchange(ref lastPulse, Stopwatch.GetTimestamp());
+        }
+
+        public static TimeSpan InactiveFor
+        {
+            get
+            {
+                var elapsed = Stopwatch.GetTimestamp() - Interlocked.Read(ref lastPulse);
+                return TimeSpan.FromSeconds((double)elapsed / Stopwatch.Frequency);
             }
         }
     }
@@ -283,14 +597,12 @@ namespace SenhaHub.PrintAgent.X86
                 StopBits = Get(values, "PRINT_SERIAL_STOP_BITS", "1") == "2" ? StopBits.Two : StopBits.One,
                 Parity = ParseParity(Get(values, "PRINT_SERIAL_PARITY", "none")),
                 RtsCts = ParseFlag(Get(values, "PRINT_SERIAL_RTSCTS", AgentProfile.DefaultRtsCts ? "1" : "0")),
-                PollIntervalMs = Math.Max(5000, PositiveInt(Get(values, "PRINT_POLL_INTERVAL_MS", "5000"), 5000)),
+                PollIntervalMs = Math.Max(AgentProfile.DefaultPollIntervalMs, PositiveInt(Get(values, "PRINT_POLL_INTERVAL_MS", AgentProfile.DefaultPollIntervalMs.ToString()), AgentProfile.DefaultPollIntervalMs)),
                 StateDirectory = Get(values, "PRINT_AGENT_STATE_DIR", AgentProfile.DefaultStateDirectory)
             };
 
             if (!config.ApiUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !IsLoopback(config.ApiUrl))
                 throw new InvalidOperationException("PRINT_API_URL deve usar HTTPS.");
-            if (config.EnrollmentCode.Length == 0 && config.LocalToken.Length == 0)
-                throw new InvalidOperationException("Informe PRINT_ENROLLMENT_CODE no primeiro pareamento.");
             if (config.PrinterMode != "native-serial" && config.PrinterMode != "serial" && config.PrinterMode != "spooler" && config.PrinterMode != "mp4000-serial")
                 throw new InvalidOperationException("KIOSK_PRINTER_MODE deve ser native-serial, serial, spooler ou mp4000-serial.");
             if (config.PrinterMode == "spooler" && config.PrinterName.Length == 0)
@@ -384,6 +696,12 @@ namespace SenhaHub.PrintAgent.X86
             }
         }
 
+        public void ClearSession()
+        {
+            if (UsesLocalToken) return;
+            state.ClearSession();
+        }
+
         private async Task<SessionData> EnrollAsync(string code)
         {
             using (var message = new HttpRequestMessage(HttpMethod.Post, config.ApiUrl + "/api/print/v2/enroll"))
@@ -423,7 +741,18 @@ namespace SenhaHub.PrintAgent.X86
             }
             catch (ApiException error) when (error.StatusCode == 401 && !auth.UsesLocalToken)
             {
-                return await SendAsync(command, body, await auth.RefreshAsync());
+                try
+                {
+                    return await SendAsync(command, body, await auth.RefreshAsync());
+                }
+                catch (ApiException refreshError) when (refreshError.StatusCode == 400 || refreshError.StatusCode == 401 || refreshError.StatusCode == 403)
+                {
+                    // Do not keep retrying a dead refresh session forever.
+                    // Preserve the print journal and re-enroll when a fresh
+                    // enrollment code is configured.
+                    auth.ClearSession();
+                    return await SendAsync(command, body, await auth.GetTokenAsync());
+                }
             }
         }
 
@@ -1320,6 +1649,13 @@ namespace SenhaHub.PrintAgent.X86
             Save(state);
         }
 
+        public void ClearSession()
+        {
+            var state = Load();
+            state.Remove("session");
+            Save(state);
+        }
+
         public string LoadClaimRequestId()
         {
             var state = Load();
@@ -1577,7 +1913,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.2.5");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.2.8");
             return client;
         }
     }

@@ -5086,10 +5086,10 @@ textarea:focus {
 .tablet-type-step .tablet-choice-normal strong { color: var(--vr-on-brand); }
 .tablet-type-step .tablet-choice-priority { border-color: var(--red); background: var(--red); }
 .tablet-type-step .tablet-choice-priority strong { color: var(--vr-on-brand); }
-.tablet-priority-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-.tablet-priority { display: grid; min-height: 174px; align-content: center; justify-items: center; gap: 6px; padding: 8px 6px; }
+.tablet-priority-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 184px; align-items: start; gap: 12px; margin-bottom: 20px; }
+.tablet-priority { display: grid; height: 184px; min-height: 184px; grid-template-rows: 120px 2.4em; align-content: center; justify-items: center; gap: 6px; padding: 8px 6px; }
 .tablet-priority-image { width: 120px; height: 120px; border-radius: 16px; background: var(--vr-orange-primary); object-fit: cover; }
-.tablet-priority strong { color: var(--vr-heading); font-size: 10px; line-height: 1.1; text-align: center; text-transform: uppercase; }
+.tablet-priority strong { color: var(--vr-heading); font-size: 16px; line-height: 1.2; text-align: center; text-transform: uppercase; }
 .tablet-priority-step { border: 3px solid var(--vr-orange-primary); border-radius: 20px; background: var(--vr-amber); box-shadow: 0 16px 40px color-mix(in srgb, var(--vr-heading) 10%, transparent); }
 .tablet-operation[data-tablet-step="priority"] .tablet-type-heading,
 .tablet-operation[data-tablet-step="confirm"] .tablet-type-heading { display: none; }
@@ -5185,10 +5185,10 @@ textarea:focus {
   .tablet-header { align-items: flex-start; }
   .tablet-header-actions { align-items: flex-end; flex-direction: column; gap: 7px; }
   .tablet-heading, .tablet-choice-grid, .tablet-sectors { grid-template-columns: 1fr; }
-  .tablet-priority-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-  .tablet-priority { min-height: 152px; padding: 8px 5px; }
+  .tablet-priority-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 152px; gap: 8px; }
+  .tablet-priority { height: 152px; min-height: 152px; grid-template-rows: 78px 2.4em; padding: 8px 5px; }
   .tablet-priority-image { width: 78px; height: 78px; }
-  .tablet-priority strong { font-size: 9px; }
+  .tablet-priority strong { font-size: 12px; }
   .tablet-heading { gap: 14px; }
   .tablet-step-actions { align-items: stretch; flex-direction: column-reverse; }
   .tablet-step-actions .tablet-primary, .tablet-step-actions .tablet-secondary { width: 100%; }
@@ -5210,10 +5210,10 @@ textarea:focus {
 }
 
 @media (max-width: 520px) {
-  .tablet-priority-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .tablet-priority { min-height: 144px; padding: 10px; }
+  .tablet-priority-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 144px; gap: 10px; }
+  .tablet-priority { height: 144px; min-height: 144px; grid-template-rows: 82px 2.4em; padding: 10px; }
   .tablet-priority-image { width: 82px; height: 82px; }
-  .tablet-priority strong { font-size: 10px; }
+  .tablet-priority strong { font-size: 14px; }
 }
 
 /* Totem: seleção de vários setores e emissão direta. */
@@ -9885,13 +9885,27 @@ textarea:focus {
   }
 }
 
-/* Tela preferencial do totem alinhada ao padrão visual do tablet. */
+/* Tela de categorias do totem seguindo o padrão visual do mini PC. */
 .totem-operation[data-totem-step="priority"] .totem-heading {
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: 18px;
+}
+
+.totem-operation[data-totem-step="priority"] .totem-heading h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.totem-operation[data-totem-step="priority"] .totem-heading > p {
   display: none;
 }
 
 .totem-operation[data-totem-step="priority"] .totem-progress {
-  display: none;
+  display: flex;
 }
 
 .totem-operation[data-totem-step="priority"] {
@@ -9899,30 +9913,42 @@ textarea:focus {
 }
 
 .totem-priority-step {
+  padding: clamp(16px, 3vw, 40px);
   border: 3px solid var(--vr-orange-primary);
   border-radius: 20px;
   background: var(--vr-amber);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--vr-heading) 10%, transparent);
 }
 
+.totem-priority-step .totem-step-heading {
+  margin: 0 0 24px;
+  text-align: center;
+}
+
 .totem-priority-step .totem-step-heading h2 {
+  margin: 0 0 8px;
   color: var(--vr-heading);
   font-size: clamp(24px, 3vw, 32px);
 }
 
 .totem-priority-step .totem-step-heading p {
+  margin: 0;
   color: var(--vr-heading);
 }
 
 .totem-priority-step .totem-priority-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: 184px;
+  align-items: start;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .totem-priority-step .totem-priority-option {
   display: grid;
-  min-height: 174px;
+  height: 184px;
+  min-height: 184px;
+  grid-template-rows: 120px 2.4em;
   align-content: center;
   justify-items: center;
   gap: 6px;
@@ -9951,26 +9977,29 @@ textarea:focus {
 
 .totem-priority-step .totem-priority-option strong {
   color: var(--vr-heading);
-  font-size: 10px;
-  line-height: 1.1;
+  font-size: 16px;
+  line-height: 1.2;
   text-align: center;
   text-transform: uppercase;
 }
 
 .totem-priority-step .totem-secondary {
   border-color: var(--vr-orange-primary);
-  background: var(--vr-orange-primary);
+  background: var(--vr-surface-muted);
   color: var(--vr-heading);
 }
 
 @media (max-width: 760px) {
   .totem-priority-step .totem-priority-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-rows: 152px;
     gap: 8px;
   }
 
   .totem-priority-step .totem-priority-option {
+    height: 152px;
     min-height: 152px;
+    grid-template-rows: 78px 2.4em;
     padding: 8px 5px;
   }
 
@@ -9980,18 +10009,21 @@ textarea:focus {
   }
 
   .totem-priority-step .totem-priority-option strong {
-    font-size: 9px;
+    font-size: 12px;
   }
 }
 
 @media (max-width: 520px) {
   .totem-priority-step .totem-priority-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 144px;
     gap: 10px;
   }
 
   .totem-priority-step .totem-priority-option {
+    height: 144px;
     min-height: 144px;
+    grid-template-rows: 82px 2.4em;
     padding: 10px;
   }
 
@@ -10001,7 +10033,7 @@ textarea:focus {
   }
 
   .totem-priority-step .totem-priority-option strong {
-    font-size: 10px;
+    font-size: 14px;
   }
 }
 
@@ -10973,6 +11005,17 @@ textarea:focus {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+@media (max-width: 760px) {
+  /* Deixa a fila crescer com os cartões no celular; evita cortar senhas. */
+  .attendant-page .ops-queue-section {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
 }
 
 .attendant-page .ops-ticket-row > div {
@@ -13103,5 +13146,59 @@ textarea:focus-visible,
 
   .tv-media-library-actions {
     grid-column: auto;
+  }
+}
+
+/* Totem: opções somente com texto e QR centralizado, como na referência do mini PC. */
+.totem-operation[data-totem-step="type"] .totem-choice {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.totem-operation[data-totem-step="type"] .totem-choice-content {
+  width: 100%;
+}
+
+.totem-operation[data-totem-step="type"] .totem-choice-content strong {
+  white-space: nowrap;
+}
+
+.totem-operation[data-totem-step="type"] .totem-pwa-card {
+  grid-template-columns: 124px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  width: min(500px, 100%);
+  height: auto;
+  min-height: 150px;
+  margin: 24px auto 28px;
+  padding: 12px 18px;
+  text-align: left;
+}
+
+.totem-operation[data-totem-step="type"] .totem-install-qr {
+  width: 124px;
+  height: 124px;
+  margin: 0;
+}
+
+.totem-operation[data-totem-step="type"] .totem-install > div:last-child {
+  min-width: 0;
+  text-align: left;
+}
+
+@media (max-width: 520px) {
+  .totem-operation[data-totem-step="type"] .totem-choice-content strong {
+    font-size: clamp(14px, 3.5vw, 20px);
+  }
+
+  .totem-operation[data-totem-step="type"] .totem-pwa-card {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .totem-operation[data-totem-step="type"] .totem-install-qr {
+    width: 96px;
+    height: 96px;
   }
 }
