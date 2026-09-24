@@ -354,7 +354,7 @@ namespace SenhaHub.PrintAgent.Node.Setup
             var tail = ReadTail(agentLog, 12);
             LogTo(logPath, "A tarefa foi instalada, mas o bootstrap não foi confirmado em 60 segundos.");
             if (tail.Length > 0) LogTo(logPath, tail);
-            throw new InvalidOperationException("A tarefa automática foi criada, mas o agente ainda não autenticou. Confira internet, horário do Windows e se o código está dentro dos 10 minutos. O detalhe está em " + logPath + ".");
+            throw new InvalidOperationException("A tarefa automática foi criada, mas o agente ainda não autenticou. Confira internet, horário do Windows e se o código está dentro dos 30 minutos. O detalhe está em " + logPath + ".");
         }
 
         private static bool HasSavedSession(string agentPath, string root)

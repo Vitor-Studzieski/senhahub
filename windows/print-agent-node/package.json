@@ -1,0 +1,45 @@
+{
+  "name": "senhahub-print-agent-node-executable",
+  "version": "2.0.0",
+  "private": true,
+  "bin": "../../scripts/print-agent.js",
+  "dependencies": {
+    "@supabase/supabase-js": "2.112.3",
+    "serialport": "13.0.0"
+  },
+  "pkg": {
+    "publicPackages": [
+      "@serialport/binding-mock",
+      "@serialport/bindings-cpp",
+      "@serialport/bindings-interface",
+      "@serialport/parser-byte-length",
+      "@serialport/parser-cctalk",
+      "@serialport/parser-delimiter",
+      "@serialport/parser-inter-byte-timeout",
+      "@serialport/parser-packet-length",
+      "@serialport/parser-readline",
+      "@serialport/parser-ready",
+      "@serialport/parser-regex",
+      "@serialport/parser-slip-encoder",
+      "@serialport/parser-spacepacket",
+      "@serialport/stream",
+      "@supabase/auth-js",
+      "@supabase/functions-js",
+      "@supabase/phoenix",
+      "@supabase/postgrest-js",
+      "@supabase/realtime-js",
+      "@supabase/storage-js",
+      "@supabase/supabase-js",
+      "debug",
+      "iceberg-js",
+      "ms",
+      "node-addon-api",
+      "node-gyp-build",
+      "serialport",
+      "tslib"
+    ],
+    "assets": [
+      "../../node_modules/@serialport/bindings-cpp/prebuilds/win32-x64/*.node"
+    ]
+  }
+}

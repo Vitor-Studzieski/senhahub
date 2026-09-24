@@ -1,0 +1,5 @@
+/artifacts/
+/installer/bin/
+/installer/obj/
+/installer/payload/SenhaHub.PrintAgent.Node.exe
+/installer/pairing-code.txt
