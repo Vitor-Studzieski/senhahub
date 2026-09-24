@@ -132,6 +132,18 @@ test("login não diferencia credencial inválida de perfil inativo", () => {
   assert.equal((legacyLogin.match(/Não foi possível concluir a autenticação/g) || []).length, 2);
 });
 
+test("login permanece sem MFA ou CAPTCHA forçados", () => {
+  const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  const loginScript = fs.readFileSync(path.join(__dirname, "..", "public/login.js"), "utf8");
+  const loginHtml = fs.readFileSync(path.join(__dirname, "..", "public/login.html"), "utf8");
+  const login = extractFunction(runtime, "async function login(request)");
+
+  assert.doesNotMatch(runtime, /mfa|captcha|turnstile/i);
+  assert.doesNotMatch(login, /mfa|captcha|turnstile/i);
+  assert.doesNotMatch(loginScript, /mfa|captcha|turnstile/i);
+  assert.doesNotMatch(loginHtml, /mfa|captcha|turnstile/i);
+});
+
 test("troca de senha limita tentativas por IP e por conta antes de validar credenciais", () => {
   const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");

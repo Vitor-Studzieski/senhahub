@@ -3037,9 +3037,9 @@ function roleHome(user) {
 }
 
 function applySecurityHeaders(req, res) {
-  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com";
+  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co";
   const nonce = crypto.randomBytes(16).toString("base64url");
-  const scriptSrc = dev ? `'self' 'nonce-${nonce}' https://challenges.cloudflare.com 'unsafe-eval'` : `'self' 'nonce-${nonce}' https://challenges.cloudflare.com`;
+  const scriptSrc = dev ? `'self' 'nonce-${nonce}' 'unsafe-eval'` : `'self' 'nonce-${nonce}'`;
   res.setHeader("content-security-policy", [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -3049,7 +3049,6 @@ function applySecurityHeaders(req, res) {
     "font-src 'self' https://fonts.gstatic.com",
     "worker-src 'self'",
     "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:",
-    "frame-src 'self' https://www.instagram.com https://challenges.cloudflare.com",
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

@@ -50,11 +50,6 @@
               <input name="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required />
               <button class="password-toggle" type="button" aria-label="Mostrar senha" data-toggle-password>Ver</button>
             </label>
-            <div class="captcha-field" data-captcha-widget hidden>
-              <div class="captcha-slot"></div>
-              <input name="captchaToken" type="hidden" />
-              <p class="captcha-status" aria-live="polite"></p>
-            </div>
             <button class="yellow-action" data-online-required>Entrar</button>
             <button class="senhahub-auth-link" type="button" data-login-panel="recover">Esqueceu sua senha?</button>
             <p class="login-error" id="loginError"></p>
@@ -80,11 +75,6 @@
               <input name="confirmPassword" type="password" autocomplete="new-password" placeholder="Repita a senha" minlength="12" required />
               <button class="password-toggle" type="button" aria-label="Mostrar senha" data-toggle-password>Ver</button>
             </label>
-            <div class="captcha-field" data-captcha-widget hidden>
-              <div class="captcha-slot"></div>
-              <input name="captchaToken" type="hidden" />
-              <p class="captcha-status" aria-live="polite"></p>
-            </div>
             <button class="yellow-action" data-online-required>Criar conta de cliente</button>
             <p class="login-error" id="registerError"></p>
           </form>
@@ -104,11 +94,6 @@
               <input name="newPassword" type="password" autocomplete="new-password" placeholder="Digite a nova senha" minlength="12" required />
               <button class="password-toggle" type="button" aria-label="Mostrar senha" data-toggle-password>Ver</button>
             </label>
-            <div class="captcha-field" data-captcha-widget hidden>
-              <div class="captcha-slot"></div>
-              <input name="captchaToken" type="hidden" />
-              <p class="captcha-status" aria-live="polite"></p>
-            </div>
             <p class="login-hint"><strong>Protecao contra vazamentos</strong><span>A nova senha e validada no servidor sem enviar a senha completa para servicos externos.</span></p>
             <button class="yellow-action" data-online-required>Salvar nova senha</button>
             <p class="login-error" id="passwordError"></p>
@@ -119,11 +104,6 @@
               E-mail
               <input name="email" type="email" autocomplete="email" placeholder="seuemail@superpompeia.com" required />
             </label>
-            <div class="captcha-field" data-captcha-widget hidden>
-              <div class="captcha-slot"></div>
-              <input name="captchaToken" type="hidden" />
-              <p class="captcha-status" aria-live="polite"></p>
-            </div>
             <button class="yellow-action" data-online-required>Enviar link de recuperacao</button>
             <button class="senhahub-auth-link" type="button" data-login-panel="login">Voltar para entrar</button>
             <p class="login-error" id="recoverError"></p>
@@ -145,31 +125,11 @@
             <p class="login-error" id="resetError"></p>
           </form>
 
-          <form class="login-panel" id="mfaForm">
-            <div class="senhahub-auth-heading">
-              <h2 id="mfaHeading">Verificação em duas etapas</h2>
-              <p id="mfaInstructions">Informe o código atual do seu aplicativo autenticador.</p>
-            </div>
-            <div class="mfa-enrollment" id="mfaEnrollment" hidden>
-              <p>Adicione o SenhaHub ao seu aplicativo autenticador e depois informe o código de 6 dígitos.</p>
-              <img id="mfaQrCode" alt="QR code de configuração do autenticador" />
-              <p class="mfa-manual-key-label">Se não puder ler o QR code, digite esta chave no aplicativo:</p>
-              <code id="mfaSecret"></code>
-            </div>
-            <label>
-              Código de verificação
-              <input id="mfaCode" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6}" maxlength="6" placeholder="000000" required />
-            </label>
-            <button class="yellow-action" data-online-required>Verificar e entrar</button>
-            <button class="senhahub-auth-link" id="cancelMfa" type="button">Cancelar e voltar ao login</button>
-            <p class="login-error" id="mfaError"></p>
-          </form>
-
         </div>
       </section>
 
       <div class="login-toast" id="loginToast" role="alert" aria-live="assertive"></div>
     </main>
-    <script src="login.js?v=20260924-security2"></script>
+    <script src="login.js?v=20260924-security3"></script>
   </body>
 </html>

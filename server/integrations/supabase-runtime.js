@@ -51,7 +51,6 @@ const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "");
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
   "app_sessions",
-  "auth_mfa_challenges",
   "calls",
   "cart_items",
   "cron_executions",
@@ -106,9 +105,6 @@ const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
 ]);
 const AUTH_SECRET = authSecret();
 const CRON_SECRET = String(process.env.CRON_SECRET || "");
-const SUPABASE_CAPTCHA_SITE_KEY = String(process.env.SUPABASE_CAPTCHA_SITE_KEY || "").trim();
-const SUPABASE_CAPTCHA_SECRET_KEY = String(process.env.SUPABASE_CAPTCHA_SECRET_KEY || "").trim();
-const CAPTCHA_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const AUTH_CREDENTIALS_ERROR = "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte.";
 const KIOSK_CONFIGURATION = loadKioskConfiguration(process.env);
 const TABLET_PRINTER_CONFIGURATION = loadTabletPrinterConfiguration(process.env);
@@ -122,8 +118,6 @@ const pushNotificationService = new PushNotificationService({
 
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
-const MFA_PENDING_TTL_SECONDS = 5 * 60;
-const MFA_MAX_ATTEMPTS = 5;
 const MAX_ACTIVE_TICKETS_PER_CUSTOMER = 3;
 const AUTO_CALL_DELAY_SECONDS = 10;
 const TRACKING_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -272,9 +266,6 @@ async function handleRequestInternal(request, context = null) {
     });
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") return login(request);
-    if (request.method === "GET" && url.pathname === "/api/auth/config") return authConfig();
-    if (request.method === "POST" && url.pathname === "/api/auth/mfa/verify") return verifyMfa(request);
-    if (request.method === "POST" && url.pathname === "/api/auth/mfa/cancel") return cancelMfa(request);
     if (request.method === "POST" && url.pathname === "/api/auth/change-password") return changePassword(request);
     if (request.method === "POST" && url.pathname === "/api/auth/forgot-password") return forgotPassword(request);
     if (request.method === "POST" && url.pathname === "/api/auth/reset-password") return resetPassword(request);
@@ -396,7 +387,6 @@ async function login(request) {
   const body = await readJson(request);
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   const requestIp = clientIp(request);
   if (isKnownClientIp(requestIp)) {
     const ipRate = await consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
@@ -407,18 +397,11 @@ async function login(request) {
       );
     }
   }
-  if (captchaPartiallyConfigured()) {
-    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
-  }
-  if (captchaEnabled() && !captchaToken) {
-    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
-  }
-
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, password, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
+    body: { email, password }
   });
   if (auth.error || !auth.user?.id) {
     return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
@@ -434,15 +417,6 @@ async function login(request) {
     return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
 
-  if (hasAnyRole(profile, ADMIN_ROLES)) {
-    const challenge = await startAdminMfaChallenge(auth, profile);
-    if (challenge.error) {
-      await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken: auth.access_token }).catch(() => null);
-      return json({ error: "Não foi possível concluir a verificação em duas etapas. Tente novamente." }, challenge.status || 503);
-    }
-    return json(challenge.payload, 202, { "set-cookie": mfaCookies(challenge.pendingToken) });
-  }
-
   // A credencial do Supabase só é necessária para validar a senha; o app usa
   // a própria sessão, então encerra a sessão GoTrue que não será entregue ao cliente.
   if (auth.access_token) {
@@ -453,203 +427,8 @@ async function login(request) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   const sessionId = crypto.randomUUID();
   await createAuthSession(sessionId, profile.id, csrfToken, expiresAt, false);
-  const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, accessMode, csrfToken, expiresAt, mfaVerified: false });
+  const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, accessMode, csrfToken, expiresAt });
   return json({ user: profile, csrfToken }, 200, authCookies(sessionToken, csrfToken));
-}
-
-function authConfig() {
-  if (captchaPartiallyConfigured()) {
-    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503, { "cache-control": "no-store" });
-  }
-  const enabled = captchaEnabled();
-  return json({
-    captcha: {
-      enabled,
-      provider: "turnstile",
-      siteKey: enabled ? SUPABASE_CAPTCHA_SITE_KEY : ""
-    }
-  }, 200, { "cache-control": "no-store" });
-}
-
-function captchaEnabled() {
-  return Boolean(SUPABASE_CAPTCHA_SITE_KEY && SUPABASE_CAPTCHA_SECRET_KEY);
-}
-
-function captchaPartiallyConfigured() {
-  return Boolean(SUPABASE_CAPTCHA_SITE_KEY) !== Boolean(SUPABASE_CAPTCHA_SECRET_KEY);
-}
-
-async function verifyTurnstileToken(token) {
-  if (captchaPartiallyConfigured()) return { ok: false, status: 503 };
-  if (!captchaEnabled()) return { ok: true };
-  const responseToken = String(token || "").trim();
-  if (!responseToken) return { ok: false, status: 400 };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(CAPTCHA_VERIFY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ secret: SUPABASE_CAPTCHA_SECRET_KEY, response: responseToken }),
-      signal: controller.signal,
-      cache: "no-store"
-    });
-    if (!response.ok) return { ok: false, status: 503 };
-    const result = await response.json();
-    return result?.success === true ? { ok: true } : { ok: false, status: 400 };
-  } catch {
-    return { ok: false, status: 503 };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function startAdminMfaChallenge(auth, profile) {
-  const accessToken = String(auth?.access_token || "");
-  if (!accessToken) return { error: "Nao foi possivel iniciar a verificacao em duas etapas.", status: 503 };
-
-  const factors = await supabaseAuthFetch("/auth/v1/factors", { accessToken });
-  if (factors?.error) {
-    console.error("mfa_factor_list_failed", safeAuthProviderErrorCode(factors.error));
-    return { error: "Nao foi possivel consultar a verificacao em duas etapas.", status: 503 };
-  }
-
-  const verifiedFactor = (Array.isArray(factors.totp) ? factors.totp : [])
-    .find((factor) => factor?.status === "verified" && isUuid(factor.id));
-  let factorId = verifiedFactor?.id || "";
-  let flow = "login";
-  let enrollment = null;
-
-  if (!factorId) {
-    const created = await supabaseAuthFetch("/auth/v1/factors", {
-      method: "POST",
-      accessToken,
-      body: {
-        factor_type: "totp",
-        friendly_name: "SenhaHub administrador"
-      }
-    });
-    if (created?.error || !isUuid(created?.id)) {
-      console.error("mfa_factor_enroll_failed", safeAuthProviderErrorCode(created?.error || "missing_factor_id"));
-      return { error: "Nao foi possivel preparar o cadastro do autenticador.", status: 503 };
-    }
-    factorId = created.id;
-    flow = "enrollment";
-    enrollment = {
-      qrCode: safeMfaQrCode(created?.totp?.qr_code),
-      secret: cleanLimitedText(created?.totp?.secret, 128),
-      uri: cleanLimitedText(created?.totp?.uri, 512)
-    };
-  }
-
-  const challenge = await supabaseAuthFetch(`/auth/v1/factors/${encodeURIComponent(factorId)}/challenge`, {
-    method: "POST",
-    accessToken
-  });
-  if (challenge?.error || !isUuid(challenge?.id)) {
-    console.error("mfa_challenge_failed", safeAuthProviderErrorCode(challenge?.error || "missing_challenge_id"));
-    return { error: "Nao foi possivel iniciar a verificacao em duas etapas.", status: 503 };
-  }
-
-  const expiresAt = new Date(Date.now() + MFA_PENDING_TTL_SECONDS * 1000).toISOString();
-  const pendingId = crypto.randomUUID();
-  await insert("auth_mfa_challenges", {
-    id: pendingId,
-    user_id: profile.id,
-    factor_id: factorId,
-    challenge_id: challenge.id,
-    flow,
-    access_token_ciphertext: encryptMfaAccessToken(accessToken),
-    expires_at: expiresAt,
-    attempts: 0
-  });
-
-  const pendingToken = signMfaPendingToken({ id: pendingId, userId: profile.id, expiresAt });
-  return {
-    pendingToken,
-    payload: {
-      mfaRequired: true,
-      mfaMode: flow,
-      user: { id: profile.id, name: profile.name, email: profile.email, role: profile.role },
-      ...(enrollment || {})
-    }
-  };
-}
-
-async function verifyMfa(request) {
-  if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
-  const rate = await consumeSecurityRateLimit("mfa:verify:ip", clientIp(request), MFA_MAX_ATTEMPTS, 5 * 60);
-  if (rate !== true) return json({ error: rate === false ? "Muitas tentativas de verificacao. Aguarde alguns minutos." : "Verificacao temporariamente indisponivel." }, rate === false ? 429 : 503);
-
-  const body = await readJson(request);
-  const code = String(body.code || "").replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(code)) return json({ error: "Informe o codigo de 6 digitos do autenticador." }, 400);
-
-  const pendingToken = getCookie(request, "senhahub_mfa_pending");
-  const pending = verifyMfaPendingToken(pendingToken);
-  if (!pending) return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
-
-  const rows = await select("auth_mfa_challenges", `id=eq.${encodeURIComponent(pending.id)}&user_id=eq.${encodeURIComponent(pending.userId)}&completed_at=is.null&expires_at=gt.${encodeURIComponent(isoNow())}&limit=1`);
-  const challenge = rows[0];
-  if (!challenge) return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
-  if (Number(challenge.attempts || 0) >= MFA_MAX_ATTEMPTS) {
-    await closeMfaAuthSession(challenge);
-    await remove("auth_mfa_challenges", challenge.id);
-    return json({ error: "Muitas tentativas de verificacao. Entre novamente." }, 429, { "set-cookie": clearMfaCookie() });
-  }
-
-  await supabaseFetch(`/rest/v1/auth_mfa_challenges?id=eq.${encodeURIComponent(challenge.id)}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=minimal" },
-    body: { attempts: Number(challenge.attempts || 0) + 1 }
-  });
-  const accessToken = decryptMfaAccessToken(challenge.access_token_ciphertext);
-  if (!accessToken) {
-    await remove("auth_mfa_challenges", challenge.id);
-    return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
-  }
-
-  const verified = await supabaseAuthFetch(`/auth/v1/factors/${encodeURIComponent(challenge.factor_id)}/verify`, {
-    method: "POST",
-    accessToken,
-    body: { challenge_id: challenge.challenge_id, code }
-  });
-  if (verified?.error) return json({ error: "Codigo do autenticador invalido." }, 401);
-
-  const profile = await getProfile(challenge.user_id, "", { bypassCache: true });
-  if (!profile || profile.status !== "active" || !hasAnyRole(profile, ADMIN_ROLES)) {
-    await closeMfaAuthSession(challenge);
-    await remove("auth_mfa_challenges", challenge.id);
-    return json({ error: "Usuario sem perfil administrativo ativo." }, 403, { "set-cookie": clearMfaCookie() });
-  }
-
-  const csrfToken = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
-  const sessionId = crypto.randomUUID();
-  await createAuthSession(sessionId, profile.id, csrfToken, expiresAt, true);
-  const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, csrfToken, expiresAt, mfaVerified: true });
-  await closeMfaAuthSession(challenge);
-  await remove("auth_mfa_challenges", challenge.id);
-  return json({ user: profile, csrfToken }, 200, { "set-cookie": [ ...authCookies(sessionToken, csrfToken)["set-cookie"], clearMfaCookie() ] });
-}
-
-async function cancelMfa(request) {
-  if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
-  const pending = verifyMfaPendingToken(getCookie(request, "senhahub_mfa_pending"));
-  if (pending?.id) {
-    const filter = "id=eq." + encodeURIComponent(pending.id) + "&user_id=eq." + encodeURIComponent(pending.userId) + "&limit=1";
-    const rows = await select("auth_mfa_challenges", filter);
-    if (rows[0]) await closeMfaAuthSession(rows[0]);
-    await remove("auth_mfa_challenges", pending.id);
-  }
-  return json({ ok: true }, 200, { "set-cookie": clearMfaCookie() });
-}
-
-async function closeMfaAuthSession(challenge) {
-  const accessToken = decryptMfaAccessToken(challenge?.access_token_ciphertext);
-  if (accessToken) {
-    await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken }).catch(() => null);
-  }
 }
 
 async function changePassword(request) {
@@ -657,17 +436,9 @@ async function changePassword(request) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
-  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   if (!email || !currentPassword) {
     return json({ error: "Informe e-mail e senha atual." }, 400);
   }
-  if (captchaPartiallyConfigured()) {
-    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
-  }
-  if (captchaEnabled() && !captchaToken) {
-    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
-  }
-
   const requestIp = clientIp(request);
   if (isKnownClientIp(requestIp)) {
     const ipRate = await consumeSecurityRateLimit("change-password:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
@@ -704,7 +475,7 @@ async function changePassword(request) {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, password: currentPassword, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
+    body: { email, password: currentPassword }
   });
   if (auth.error || !auth.user?.id) {
     await registerLoginFailure(attemptKey);
@@ -727,19 +498,11 @@ async function changePassword(request) {
 async function forgotPassword(request) {
   const body = await readJson(request);
   const email = String(body.email || "").trim().toLowerCase();
-  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   const response = {
     ok: true,
     message: "Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha."
   };
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(response, 202);
-  if (captchaPartiallyConfigured()) {
-    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
-  }
-  if (captchaEnabled() && !captchaToken) {
-    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
-  }
-
   const attemptKey = `${clientIp(request)}:${email}:forgot-password`;
   if (await isLoginLocked(attemptKey)) return json(response, 202);
   await registerLoginFailure(attemptKey);
@@ -749,7 +512,7 @@ async function forgotPassword(request) {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, redirect_to: redirectTo, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
+    body: { email, redirect_to: redirectTo }
   });
   if (result?.error) console.error("password_recovery_request_failed", safeAuthProviderErrorCode(result.error));
   return json(response, 202);
@@ -802,10 +565,6 @@ async function registerCustomer(request) {
   const emailRate = await consumeSecurityRateLimit("register:email", data.email, 5, 60 * 60);
   if (emailRate !== true) {
     return json({ error: emailRate === false ? "Muitas tentativas de cadastro. Aguarde alguns minutos." : "Cadastro temporariamente indisponivel." }, emailRate === false ? 429 : 503);
-  }
-  const captcha = await verifyTurnstileToken(body.captchaToken || body.captcha_token);
-  if (!captcha.ok) {
-    return json({ error: captcha.status === 503 ? "A verificação de segurança está temporariamente indisponível. Tente novamente." : "Conclua a verificação de segurança para continuar." }, captcha.status || 400);
   }
   const attemptKey = `${clientIp(request)}:${data.email}:register`;
   if (await isLoginLocked(attemptKey)) return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." }, 401);
@@ -3386,18 +3145,16 @@ async function getAuthUser(request) {
     getActiveAuthSession(session)
   ]);
   if (!profile || profile.status !== "active" || !appSession) return null;
-  const mfaVerified = Boolean(session.mfaVerified) && Boolean(appSession.mfa_verified);
-  return { ...profile, csrf_token: session.csrfToken, session_id: session.sessionId, mfa_verified: mfaVerified };
+  return { ...profile, csrf_token: session.csrfToken, session_id: session.sessionId };
 }
 
-async function createAuthSession(sessionId, userId, csrfToken, expiresAt, mfaVerified = false) {
+async function createAuthSession(sessionId, userId, csrfToken, expiresAt) {
   const session = await insert("app_sessions", {
     id: sessionId,
     user_id: userId,
     csrf_token_hash: hashSessionValue(csrfToken),
     expires_at: expiresAt,
-    last_seen_at: isoNow(),
-    mfa_verified: Boolean(mfaVerified)
+    last_seen_at: isoNow()
   });
   if (!session?.id) throw new Error("Nao foi possivel registrar a sessao.");
   return session;
@@ -3888,67 +3645,6 @@ function hashSessionValue(value) {
 function signSessionToken(payload) {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `session.${encoded}.${signValue(encoded)}`;
-}
-
-function signMfaPendingToken(payload) {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `mfa.${encoded}.${signValue(encoded)}`;
-}
-
-function verifyMfaPendingToken(token) {
-  const parts = String(token || "").split(".");
-  if (parts.length !== 3 || parts[0] !== "mfa") return null;
-  const [, encoded, signature] = parts;
-  if (!safeEqual(signature, signValue(encoded))) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-    if (!isUuid(payload.id) || !isUuid(payload.userId) || new Date(payload.expiresAt).getTime() <= Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-function encryptMfaAccessToken(accessToken) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", mfaEncryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(String(accessToken), "utf8"), cipher.final()]);
-  return [iv, cipher.getAuthTag(), ciphertext].map((value) => value.toString("base64url")).join(".");
-}
-
-function decryptMfaAccessToken(value) {
-  try {
-    const [ivValue, tagValue, ciphertextValue] = String(value || "").split(".");
-    if (!ivValue || !tagValue || !ciphertextValue) return "";
-    const decipher = crypto.createDecipheriv("aes-256-gcm", mfaEncryptionKey(), Buffer.from(ivValue, "base64url"));
-    decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
-    return Buffer.concat([decipher.update(Buffer.from(ciphertextValue, "base64url")), decipher.final()]).toString("utf8");
-  } catch {
-    return "";
-  }
-}
-
-function mfaEncryptionKey() {
-  return crypto.createHash("sha256").update(AUTH_SECRET).digest();
-}
-
-function mfaCookies(pendingToken) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `senhahub_mfa_pending=${encodeURIComponent(pendingToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MFA_PENDING_TTL_SECONDS}${secure}`;
-}
-
-function clearMfaCookie() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `senhahub_mfa_pending=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`;
-}
-
-function safeMfaQrCode(value) {
-  const qrCode = String(value || "").trim();
-  if (qrCode.startsWith("data:image/svg+xml") && qrCode.length <= 200_000) return qrCode;
-  if (qrCode.startsWith("<svg") && qrCode.length <= 150_000 && !/<\/?script\b/i.test(qrCode)) {
-    return `data:image/svg+xml;base64,${Buffer.from(qrCode, "utf8").toString("base64")}`;
-  }
-  return "";
 }
 
 function isUuid(value) {
