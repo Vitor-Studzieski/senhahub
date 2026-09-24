@@ -3905,7 +3905,7 @@ function getCookie(request, name) {
 
 function clientIp(request) {
   const trusted = process.env.TRUST_PROXY_HEADERS === "1"
-    ? request.headers.get("cf-connecting-ip") || request.headers.get("x-vercel-forwarded-for") || request.headers.get("x-real-ip")
+    ? request.headers.get("x-vercel-forwarded-for") || request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip")
     : "";
   return String(trusted || "unknown").split(",")[0].trim() || "unknown";
 }

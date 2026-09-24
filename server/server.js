@@ -4753,7 +4753,7 @@ function getCookie(req, name) {
 
 function clientIp(req) {
   const trusted = process.env.TRUST_PROXY_HEADERS === "1"
-    ? (req.headers["cf-connecting-ip"] || req.headers["x-vercel-forwarded-for"] || req.headers["x-real-ip"])
+    ? (req.headers["x-vercel-forwarded-for"] || req.headers["cf-connecting-ip"] || req.headers["x-real-ip"])
     : "";
   return String(trusted || req.socket?.remoteAddress || "unknown").split(",")[0].trim() || "unknown";
 }

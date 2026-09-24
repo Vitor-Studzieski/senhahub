@@ -103,6 +103,10 @@ test("proxy só aceita forwarded headers quando explicitamente confiável", () =
   assert.match(standalone, /TRUST_PROXY_HEADERS !== "1"/);
   assert.match(standalone, /function nodeRequestProtocol\(req, url\)/);
   assert.match(runtime, /process\.env\.TRUST_PROXY_HEADERS === "1"/);
+  const standaloneClientIp = extractFunction(standalone, "function clientIp(req)");
+  const runtimeClientIp = extractFunction(runtime, "function clientIp(request)");
+  assert.ok(standaloneClientIp.indexOf("x-vercel-forwarded-for") < standaloneClientIp.indexOf("cf-connecting-ip"));
+  assert.ok(runtimeClientIp.indexOf("x-vercel-forwarded-for") < runtimeClientIp.indexOf("cf-connecting-ip"));
 });
 
 test("login aplica limites por IP e por conta sem lockout global", () => {
