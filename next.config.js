@@ -10,14 +10,14 @@ if (isVercelProduction) {
 }
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self'${isDevelopment ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' https://challenges.cloudflare.com${isDevelopment ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' https://fonts.googleapis.com",
   "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
-  `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co${isDevelopment ? " ws: http://localhost:*" : ""}`,
+  `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com${isDevelopment ? " ws: http://localhost:*" : ""}`,
   "font-src 'self' https://fonts.gstatic.com",
   "worker-src 'self'",
   "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:",
-  "frame-src 'self' https://www.instagram.com",
+  "frame-src 'self' https://www.instagram.com https://challenges.cloudflare.com",
   "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",

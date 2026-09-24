@@ -3171,6 +3171,68 @@ textarea:focus {
   }
 }
 
+.senhahub-auth-stage .captcha-field {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-height: 76px;
+}
+
+.senhahub-auth-stage .captcha-field[hidden],
+.senhahub-auth-stage .mfa-enrollment[hidden] {
+  display: none;
+}
+
+.senhahub-auth-stage .captcha-slot {
+  min-height: 65px;
+}
+
+.senhahub-auth-stage .captcha-status {
+  min-height: 16px;
+  margin: 0;
+  color: var(--vr-text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.senhahub-auth-stage .mfa-enrollment {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--vr-border);
+  border-radius: 12px;
+  background: var(--vr-surface-muted);
+  color: var(--vr-text);
+  text-align: center;
+}
+
+.senhahub-auth-stage .mfa-enrollment p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.senhahub-auth-stage #mfaQrCode {
+  width: 196px;
+  height: 196px;
+  padding: 8px;
+  border-radius: 8px;
+  background: white;
+}
+
+.senhahub-auth-stage .mfa-manual-key-label {
+  font-weight: 700;
+}
+
+.senhahub-auth-stage #mfaSecret {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--vr-heading);
+  font-size: 13px;
+  user-select: all;
+}
+
 /* Sprint 1.4: destaque temporario da ultima senha chamada e tipo da senha. */
 .attendant-page .ops-call-panel.call-highlight {
   border-color: var(--vr-orange-primary);

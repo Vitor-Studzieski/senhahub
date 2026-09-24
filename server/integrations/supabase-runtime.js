@@ -106,6 +106,10 @@ const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
 ]);
 const AUTH_SECRET = authSecret();
 const CRON_SECRET = String(process.env.CRON_SECRET || "");
+const SUPABASE_CAPTCHA_SITE_KEY = String(process.env.SUPABASE_CAPTCHA_SITE_KEY || "").trim();
+const SUPABASE_CAPTCHA_SECRET_KEY = String(process.env.SUPABASE_CAPTCHA_SECRET_KEY || "").trim();
+const CAPTCHA_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const AUTH_CREDENTIALS_ERROR = "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte.";
 const KIOSK_CONFIGURATION = loadKioskConfiguration(process.env);
 const TABLET_PRINTER_CONFIGURATION = loadTabletPrinterConfiguration(process.env);
 const AUTO_CONFIRM_PUBLIC_CUSTOMERS = process.env.SUPABASE_AUTO_CONFIRM_CUSTOMERS === "1";
@@ -268,6 +272,7 @@ async function handleRequestInternal(request, context = null) {
     });
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") return login(request);
+    if (request.method === "GET" && url.pathname === "/api/auth/config") return authConfig();
     if (request.method === "POST" && url.pathname === "/api/auth/mfa/verify") return verifyMfa(request);
     if (request.method === "POST" && url.pathname === "/api/auth/mfa/cancel") return cancelMfa(request);
     if (request.method === "POST" && url.pathname === "/api/auth/change-password") return changePassword(request);
@@ -391,6 +396,7 @@ async function login(request) {
   const body = await readJson(request);
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
+  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   const requestIp = clientIp(request);
   if (isKnownClientIp(requestIp)) {
     const ipRate = await consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
@@ -401,42 +407,48 @@ async function login(request) {
       );
     }
   }
-  const accountRate = await consumeSecurityRateLimit(
-    "login:account",
-    email || "missing",
-    LOGIN_ACCOUNT_RATE_LIMIT,
-    LOGIN_ACCOUNT_RATE_WINDOW_SECONDS
-  );
-  if (accountRate !== true) {
-    return json(
-      { error: accountRate === false ? "Muitas tentativas. Aguarde alguns minutos." : "Login temporariamente indisponivel." },
-      accountRate === false ? 429 : 503
-    );
+  if (captchaPartiallyConfigured()) {
+    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
   }
-  const attemptKey = `${requestIp}:${email || "unknown"}`;
-  if (await isLoginLocked(attemptKey)) return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." }, 401);
+  if (captchaEnabled() && !captchaToken) {
+    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
+  }
 
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, password }
+    body: { email, password, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
   });
   if (auth.error || !auth.user?.id) {
-    await registerLoginFailure(attemptKey);
-    return json({ error: "E-mail ou senha invalidos." }, 401);
+    return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
 
   const accessMode = trustedAccessMode(auth.user.app_metadata?.access_mode);
   const profile = await getProfile(auth.user.id, auth.user.email, { accessMode });
   if (!profile || profile.status !== "active") {
-    await registerLoginFailure(attemptKey);
-    return json({ error: "Usuario sem perfil ativo no sistema." }, 401);
+    if (auth.access_token) {
+      await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken: auth.access_token })
+        .catch(() => null);
+    }
+    return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
 
-  // MFA/TOTP administrativo está temporariamente desativado. A implementação
-  // permanece disponível para reativação pela tarefa registrada no backlog.
-  await clearLoginFailures(attemptKey);
+  if (hasAnyRole(profile, ADMIN_ROLES)) {
+    const challenge = await startAdminMfaChallenge(auth, profile);
+    if (challenge.error) {
+      await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken: auth.access_token }).catch(() => null);
+      return json({ error: "Não foi possível concluir a verificação em duas etapas. Tente novamente." }, challenge.status || 503);
+    }
+    return json(challenge.payload, 202, { "set-cookie": mfaCookies(challenge.pendingToken) });
+  }
+
+  // A credencial do Supabase só é necessária para validar a senha; o app usa
+  // a própria sessão, então encerra a sessão GoTrue que não será entregue ao cliente.
+  if (auth.access_token) {
+    await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken: auth.access_token })
+      .catch(() => null);
+  }
   const csrfToken = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   const sessionId = crypto.randomUUID();
@@ -445,13 +457,60 @@ async function login(request) {
   return json({ user: profile, csrfToken }, 200, authCookies(sessionToken, csrfToken));
 }
 
+function authConfig() {
+  if (captchaPartiallyConfigured()) {
+    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503, { "cache-control": "no-store" });
+  }
+  const enabled = captchaEnabled();
+  return json({
+    captcha: {
+      enabled,
+      provider: "turnstile",
+      siteKey: enabled ? SUPABASE_CAPTCHA_SITE_KEY : ""
+    }
+  }, 200, { "cache-control": "no-store" });
+}
+
+function captchaEnabled() {
+  return Boolean(SUPABASE_CAPTCHA_SITE_KEY && SUPABASE_CAPTCHA_SECRET_KEY);
+}
+
+function captchaPartiallyConfigured() {
+  return Boolean(SUPABASE_CAPTCHA_SITE_KEY) !== Boolean(SUPABASE_CAPTCHA_SECRET_KEY);
+}
+
+async function verifyTurnstileToken(token) {
+  if (captchaPartiallyConfigured()) return { ok: false, status: 503 };
+  if (!captchaEnabled()) return { ok: true };
+  const responseToken = String(token || "").trim();
+  if (!responseToken) return { ok: false, status: 400 };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(CAPTCHA_VERIFY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret: SUPABASE_CAPTCHA_SECRET_KEY, response: responseToken }),
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    if (!response.ok) return { ok: false, status: 503 };
+    const result = await response.json();
+    return result?.success === true ? { ok: true } : { ok: false, status: 400 };
+  } catch {
+    return { ok: false, status: 503 };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function startAdminMfaChallenge(auth, profile) {
   const accessToken = String(auth?.access_token || "");
   if (!accessToken) return { error: "Nao foi possivel iniciar a verificacao em duas etapas.", status: 503 };
 
   const factors = await supabaseAuthFetch("/auth/v1/factors", { accessToken });
   if (factors?.error) {
-    console.error("mfa_factor_list_failed", factors.error);
+    console.error("mfa_factor_list_failed", safeAuthProviderErrorCode(factors.error));
     return { error: "Nao foi possivel consultar a verificacao em duas etapas.", status: 503 };
   }
 
@@ -471,7 +530,7 @@ async function startAdminMfaChallenge(auth, profile) {
       }
     });
     if (created?.error || !isUuid(created?.id)) {
-      console.error("mfa_factor_enroll_failed", created?.error || "missing_factor_id");
+      console.error("mfa_factor_enroll_failed", safeAuthProviderErrorCode(created?.error || "missing_factor_id"));
       return { error: "Nao foi possivel preparar o cadastro do autenticador.", status: 503 };
     }
     factorId = created.id;
@@ -488,7 +547,7 @@ async function startAdminMfaChallenge(auth, profile) {
     accessToken
   });
   if (challenge?.error || !isUuid(challenge?.id)) {
-    console.error("mfa_challenge_failed", challenge?.error || "missing_challenge_id");
+    console.error("mfa_challenge_failed", safeAuthProviderErrorCode(challenge?.error || "missing_challenge_id"));
     return { error: "Nao foi possivel iniciar a verificacao em duas etapas.", status: 503 };
   }
 
@@ -534,6 +593,7 @@ async function verifyMfa(request) {
   const challenge = rows[0];
   if (!challenge) return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
   if (Number(challenge.attempts || 0) >= MFA_MAX_ATTEMPTS) {
+    await closeMfaAuthSession(challenge);
     await remove("auth_mfa_challenges", challenge.id);
     return json({ error: "Muitas tentativas de verificacao. Entre novamente." }, 429, { "set-cookie": clearMfaCookie() });
   }
@@ -544,7 +604,10 @@ async function verifyMfa(request) {
     body: { attempts: Number(challenge.attempts || 0) + 1 }
   });
   const accessToken = decryptMfaAccessToken(challenge.access_token_ciphertext);
-  if (!accessToken) return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
+  if (!accessToken) {
+    await remove("auth_mfa_challenges", challenge.id);
+    return json({ error: "A verificacao expirou. Entre novamente." }, 401, { "set-cookie": clearMfaCookie() });
+  }
 
   const verified = await supabaseAuthFetch(`/auth/v1/factors/${encodeURIComponent(challenge.factor_id)}/verify`, {
     method: "POST",
@@ -555,6 +618,7 @@ async function verifyMfa(request) {
 
   const profile = await getProfile(challenge.user_id, "", { bypassCache: true });
   if (!profile || profile.status !== "active" || !hasAnyRole(profile, ADMIN_ROLES)) {
+    await closeMfaAuthSession(challenge);
     await remove("auth_mfa_challenges", challenge.id);
     return json({ error: "Usuario sem perfil administrativo ativo." }, 403, { "set-cookie": clearMfaCookie() });
   }
@@ -564,6 +628,7 @@ async function verifyMfa(request) {
   const sessionId = crypto.randomUUID();
   await createAuthSession(sessionId, profile.id, csrfToken, expiresAt, true);
   const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, csrfToken, expiresAt, mfaVerified: true });
+  await closeMfaAuthSession(challenge);
   await remove("auth_mfa_challenges", challenge.id);
   return json({ user: profile, csrfToken }, 200, { "set-cookie": [ ...authCookies(sessionToken, csrfToken)["set-cookie"], clearMfaCookie() ] });
 }
@@ -571,8 +636,20 @@ async function verifyMfa(request) {
 async function cancelMfa(request) {
   if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
   const pending = verifyMfaPendingToken(getCookie(request, "senhahub_mfa_pending"));
-  if (pending?.id) await remove("auth_mfa_challenges", pending.id);
+  if (pending?.id) {
+    const filter = "id=eq." + encodeURIComponent(pending.id) + "&user_id=eq." + encodeURIComponent(pending.userId) + "&limit=1";
+    const rows = await select("auth_mfa_challenges", filter);
+    if (rows[0]) await closeMfaAuthSession(rows[0]);
+    await remove("auth_mfa_challenges", pending.id);
+  }
   return json({ ok: true }, 200, { "set-cookie": clearMfaCookie() });
+}
+
+async function closeMfaAuthSession(challenge) {
+  const accessToken = decryptMfaAccessToken(challenge?.access_token_ciphertext);
+  if (accessToken) {
+    await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken }).catch(() => null);
+  }
 }
 
 async function changePassword(request) {
@@ -580,8 +657,15 @@ async function changePassword(request) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
+  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   if (!email || !currentPassword) {
     return json({ error: "Informe e-mail e senha atual." }, 400);
+  }
+  if (captchaPartiallyConfigured()) {
+    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
+  }
+  if (captchaEnabled() && !captchaToken) {
+    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
   }
 
   const requestIp = clientIp(request);
@@ -620,7 +704,7 @@ async function changePassword(request) {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, password: currentPassword }
+    body: { email, password: currentPassword, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
   });
   if (auth.error || !auth.user?.id) {
     await registerLoginFailure(attemptKey);
@@ -632,7 +716,7 @@ async function changePassword(request) {
     body: { password: newPassword }
   });
   if (updated.error) {
-    console.error("password_update_failed", updated.error);
+    console.error("password_update_failed", safeAuthProviderErrorCode(updated.error));
     return json({ error: "Nao foi possivel atualizar a senha agora." }, 400);
   }
   await revokeAuthSessionsForUser(auth.user.id);
@@ -643,11 +727,18 @@ async function changePassword(request) {
 async function forgotPassword(request) {
   const body = await readJson(request);
   const email = String(body.email || "").trim().toLowerCase();
+  const captchaToken = String(body.captchaToken || body.captcha_token || "").trim();
   const response = {
     ok: true,
     message: "Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha."
   };
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(response, 202);
+  if (captchaPartiallyConfigured()) {
+    return json({ error: "A verificação de segurança está temporariamente indisponível. Tente novamente." }, 503);
+  }
+  if (captchaEnabled() && !captchaToken) {
+    return json({ error: "Conclua a verificação de segurança para continuar." }, 400);
+  }
 
   const attemptKey = `${clientIp(request)}:${email}:forgot-password`;
   if (await isLoginLocked(attemptKey)) return json(response, 202);
@@ -658,9 +749,9 @@ async function forgotPassword(request) {
     method: "POST",
     apiKey: SUPABASE_ANON_KEY,
     bearer: SUPABASE_ANON_KEY,
-    body: { email, redirect_to: redirectTo }
+    body: { email, redirect_to: redirectTo, ...(captchaToken ? { captcha_token: captchaToken } : {}) }
   });
-  if (result?.error) console.error("password_recovery_request_failed", result.error);
+  if (result?.error) console.error("password_recovery_request_failed", safeAuthProviderErrorCode(result.error));
   return json(response, 202);
 }
 
@@ -712,6 +803,10 @@ async function registerCustomer(request) {
   if (emailRate !== true) {
     return json({ error: emailRate === false ? "Muitas tentativas de cadastro. Aguarde alguns minutos." : "Cadastro temporariamente indisponivel." }, emailRate === false ? 429 : 503);
   }
+  const captcha = await verifyTurnstileToken(body.captchaToken || body.captcha_token);
+  if (!captcha.ok) {
+    return json({ error: captcha.status === 503 ? "A verificação de segurança está temporariamente indisponível. Tente novamente." : "Conclua a verificação de segurança para continuar." }, captcha.status || 400);
+  }
   const attemptKey = `${clientIp(request)}:${data.email}:register`;
   if (await isLoginLocked(attemptKey)) return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." }, 401);
 
@@ -727,7 +822,7 @@ async function registerCustomer(request) {
   const userId = auth.id || auth.user?.id;
   if (auth.error || !userId) {
     await registerLoginFailure(attemptKey);
-    console.error("customer_register_failed", auth.error || "missing_user_id");
+    console.error("customer_register_failed", safeAuthProviderErrorCode(auth.error || "missing_user_id"));
     return json({ error: "Nao foi possivel criar a conta com os dados informados." }, 400);
   }
 
@@ -3325,7 +3420,7 @@ async function revokeAuthSession(sessionId) {
     headers: { Prefer: "return=minimal" },
     body: { revoked_at: isoNow() }
   });
-  if (result?.error) console.error("auth_session_revoke_failed", result.error);
+  if (result?.error) console.error("auth_session_revoke_failed", safeAuthProviderErrorCode(result.error));
 }
 
 async function revokeAuthSessionsForUser(userId) {
@@ -3335,7 +3430,7 @@ async function revokeAuthSessionsForUser(userId) {
     headers: { Prefer: "return=minimal" },
     body: { revoked_at: isoNow() }
   });
-  if (result?.error) console.error("auth_sessions_revoke_failed", result.error);
+  if (result?.error) console.error("auth_sessions_revoke_failed", safeAuthProviderErrorCode(result.error));
 }
 
 async function requireUser(request, roles) {
@@ -3435,6 +3530,14 @@ async function consumeSecurityRateLimit(scope, value, limit, windowSeconds) {
 
 function cleanLimitedText(value, maximum) {
   return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, maximum);
+}
+
+function safeAuthProviderErrorCode(error) {
+  const candidate = error && typeof error === "object"
+    ? error.code || error.error_code || error.status
+    : error;
+  const code = String(candidate || "provider_error");
+  return /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code : "provider_error";
 }
 
 function createSupabasePushRepository() {
@@ -3972,7 +4075,7 @@ function withRequestId(response, requestId) {
 
 function securityHeaders(extra = {}) {
   return {
-    "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    "content-security-policy": "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co; connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:; frame-src 'self' https://www.instagram.com https://challenges.cloudflare.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
     "strict-transport-security": "max-age=31536000; includeSubDomains; preload",

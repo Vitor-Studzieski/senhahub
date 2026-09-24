@@ -372,7 +372,7 @@ test("permite senha sem presenca durante testes controlados", async () => {
   assert.equal(result.ticket.qrVerified, false);
 });
 
-test("bloqueia login apos muitas tentativas invalidas", async () => {
+test("tentativas inválidas para uma conta não bloqueiam o login correto", async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
       method: "POST",
@@ -388,8 +388,8 @@ test("bloqueia login apos muitas tentativas invalidas", async () => {
     body: JSON.stringify({ email: testCredentials.lockedCustomer.email, password: testCredentials.lockedCustomer.password })
   });
   const payload = await response.json();
-  assert.equal(response.status, 401);
-  assert.match(payload.error, /Muitas tentativas/i);
+  assert.equal(response.status, 200);
+  assert.equal(payload.user.email, testCredentials.lockedCustomer.email);
 });
 
 test("rota interna de jobs exige o segredo do cron", async () => {

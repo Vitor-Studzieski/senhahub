@@ -109,14 +109,27 @@ test("proxy só aceita forwarded headers quando explicitamente confiável", () =
   assert.ok(runtimeClientIp.indexOf("x-vercel-forwarded-for") < runtimeClientIp.indexOf("cf-connecting-ip"));
 });
 
-test("login aplica limites por IP e por conta sem lockout global", () => {
+test("login limita por IP sem bloqueio global por conta", () => {
   const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
-  assert.match(standalone, /login:ip/);
-  assert.match(standalone, /login:account/);
-  assert.match(runtime, /login:ip/);
-  assert.match(runtime, /login:account/);
-  assert.match(runtime, /LOGIN_ACCOUNT_RATE_LIMIT/);
+  const loginFunctions = [
+    extractFunction(standalone, "function loginLocalUser(body, req)"),
+    extractFunction(standalone, "async function loginSupabaseUser(body, req)"),
+    extractFunction(runtime, "async function login(request)")
+  ];
+  for (const login of loginFunctions) {
+    assert.match(login, /login:ip/);
+    assert.doesNotMatch(login, /login:account|isLoginLocked|registerLoginFailure/);
+  }
+});
+
+test("login não diferencia credencial inválida de perfil inativo", () => {
+  const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
+  const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  const supabaseLogin = extractFunction(runtime, "async function login(request)");
+  assert.equal((supabaseLogin.match(/AUTH_CREDENTIALS_ERROR/g) || []).length, 2);
+  const legacyLogin = extractFunction(standalone, "async function loginSupabaseUser(body, req)");
+  assert.equal((legacyLogin.match(/Não foi possível concluir a autenticação/g) || []).length, 2);
 });
 
 test("troca de senha limita tentativas por IP e por conta antes de validar credenciais", () => {

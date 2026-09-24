@@ -2119,7 +2119,7 @@ async function forgotPassword(body, req) {
     bearer: SUPABASE_ANON_KEY,
     body: { email, redirect_to: redirectTo }
   });
-  if (result?.error) console.error("password_recovery_request_failed", result.error);
+  if (result?.error) console.error("password_recovery_request_failed", safeAuthProviderErrorCode(result.error));
   return response;
 }
 
@@ -2206,19 +2206,10 @@ function loginLocalUser(body, req) {
   if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
     return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
   }
-  if (!consumeSecurityRateLimit("login:account", email || "missing", LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
-    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
-  }
-  const attemptKey = `${requestIp}:${email || "unknown"}`;
-  if (isLoginLocked(attemptKey)) {
-    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
-  }
   const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = ?").get(email, "active");
   if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
-    registerLoginFailure(attemptKey);
-    return { error: "E-mail ou senha inválidos." };
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
-  clearLoginFailures(attemptKey);
 
   const sessionId = `auth-${crypto.randomUUID()}`;
   const csrfToken = crypto.randomBytes(32).toString("hex");
@@ -2284,13 +2275,6 @@ async function loginSupabaseUser(body, req) {
   if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
     return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
   }
-  if (!consumeSecurityRateLimit("login:account", email || "missing", LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
-    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
-  }
-  const attemptKey = `${requestIp}:${email || "unknown"}`;
-  if (isLoginLocked(attemptKey)) {
-    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
-  }
 
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
     method: "POST",
@@ -2300,17 +2284,17 @@ async function loginSupabaseUser(body, req) {
   });
 
   if (auth.error || !auth.user?.id) {
-    registerLoginFailure(attemptKey);
-    return { error: "E-mail ou senha invalidos." };
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
 
   const profile = await getSupabaseProfile(auth.user.id, auth.user.email);
   if (!profile || profile.status !== "active") {
-    registerLoginFailure(attemptKey);
-    return { error: "Usuario sem perfil ativo no sistema." };
+    if (auth.access_token) {
+      await supabaseAuthFetch("/auth/v1/logout?scope=local", { method: "POST", accessToken: auth.access_token }).catch(() => null);
+    }
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
 
-  clearLoginFailures(attemptKey);
   const csrfToken = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 1000 * SESSION_TTL_SECONDS).toISOString();
   const sessionToken = signSessionToken({
@@ -2378,7 +2362,7 @@ async function revokeSupabaseAuthSessions(userId) {
     headers: { Prefer: "return=minimal" },
     body: { revoked_at: isoNow() }
   });
-  if (result?.error) console.error("auth_sessions_revoke_failed", result.error);
+  if (result?.error) console.error("auth_sessions_revoke_failed", safeAuthProviderErrorCode(result.error));
 }
 
 async function registerSupabaseCustomer(body, req) {
@@ -2722,6 +2706,14 @@ function cleanLimitedText(value, maximum) {
   return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, maximum);
 }
 
+function safeAuthProviderErrorCode(error) {
+  const candidate = error && typeof error === "object"
+    ? error.code || error.error_code || error.status
+    : error;
+  const code = String(candidate || "provider_error");
+  return /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code : "provider_error";
+}
+
 function createSqlitePushRepository() {
   return {
     claimEvent(event) {
@@ -3045,9 +3037,9 @@ function roleHome(user) {
 }
 
 function applySecurityHeaders(req, res) {
-  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co";
+  const connectSrc = dev ? "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com ws: http://localhost:*" : "'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co https://challenges.cloudflare.com";
   const nonce = crypto.randomBytes(16).toString("base64url");
-  const scriptSrc = dev ? `'self' 'nonce-${nonce}' 'unsafe-eval'` : `'self' 'nonce-${nonce}'`;
+  const scriptSrc = dev ? `'self' 'nonce-${nonce}' https://challenges.cloudflare.com 'unsafe-eval'` : `'self' 'nonce-${nonce}' https://challenges.cloudflare.com`;
   res.setHeader("content-security-policy", [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -3057,6 +3049,7 @@ function applySecurityHeaders(req, res) {
     "font-src 'self' https://fonts.gstatic.com",
     "worker-src 'self'",
     "media-src 'self' https://*.fbcdn.net https://*.cdninstagram.com https://*.supabase.co data: blob:",
+    "frame-src 'self' https://www.instagram.com https://challenges.cloudflare.com",
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
