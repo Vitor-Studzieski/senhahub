@@ -96,7 +96,7 @@ function createPrintV2Api({ rpc, select, supabaseFetch, requireAdmin, log = () =
       await supabaseFetch(`/auth/v1/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' }).catch(() => {});
       throw error;
     }
-    return reply({ deviceId:id,enrollmentCode:code,expiresIn:600 },201);
+    return reply({ deviceId:id,enrollmentCode:code,expiresIn:1800 },201);
   }
   async function enroll(request) {
     if(localAuthenticate)throw failure('use_local_provisioning',404);
