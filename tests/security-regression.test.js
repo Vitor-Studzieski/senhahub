@@ -115,6 +115,41 @@ test("login aplica limites por IP e por conta sem lockout global", () => {
   assert.match(runtime, /LOGIN_ACCOUNT_RATE_LIMIT/);
 });
 
+test("troca de senha limita tentativas por IP e por conta antes de validar credenciais", () => {
+  const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
+  const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  for (const [source, signature] of [
+    [standalone, "async function changeSupabasePassword"],
+    [runtime, "async function changePassword(request)"]
+  ]) {
+    const changePassword = extractFunction(source, signature);
+    assert.match(changePassword, /change-password:ip/);
+    assert.match(changePassword, /change-password:account/);
+    assert.ok(changePassword.indexOf("change-password:account") < changePassword.indexOf("validatePasswordPolicy"));
+  }
+  const localChangePassword = extractFunction(standalone, "async function changeLocalPassword");
+  assert.match(localChangePassword, /change-password:ip/);
+  assert.match(localChangePassword, /change-password:account/);
+});
+
+test("autorização de TV ignora user_metadata editável", () => {
+  const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  const login = extractFunction(runtime, "async function login(request)");
+  const getAuthUser = extractFunction(runtime, "async function getAuthUser(request)");
+  const listUsers = extractFunction(runtime, "async function listUsers()");
+  const createUser = extractFunction(runtime, "async function createUser(body)");
+
+  assert.match(login, /trustedAccessMode\(auth\.user\.app_metadata\?\.access_mode\)/);
+  assert.doesNotMatch(login, /auth\.user\.user_metadata/);
+  assert.match(getAuthUser, /trustedAccessMode\(session\.accessMode\)/);
+  assert.doesNotMatch(getAuthUser, /session\.user\.role/);
+  assert.match(listUsers, /user\.app_metadata\?\.access_mode/);
+  assert.doesNotMatch(listUsers, /user\.user_metadata/);
+  assert.match(createUser, /app_metadata:\s*\{ access_mode: "tv" \}/);
+  assert.doesNotMatch(createUser, /user_metadata:\s*\{\s*name,\s*role/);
+  assert.match(createUser, /"tablet"/);
+});
+
 test("a verificação de backup valida manifesto, idade, permissões e AES-GCM", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "senhahub-security-backup-"));
   const backupDir = path.join(root, "20260910T000000Z");

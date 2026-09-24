@@ -2241,13 +2241,23 @@ async function changeLocalPassword(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
-  if (!email || !currentPassword || !validateStrongPassword(newPassword)) {
+  if (!email || !currentPassword) {
+    return { error: "Informe e-mail e senha atual." };
+  }
+  const requestIp = clientIp(req);
+  if (requestIp !== "unknown" && !consumeSecurityRateLimit("change-password:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
+  }
+  if (!consumeSecurityRateLimit("change-password:account", email, LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
+  }
+  if (!validateStrongPassword(newPassword)) {
     return { error: "Informe e-mail, senha atual e uma nova senha forte com ao menos 12 caracteres, letras maiusculas, minusculas e numeros." };
   }
   const passwordPolicy = await validatePasswordPolicy(newPassword);
   if (passwordPolicy.error) return passwordPolicy;
 
-  const attemptKey = `${clientIp(req)}:${email || "unknown"}:change-password`;
+  const attemptKey = `${requestIp}:${email}:change-password`;
   if (isLoginLocked(attemptKey)) {
     return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   }
@@ -2318,13 +2328,23 @@ async function changeSupabasePassword(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
-  if (!email || !currentPassword || !validateStrongPassword(newPassword)) {
+  if (!email || !currentPassword) {
+    return { error: "Informe e-mail e senha atual." };
+  }
+  const requestIp = clientIp(req);
+  if (requestIp !== "unknown" && !consumeSecurityRateLimit("change-password:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
+  }
+  if (!consumeSecurityRateLimit("change-password:account", email, LOGIN_ACCOUNT_RATE_LIMIT, LOGIN_ACCOUNT_RATE_WINDOW_SECONDS)) {
+    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
+  }
+  if (!validateStrongPassword(newPassword)) {
     return { error: "Informe e-mail, senha atual e uma nova senha forte com ao menos 12 caracteres, letras maiusculas, minusculas e numeros." };
   }
   const passwordPolicy = await validatePasswordPolicy(newPassword);
   if (passwordPolicy.error) return passwordPolicy;
 
-  const attemptKey = `${clientIp(req)}:${email || "unknown"}:change-password`;
+  const attemptKey = `${requestIp}:${email}:change-password`;
   if (isLoginLocked(attemptKey)) {
     return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   }
@@ -2383,7 +2403,7 @@ async function registerSupabaseCustomer(body, req) {
       email: data.email,
       password: data.password,
       email_confirm: process.env.SUPABASE_AUTO_CONFIRM_CUSTOMERS === "1",
-      user_metadata: { name: data.name, role: "customer" }
+      user_metadata: { name: data.name }
     }
   });
   const userId = auth.id || auth.user?.id;

@@ -427,9 +427,8 @@ async function login(request) {
     return json({ error: "E-mail ou senha invalidos." }, 401);
   }
 
-  const profile = await getProfile(auth.user.id, auth.user.email, {
-    accessMode: auth.user.user_metadata?.access_mode || auth.user.user_metadata?.role || auth.user.app_metadata?.access_mode
-  });
+  const accessMode = trustedAccessMode(auth.user.app_metadata?.access_mode);
+  const profile = await getProfile(auth.user.id, auth.user.email, { accessMode });
   if (!profile || profile.status !== "active") {
     await registerLoginFailure(attemptKey);
     return json({ error: "Usuario sem perfil ativo no sistema." }, 401);
@@ -442,7 +441,7 @@ async function login(request) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   const sessionId = crypto.randomUUID();
   await createAuthSession(sessionId, profile.id, csrfToken, expiresAt, false);
-  const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, csrfToken, expiresAt, mfaVerified: false });
+  const sessionToken = signSessionToken({ sessionId, provider: "supabase", email: profile.email, user: profile, accessMode, csrfToken, expiresAt, mfaVerified: false });
   return json({ user: profile, csrfToken }, 200, authCookies(sessionToken, csrfToken));
 }
 
@@ -581,13 +580,40 @@ async function changePassword(request) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
-  if (!email || !currentPassword || !validateStrongPassword(newPassword)) {
+  if (!email || !currentPassword) {
+    return json({ error: "Informe e-mail e senha atual." }, 400);
+  }
+
+  const requestIp = clientIp(request);
+  if (isKnownClientIp(requestIp)) {
+    const ipRate = await consumeSecurityRateLimit("change-password:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
+    if (ipRate !== true) {
+      return json(
+        { error: ipRate === false ? "Muitas tentativas. Aguarde um minuto." : "Alteracao de senha temporariamente indisponivel." },
+        ipRate === false ? 429 : 503
+      );
+    }
+  }
+  const accountRate = await consumeSecurityRateLimit(
+    "change-password:account",
+    email,
+    LOGIN_ACCOUNT_RATE_LIMIT,
+    LOGIN_ACCOUNT_RATE_WINDOW_SECONDS
+  );
+  if (accountRate !== true) {
+    return json(
+      { error: accountRate === false ? "Muitas tentativas. Aguarde alguns minutos." : "Alteracao de senha temporariamente indisponivel." },
+      accountRate === false ? 429 : 503
+    );
+  }
+
+  if (!validateStrongPassword(newPassword)) {
     return json({ error: "Informe e-mail, senha atual e uma nova senha forte com ao menos 12 caracteres, letras maiusculas, minusculas e numeros." }, 400);
   }
   const passwordPolicy = await validatePasswordPolicy(newPassword);
   if (passwordPolicy.error) return json({ error: passwordPolicy.error }, passwordPolicy.httpStatus);
 
-  const attemptKey = `${clientIp(request)}:${email || "unknown"}:change-password`;
+  const attemptKey = `${requestIp}:${email}:change-password`;
   if (await isLoginLocked(attemptKey)) return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." }, 401);
 
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
@@ -695,7 +721,7 @@ async function registerCustomer(request) {
       email: data.email,
       password: data.password,
       email_confirm: AUTO_CONFIRM_PUBLIC_CUSTOMERS,
-      user_metadata: { name: data.name, role: "customer" }
+      user_metadata: { name: data.name }
     }
   });
   const userId = auth.id || auth.user?.id;
@@ -2760,7 +2786,7 @@ async function listUsers() {
   const permissions = await select("profile_sector_permissions", "select=profile_id,sector_id");
   const accessModes = new Map((authUsers?.users || []).map((user) => [
     user.id,
-    user.user_metadata?.access_mode || (user.user_metadata?.role === "tv" ? "tv" : null)
+    trustedAccessMode(user.app_metadata?.access_mode)
   ]));
   const byProfile = new Map();
   permissions.forEach((item) => {
@@ -2779,7 +2805,7 @@ async function createUser(body) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const name = String(body.name || "").trim();
-  const role = ["customer", "attendant", "manager", "admin", "tv", "marketing"].includes(body.role) ? body.role : "attendant";
+  const role = ["customer", "attendant", "manager", "admin", "tv", "tablet", "marketing"].includes(body.role) ? body.role : "attendant";
   const profileRole = role === "tv" ? "customer" : role;
   const sectorIds = role === "marketing" ? [] : [...new Set((Array.isArray(body.sectorIds) ? body.sectorIds : [])
     .map((sectorId) => String(sectorId || "").trim())
@@ -2796,7 +2822,13 @@ async function createUser(body) {
   const storeCode = normalizeStoreCode(body.storeCode);
   const auth = await supabaseFetch("/auth/v1/admin/users", {
     method: "POST",
-    body: { email, password, email_confirm: true, user_metadata: { name, role, ...(role === "tv" ? { access_mode: "tv" } : {}) } }
+    body: {
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name },
+      ...(role === "tv" ? { app_metadata: { access_mode: "tv" } } : {})
+    }
   });
   if (auth.error || !auth.id) return fail(userCreationErrorMessage(auth));
   const profile = await upsert("profiles", { id: auth.id, email, name, role: profileRole, status: "active", store_code: storeCode }, "id");
@@ -2972,9 +3004,14 @@ function userDto(row) {
 }
 
 function applyAccessMode(profile, accessMode) {
-  if (accessMode === "tv") return { ...profile, role: "tv" };
-  if (accessMode === "tablet") return { ...profile, role: "tablet" };
+  const trustedMode = trustedAccessMode(accessMode);
+  if (trustedMode === "tv") return { ...profile, role: "tv" };
+  if (trustedMode === "tablet") return { ...profile, role: "tablet" };
   return profile;
+}
+
+function trustedAccessMode(value) {
+  return value === "tv" || value === "tablet" ? value : null;
 }
 
 async function upsertSession(body, userAgent) {
@@ -3250,7 +3287,7 @@ async function getAuthUser(request) {
   const session = verifySessionToken(token);
   if (!session?.user?.id) return null;
   const [profile, appSession] = await Promise.all([
-    getProfile(session.user.id, session.email, { accessMode: ["tv", "tablet"].includes(session.user.role) ? session.user.role : null }),
+    getProfile(session.user.id, session.email, { accessMode: trustedAccessMode(session.accessMode) }),
     getActiveAuthSession(session)
   ]);
   if (!profile || profile.status !== "active" || !appSession) return null;
