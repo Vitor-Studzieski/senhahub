@@ -604,7 +604,7 @@ async function logout(request) {
 
 async function me(request) {
   const user = await getAuthUser(request);
-  const tvDisplayAccess = user && normalizeRole(user.role) === "customer"
+  const tvDisplayAccess = user && ["customer", "tv"].includes(normalizeRole(user.role))
     ? await hasTargetedTvMedia(user.id)
     : false;
   return json({
@@ -626,11 +626,14 @@ async function tvMediaListRoute(request, url) {
   const user = await requireUser(request, manage ? MEDIA_MANAGEMENT_ROLES : AUTHENTICATED_ROLES);
   if (user.response) return user.response;
   const canSeeSharedPlaylist = DISPLAY_ROLES.includes(user.role);
+  const hasDedicatedTvPlaylist = !manage && user.role === "tv" && await hasTargetedTvMedia(user.id);
   const visibilityFilter = manage
     ? ""
-    : canSeeSharedPlaylist
-      ? `&or=(target_user_id.is.null,target_user_id.eq.${encodeURIComponent(user.id)})`
-      : `&target_user_id=eq.${encodeURIComponent(user.id)}`;
+    : hasDedicatedTvPlaylist
+      ? `&target_user_id=eq.${encodeURIComponent(user.id)}`
+      : canSeeSharedPlaylist
+        ? `&or=(target_user_id.is.null,target_user_id.eq.${encodeURIComponent(user.id)})`
+        : `&target_user_id=eq.${encodeURIComponent(user.id)}`;
   const filters = manage ? "" : `&active=eq.true&upload_status=eq.ready${visibilityFilter}`;
   const rows = await select("tv_media", `select=*&order=sort_order.asc,created_at.asc${filters}`);
   const targetAccounts = manage ? await listTvMediaTargetAccounts() : [];

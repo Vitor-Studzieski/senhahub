@@ -42,6 +42,8 @@
   const state = {
     lastCallSignature: "",
     userRole: "",
+    userId: "",
+    tvDisplayAccess: false,
     sectorId: "",
     actionInFlight: false,
     callAlertTimer: null,
@@ -89,6 +91,7 @@
     mediaFeedback: document.querySelector("#tvMediaFeedback")
   };
 
+  const sessionReady = loadSession();
   updateClock();
   loadWeather();
   loadPlaylist();
@@ -101,7 +104,6 @@
     button.addEventListener("click", () => executeCallAction(button.dataset.tvCallAction));
   });
   window.setInterval(updateClock, 1000);
-  loadSession();
   loadState();
   state.timer = window.setInterval(loadState, POLL_INTERVAL_MS);
   state.weatherTimer = window.setInterval(loadWeather, WEATHER_REFRESH_MS);
@@ -110,6 +112,11 @@
   window.addEventListener("offline", () => updateConnection("offline", "Offline"));
 
   async function loadState() {
+    await sessionReady;
+    if (state.tvDisplayAccess) {
+      updateConnection("online", "Online");
+      return;
+    }
     if (state.requestInFlight) return;
     state.requestInFlight = true;
     try {
@@ -140,8 +147,13 @@
     try {
       const payload = await api("/api/auth/me");
       state.userRole = String(payload.user?.role || "").toLowerCase();
+      state.userId = String(payload.user?.id || "");
+      state.tvDisplayAccess = payload.user?.tvDisplayAccess === true;
+      if (state.tvDisplayAccess) document.querySelector("#tvScreen")?.classList.add("tv-media-only");
     } catch {
       state.userRole = "";
+      state.userId = "";
+      state.tvDisplayAccess = false;
     }
     updateCallControls();
   }
@@ -378,11 +390,17 @@
 
   async function loadPlaylist() {
     try {
+      await sessionReady;
       let response = await fetch("/api/tv/media", { cache: "no-store", credentials: "same-origin" });
-      if (!response.ok) response = await fetch("/data/tv-playlist.json", { cache: "no-store" });
+      if (!response.ok && !state.tvDisplayAccess) {
+        response = await fetch("/data/tv-playlist.json", { cache: "no-store" });
+      }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !Array.isArray(payload.items)) throw new Error("Playlist indisponível");
-      const playlist = payload.items
+      const visibleItems = state.tvDisplayAccess
+        ? payload.items.filter((item) => String(item?.targetUserId || "") === state.userId)
+        : payload.items;
+      const playlist = visibleItems
         .filter((item) => item && item.active !== false && typeof item.src === "string" && item.src.trim())
         .map((item, index) => ({
           id: String(item.id || `video-${index + 1}`),
