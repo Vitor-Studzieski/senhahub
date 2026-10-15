@@ -1861,8 +1861,12 @@ async function staffState(request) {
 }
 
 async function displayState(request) {
-  const user = await requireUser(request, DISPLAY_ROLES);
+  const user = await requireUser(request, AUTHENTICATED_ROLES);
   if (user.response) return user.response;
+  const canReadTargetedDisplay = user.role === "customer" && await hasTargetedTvMedia(user.id);
+  if (!DISPLAY_ROLES.includes(user.role) && !canReadTargetedDisplay) {
+    return json({ error: "Acesso negado." }, 403);
+  }
   return json({ source: "supabase", ...sanitizeDisplayState(await getStaffState(user)) }, 200, { "cache-control": "no-store" });
 }
 
