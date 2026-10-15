@@ -50,7 +50,8 @@ export async function proxy(request) {
   // through the protected API so a role/status change is not accepted until
   // the next long-lived cookie refresh.
   const user = await loadCurrentUser(request);
-  if (user && roles.includes(normalizeRole(user.role))) return allowPage(request);
+  const canOpenTargetedTv = pathname === "/tv/acougue" && user?.tvDisplayAccess === true;
+  if (user && (roles.includes(normalizeRole(user.role)) || canOpenTargetedTv)) return allowPage(request);
   if (user) {
     if (pathname === "/tablet") return redirectToLogin(request, pathname);
     return NextResponse.redirect(new URL(roleHome(user), request.url));

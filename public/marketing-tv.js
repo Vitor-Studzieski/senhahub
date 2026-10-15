@@ -2,12 +2,14 @@
   const form = document.querySelector("#tvMediaUploadForm");
   const fileInput = document.querySelector("#tvMediaFile");
   const titleInput = document.querySelector("#tvMediaTitle");
+  const targetUserInput = document.querySelector("#tvMediaTargetUser");
   const orientationInput = document.querySelector("#tvMediaOrientation");
   const durationInput = document.querySelector("#tvMediaDuration");
   const feedback = document.querySelector("#tvMediaUploadFeedback");
   const progress = document.querySelector("#tvMediaProgress");
   const library = document.querySelector("#tvMediaLibrary");
   const status = document.querySelector("#tvMediaLibraryStatus");
+  let targetAccounts = [];
 
   document.querySelector("#logoutButton")?.addEventListener("click", async () => {
     try { await api("/api/auth/logout", { method: "POST" }); } finally { window.location.href = "/login"; }
@@ -25,6 +27,8 @@
   async function loadLibrary() {
     try {
       const payload = await api("/api/tv/media?manage=1");
+      targetAccounts = Array.isArray(payload.targetAccounts) ? payload.targetAccounts : [];
+      if (targetUserInput) targetUserInput.innerHTML = renderTargetOptions(null, null);
       renderLibrary(Array.isArray(payload.items) ? payload.items : []);
     } catch (error) {
       if (library) library.innerHTML = `<p class="manager-empty">${escapeHtml(error.message)}</p>`;
@@ -48,6 +52,7 @@
             <label>Ordem<input data-field="order" type="number" min="0" value="${Number(item.order) || 0}" /></label>
             <label>Duração (s)<input data-field="duration" type="number" min="5" max="3600" value="${Number(item.durationSeconds) || 30}" /></label>
           </div>
+          <label>Exibir em<select data-field="targetUserId">${renderTargetOptions(item.targetUserId, item.targetUserName)}</select></label>
           <small>${item.type === "image" ? "Imagem" : "Vídeo"} · ${formatBytes(item.fileSize)} · ${item.uploadStatus === "ready" ? "enviado" : "upload pendente"}</small>
         </div>
         <div class="tv-media-library-actions">
@@ -73,6 +78,7 @@
           mimeType: file.type,
           fileSize: file.size,
           title: titleInput.value,
+          targetUserId: targetUserInput?.value || null,
           orientation: orientationInput.value,
           durationSeconds: Number(durationInput.value)
         }
@@ -121,7 +127,8 @@
           body: {
             title: card.querySelector('[data-field="title"]').value,
             sortOrder: Number(card.querySelector('[data-field="order"]').value),
-            durationSeconds: Number(card.querySelector('[data-field="duration"]').value)
+            durationSeconds: Number(card.querySelector('[data-field="duration"]').value),
+            targetUserId: card.querySelector('[data-field="targetUserId"]').value || null
           }
         });
       }
@@ -172,6 +179,23 @@
     const units = ["B", "KB", "MB", "GB"];
     const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+  }
+
+  function renderTargetOptions(selectedUserId, selectedUserName) {
+    const selectedId = String(selectedUserId || "");
+    const options = [`<option value="" ${selectedId ? "" : "selected"}>Todas as TVs</option>`];
+    if (selectedId && !targetAccounts.some((account) => account.id === selectedId)) {
+      options.push(`<option value="${escapeHtml(selectedId)}" selected>${escapeHtml(selectedUserName || "Conta vinculada")}</option>`);
+    }
+    targetAccounts.forEach((account) => {
+      const role = account.role ? ` · ${displayRoleLabel(account.role)}` : "";
+      options.push(`<option value="${escapeHtml(account.id)}" ${account.id === selectedId ? "selected" : ""}>${escapeHtml(account.name)}${escapeHtml(role)}</option>`);
+    });
+    return options.join("");
+  }
+
+  function displayRoleLabel(role) {
+    return ({ tv: "TV", tablet: "tablet", customer: "cliente", attendant: "atendente", manager: "gestor", admin: "administrador" })[role] || role;
   }
 
   function escapeHtml(value) {

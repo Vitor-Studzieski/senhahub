@@ -604,22 +604,71 @@ async function logout(request) {
 
 async function me(request) {
   const user = await getAuthUser(request);
-  return json({ user: user ? userDto(user) : null, csrfToken: user?.csrf_token || null });
+  const tvDisplayAccess = user && normalizeRole(user.role) === "customer"
+    ? await hasTargetedTvMedia(user.id)
+    : false;
+  return json({
+    user: user ? { ...userDto(user), tvDisplayAccess } : null,
+    csrfToken: user?.csrf_token || null
+  });
+}
+
+async function hasTargetedTvMedia(userId) {
+  const rows = await select(
+    "tv_media",
+    `select=id&target_user_id=eq.${encodeURIComponent(userId)}&active=eq.true&upload_status=eq.ready&limit=1`
+  );
+  return rows.length > 0;
 }
 
 async function tvMediaListRoute(request, url) {
   const manage = url.searchParams.get("manage") === "1";
-  const user = await requireUser(request, manage ? MEDIA_MANAGEMENT_ROLES : DISPLAY_ROLES);
+  const user = await requireUser(request, manage ? MEDIA_MANAGEMENT_ROLES : AUTHENTICATED_ROLES);
   if (user.response) return user.response;
-  const filters = manage ? "" : "&active=eq.true&upload_status=eq.ready";
+  const canSeeSharedPlaylist = DISPLAY_ROLES.includes(user.role);
+  const visibilityFilter = manage
+    ? ""
+    : canSeeSharedPlaylist
+      ? `&or=(target_user_id.is.null,target_user_id.eq.${encodeURIComponent(user.id)})`
+      : `&target_user_id=eq.${encodeURIComponent(user.id)}`;
+  const filters = manage ? "" : `&active=eq.true&upload_status=eq.ready${visibilityFilter}`;
   const rows = await select("tv_media", `select=*&order=sort_order.asc,created_at.asc${filters}`);
+  const targetAccounts = manage ? await listTvMediaTargetAccounts() : [];
+  const targetAccountById = new Map(targetAccounts.map((account) => [account.id, account]));
   return json({
     items: rows.map((row) => tvMediaDto(row, {
       stream: !manage,
-      streamToken: !manage && row.media_type === "video" ? createTvMediaStreamToken(row.id) : ""
+      streamToken: !manage && row.media_type === "video" ? createTvMediaStreamToken(row.id) : "",
+      targetUserName: targetAccountById.get(row.target_user_id)?.name || null
     })),
-    bucket: TV_MEDIA_BUCKET
+    bucket: TV_MEDIA_BUCKET,
+    ...(manage ? { targetAccounts } : {})
   }, 200, { "cache-control": "no-store" });
+}
+
+async function listTvMediaTargetAccounts() {
+  const permissions = await select("profile_sector_permissions", "select=profile_id&limit=1000");
+  const profileIds = [...new Set(permissions.map((permission) => permission.profile_id).filter(Boolean))];
+  if (!profileIds.length) return [];
+  const profiles = await select(
+    "profiles",
+    `select=id,name,role,status&id=in.(${profileIds.map((id) => encodeURIComponent(id)).join(",")})&status=eq.active&order=name.asc&limit=1000`
+  );
+  return profiles.map((profile) => ({ id: profile.id, name: profile.name, role: profile.role }));
+}
+
+async function isValidTvMediaTargetUser(targetUserId) {
+  const [profile, permissions] = await Promise.all([
+    select("profiles", `select=id,status&id=eq.${encodeURIComponent(targetUserId)}&limit=1`),
+    select("profile_sector_permissions", `select=profile_id&profile_id=eq.${encodeURIComponent(targetUserId)}&limit=1`)
+  ]);
+  return profile[0]?.status === "active" && permissions.length > 0;
+}
+
+function normalizeTvMediaTargetUserId(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const targetUserId = String(value).trim();
+  return isUuid(targetUserId) ? targetUserId : undefined;
 }
 
 async function tvMediaStreamRoute(request, mediaId, url) {
@@ -684,6 +733,11 @@ async function tvMediaUploadIntentRoute(request) {
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
 
   const body = await readJson(request);
+  const targetUserId = normalizeTvMediaTargetUserId(body.targetUserId);
+  if (targetUserId === undefined) return json({ error: "Conta de exibição inválida." }, 400);
+  if (targetUserId && !(await isValidTvMediaTargetUser(targetUserId))) {
+    return json({ error: "Selecione uma conta ativa vinculada a um setor." }, 400);
+  }
   const mimeType = String(body.mimeType || "").trim().toLowerCase();
   const definition = TV_MEDIA_MIME_TYPES.get(mimeType);
   const fileSize = Number(body.fileSize);
@@ -707,6 +761,7 @@ async function tvMediaUploadIntentRoute(request) {
       id,
       title,
       storage_path: storagePath,
+      target_user_id: targetUserId,
       media_type: definition.mediaType,
       mime_type: mimeType,
       file_size: fileSize,
@@ -798,6 +853,14 @@ async function tvMediaUpdateRoute(request, mediaId) {
   if (body.active !== undefined) patch.active = Boolean(body.active);
   if (body.orientation !== undefined) patch.orientation = normalizeMediaOrientation(body.orientation);
   if (body.durationSeconds !== undefined) patch.duration_seconds = normalizeMediaDuration(body.durationSeconds, media.media_type === "image" ? 10 : 30);
+  if (body.targetUserId !== undefined) {
+    const targetUserId = normalizeTvMediaTargetUserId(body.targetUserId);
+    if (targetUserId === undefined) return json({ error: "Conta de exibição inválida." }, 400);
+    if (targetUserId && !(await isValidTvMediaTargetUser(targetUserId))) {
+      return json({ error: "Selecione uma conta ativa vinculada a um setor." }, 400);
+    }
+    patch.target_user_id = targetUserId;
+  }
   if (body.sortOrder !== undefined) {
     const sortOrder = Number(body.sortOrder);
     if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) return json({ error: "A ordem precisa ser um número inteiro positivo." }, 400);
@@ -837,6 +900,8 @@ function tvMediaDto(row, options = {}) {
     durationSeconds: Number(row.duration_seconds || 30),
     order: Number(row.sort_order || 0),
     active: Boolean(row.active),
+    targetUserId: row.target_user_id || null,
+    targetUserName: options.targetUserName || null,
     uploadStatus: row.upload_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at

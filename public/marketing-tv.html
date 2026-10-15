@@ -26,7 +26,7 @@
         </header>
 
         <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Biblioteca de mídia</p><h2>Programação exibida nas TVs</h2><p>Envie MP4 ou imagens, organize a ordem e ative somente o que deve aparecer no ar.</p></div>
+          <div><p class="manager-eyebrow">Biblioteca de mídia</p><h2>Programação exibida nas TVs</h2><p>Envie MP4 ou imagens, escolha uma conta específica ou mantenha a exibição em todas as TVs.</p></div>
         </section>
 
         <section class="manager-management-grid tv-content-manager-grid">
@@ -36,6 +36,7 @@
               <form class="manager-form" id="tvMediaUploadForm">
                 <label>Arquivo<input id="tvMediaFile" type="file" accept="video/mp4,video/webm,image/jpeg,image/png,image/webp" required /></label>
                 <label>Título<input id="tvMediaTitle" name="title" maxlength="120" placeholder="Ex.: Sexta Grill" required /></label>
+                <label>Exibir em<select id="tvMediaTargetUser"><option value="">Todas as TVs</option></select></label>
                 <div class="tv-media-form-row">
                   <label>Orientação<select id="tvMediaOrientation"><option value="portrait">Vertical</option><option value="landscape">Horizontal</option><option value="square">Quadrado</option></select></label>
                   <label>Tempo da imagem (s)<input id="tvMediaDuration" type="number" min="5" max="3600" value="10" /></label>

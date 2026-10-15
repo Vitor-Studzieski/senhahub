@@ -10,7 +10,7 @@ export default function MarketingTvContentPage() {
   return (
     <div className="manager-page">
       <HtmlTemplate fileName="marketing-tv.html" />
-      <Script src="/marketing-tv.js?v=20260922.1" strategy="afterInteractive" />
+      <Script src="/marketing-tv.js?v=20261015.1" strategy="afterInteractive" />
     </div>
   );
 }
