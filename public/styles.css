@@ -4381,8 +4381,9 @@ textarea:focus {
   max-height: 100%;
   aspect-ratio: 16 / 9;
   background: var(--vr-surface-muted);
-  border-color: transparent;
-  box-shadow: none;
+  border: 2px solid var(--tv-highlight);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tv-navy) 12%, transparent),
+    0 10px 24px color-mix(in srgb, var(--tv-navy) 10%, transparent);
 }
 
 .tv-screen.tv-dedicated-media .tv-video-stage[data-orientation="landscape"] video,
