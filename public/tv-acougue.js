@@ -113,10 +113,6 @@
 
   async function loadState() {
     await sessionReady;
-    if (state.tvDisplayAccess) {
-      updateConnection("online", "Online");
-      return;
-    }
     if (state.requestInFlight) return;
     state.requestInFlight = true;
     try {
@@ -149,7 +145,7 @@
       state.userRole = String(payload.user?.role || "").toLowerCase();
       state.userId = String(payload.user?.id || "");
       state.tvDisplayAccess = payload.user?.tvDisplayAccess === true;
-      if (state.tvDisplayAccess) document.querySelector("#tvScreen")?.classList.add("tv-media-only");
+      if (state.tvDisplayAccess) document.querySelector("#tvScreen")?.classList.add("tv-dedicated-media");
     } catch {
       state.userRole = "";
       state.userId = "";
