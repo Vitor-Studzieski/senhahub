@@ -4366,8 +4366,13 @@ textarea:focus {
 }
 
 
+.tv-screen.tv-dedicated-media .tv-content {
+  grid-template-columns: minmax(0, .42fr) minmax(0, .58fr);
+}
+
 .tv-screen.tv-dedicated-media .tv-media-area {
   justify-content: center;
+  padding-inline: clamp(14px, 1.35vw, 28px);
 }
 
 .tv-screen.tv-dedicated-media .tv-video-stage {
