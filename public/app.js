@@ -85,11 +85,12 @@ const SECTOR_ID_ALIASES = {
 init();
 
 async function init() {
+  hidePitchdayNonRequestNavigation();
   syncMobileViewport();
   bindEvents();
   syncPriorityControls();
   syncAlertControls();
-  navigate("home");
+  navigate(IS_PITCHDAY ? "sectors" : "home");
   if (IS_PITCHDAY) {
     const guest = await api("/api/pitchday/session", { method: "POST", body: {} });
     identity.customerId = guest.customerId;
@@ -107,6 +108,20 @@ async function init() {
   applyRequestedView();
   connectRealtime();
   startCountdownTimer();
+}
+
+function hidePitchdayNonRequestNavigation() {
+  if (!IS_PITCHDAY) return;
+  [
+    document.querySelector('[data-screen="home"]'),
+    document.querySelector('[data-screen="account"]'),
+    document.querySelector(".tabbar"),
+    document.querySelector("#notifyButton")
+  ].forEach((element) => {
+    if (!element) return;
+    element.hidden = true;
+    element.style.display = "none";
+  });
 }
 
 function syncMobileViewport() {
@@ -271,11 +286,12 @@ function hasStandbyCountdown(ticket) {
 }
 
 function navigate(screen) {
+  if (IS_PITCHDAY && ["home", "account"].includes(screen)) screen = "sectors";
   if (!screens[screen]) return;
   activeScreen = screen;
   document.querySelectorAll(".screen").forEach((item) => item.classList.toggle("active", item.dataset.screen === screen));
   document.querySelector("#appTitle").textContent = screens[screen];
-  document.querySelector("#backButton")?.classList.toggle("is-hidden", screen === "home");
+  document.querySelector("#backButton")?.classList.toggle("is-hidden", screen === "home" || (IS_PITCHDAY && screen === "sectors"));
   if (screen === "home") renderHome();
   if (screen === "done") renderServiceScreen();
   if (screen === "account") renderAccount();
@@ -1206,7 +1222,7 @@ function bindEvents() {
   document.querySelectorAll("[data-quick-join]").forEach((button) => button.addEventListener("click", () => joinQueue(button.dataset.quickJoin)));
   document.querySelectorAll("[data-select-sector]").forEach((input) => input.addEventListener("change", handleSectorSelection));
   document.querySelector("#requestSelectedTickets")?.addEventListener("click", requestSelectedTickets);
-  document.querySelector("#backButton").addEventListener("click", () => navigate("home"));
+  document.querySelector("#backButton").addEventListener("click", () => navigate(IS_PITCHDAY ? "sectors" : "home"));
   document.querySelector("#notifyButton").addEventListener("click", handleNotifyButton);
   document.querySelector("#floatingQueue").addEventListener("click", () => navigate("status"));
   document.querySelector("#confirmCall").addEventListener("click", confirmCall);
