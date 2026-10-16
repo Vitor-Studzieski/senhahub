@@ -45,6 +45,7 @@
   };
   const state = {
     lastCallSignature: "",
+    manuallyAnnouncedCalls: new Set(),
     userRole: "",
     userId: "",
     tvDisplayAccess: false,
@@ -244,6 +245,7 @@
       if (result.ticket && elements.callAlert?.hidden) {
         const ticket = result.ticket.ticket || result.ticket.code || result.ticket.ticketNumber;
         if (ticket) {
+          if (IS_PITCHDAY) state.manuallyAnnouncedCalls.add(String(ticket));
           showCallAlert(
             { id: state.sectorId, name: elements.queueTitle?.textContent || "Açougue", prefix: String(ticket).match(/^[A-Z]+/i)?.[0] || "A" },
             { ...result.ticket, ticket, createdAt: result.ticket.calledAt || new Date().toISOString() },
@@ -273,7 +275,7 @@
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
     const latestCall = recentCalls.find((call) => call.action === "senha_chamada") || null;
-    const latestCallTicket = latestCall?.ticket || latestCall?.ticketNumber || "";
+    const latestCallTicket = String(latestCall?.ticket || latestCall?.ticketNumber || "");
     const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
     const matchingActive = activeTickets.find((ticket) => (ticket.ticket || ticket.ticketNumber) === latestCallTicket) || null;
     const active = matchingActive
@@ -281,11 +283,15 @@
       || null;
     const currentTicket = active?.ticket || active?.ticketNumber || latestCallTicket || (recentCalls.length ? sector.current : "--");
     const latestCallSignature = latestCall
-      ? (IS_PITCHDAY
-        ? String(latestCall.ticket || latestCall.ticketNumber || "")
-        : `${latestCall.ticket || latestCall.ticketNumber || ""}|${latestCall.createdAt || ""}`)
+      ? (IS_PITCHDAY ? latestCallTicket : `${latestCallTicket}|${latestCall.createdAt || ""}`)
       : "";
-    const changed = Boolean(latestCallSignature && state.lastCallSignature && latestCallSignature !== state.lastCallSignature);
+    const alreadyAnnouncedByAction = IS_PITCHDAY && state.manuallyAnnouncedCalls.delete(latestCallSignature);
+    const changed = Boolean(
+      latestCallSignature
+      && state.lastCallSignature
+      && latestCallSignature !== state.lastCallSignature
+      && !alreadyAnnouncedByAction
+    );
     const autisticCurrent = IS_PITCHDAY && isAutisticTicket(active);
     const autisticLatestCall = IS_PITCHDAY
       && (matchingActive ? isAutisticTicket(matchingActive) : isAutisticTicket(latestCall));
