@@ -10,7 +10,7 @@ export default function ButcherDisplayPage() {
   return (
     <>
       <HtmlTemplate fileName="tv-acougue.html" />
-      <Script src="/tv-acougue.js?v=20261016.pitchday-call-dedupe" strategy="afterInteractive" />
+      <Script src="/tv-acougue.js?v=20261016.pitchday-standby-call-guard" strategy="afterInteractive" />
     </>
   );
 }

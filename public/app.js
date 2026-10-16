@@ -1,4 +1,7 @@
-const IS_PITCHDAY = new URLSearchParams(location.search).get("ecosystem")?.toLowerCase() === "pitchday";
+const initialQuery = new URLSearchParams(location.search);
+const IS_PITCHDAY = initialQuery.get("ecosystem")?.toLowerCase() === "pitchday"
+  || history.state?.senhaHubPitchday === true
+  || document.querySelector('[data-pitchday="enabled"]') !== null;
 const screens = {
   home: IS_PITCHDAY ? "Pitchday" : "Supermercado Pompeia",
   sectors: "Fila virtual",
@@ -85,6 +88,7 @@ const SECTOR_ID_ALIASES = {
 init();
 
 async function init() {
+  normalizePitchdayUrl();
   hidePitchdayNonRequestNavigation();
   configurePitchdayRequestScreen();
   syncMobileViewport();
@@ -109,6 +113,16 @@ async function init() {
   applyRequestedView();
   connectRealtime();
   startCountdownTimer();
+}
+
+function normalizePitchdayUrl() {
+  if (!IS_PITCHDAY) return;
+  const url = new URL(location.href);
+  url.searchParams.delete("ecosystem");
+  url.searchParams.delete("view");
+  const search = url.searchParams.toString();
+  const cleanPath = `${url.pathname}${search ? `?${search}` : ""}${url.hash}`;
+  history.replaceState({ ...history.state, senhaHubPitchday: true }, "", cleanPath);
 }
 
 function configurePitchdayRequestScreen() {
@@ -270,6 +284,10 @@ function applyState(state) {
 }
 
 function applyRequestedView() {
+  if (IS_PITCHDAY) {
+    navigate("sectors");
+    return;
+  }
   const view = new URLSearchParams(location.search).get("view");
   if (["sectors", "status", "account"].includes(view)) navigate(view);
 }

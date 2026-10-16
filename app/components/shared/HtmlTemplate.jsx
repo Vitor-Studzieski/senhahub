@@ -28,6 +28,10 @@ export default function HtmlTemplate({ fileName, trackingDemo = false, pitchday 
   }
 
   return (
-    <div data-tracking-demo={trackingDemo ? "enabled" : undefined} dangerouslySetInnerHTML={{ __html: body }} />
+    <div
+      data-tracking-demo={trackingDemo ? "enabled" : undefined}
+      data-pitchday={pitchday ? "enabled" : undefined}
+      dangerouslySetInnerHTML={{ __html: body }}
+    />
   );
 }

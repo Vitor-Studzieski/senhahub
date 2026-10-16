@@ -2224,7 +2224,7 @@ async function callNextRoute(request, sectorId) {
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
   let result = await callNextTicket(sectorId);
-  if (!result.ticket && !result.error) result = await callNextTicket(sectorId, { preferStandby: true });
+  if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true });
   return json(result, result.error ? 400 : 200);
 }
 
@@ -2491,7 +2491,7 @@ async function callControlTicket(sectorId, action) {
   if (!["previous", "again", "next"].includes(normalizedAction)) return fail("Ação de chamada inválida.");
   if (normalizedAction === "next") {
     let result = await callNextTicket(sectorId);
-    if (!result.ticket && !result.error) result = await callNextTicket(sectorId, { preferStandby: true });
+    if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true });
     return result;
   }
 

@@ -1676,7 +1676,7 @@ async function handleApiInternal(req, res, url) {
       return;
     }
     let result = callNextTicket(callNext[1]);
-    if (!result.ticket && !result.error) result = callNextTicket(callNext[1], { preferStandby: true });
+    if (!result.ticket && !result.error && callNext[1] !== "pitch-day") result = callNextTicket(callNext[1], { preferStandby: true });
     broadcast();
     sendApiResult(res, 200, result);
     return;
@@ -4080,7 +4080,7 @@ function callControlTicket(sectorId, action) {
   }
   if (normalizedAction === "next") {
     let result = callNextTicket(sectorId);
-    if (!result.ticket && !result.error) result = callNextTicket(sectorId, { preferStandby: true });
+    if (!result.ticket && !result.error && sectorId !== "pitch-day") result = callNextTicket(sectorId, { preferStandby: true });
     return result;
   }
 

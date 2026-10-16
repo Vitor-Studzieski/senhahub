@@ -46,6 +46,7 @@
   const state = {
     lastCallSignature: "",
     manuallyAnnouncedCalls: new Set(),
+    announcedPitchdayTickets: new Set(),
     userRole: "",
     userId: "",
     tvDisplayAccess: false,
@@ -245,12 +246,15 @@
       if (result.ticket && elements.callAlert?.hidden) {
         const ticket = result.ticket.ticket || result.ticket.code || result.ticket.ticketNumber;
         if (ticket) {
-          if (IS_PITCHDAY) state.manuallyAnnouncedCalls.add(String(ticket));
-          showCallAlert(
-            { id: state.sectorId, name: elements.queueTitle?.textContent || "Açougue", prefix: String(ticket).match(/^[A-Z]+/i)?.[0] || "A" },
-            { ...result.ticket, ticket, createdAt: result.ticket.calledAt || new Date().toISOString() },
-            { autistic: isAutisticTicket(result.ticket) }
-          );
+          const alreadyAnnounced = IS_PITCHDAY && rememberPitchdayTicket(ticket);
+          if (!alreadyAnnounced) {
+            if (IS_PITCHDAY) state.manuallyAnnouncedCalls.add(String(ticket));
+            showCallAlert(
+              { id: state.sectorId, name: elements.queueTitle?.textContent || "Açougue", prefix: String(ticket).match(/^[A-Z]+/i)?.[0] || "A" },
+              { ...result.ticket, ticket, createdAt: result.ticket.calledAt || new Date().toISOString() },
+              { autistic: isAutisticTicket(result.ticket) }
+            );
+          }
         }
       }
       if (elements.feedback) elements.feedback.textContent = result.ticket ? labels[action] : (result.message || "Nenhuma senha disponível para esta ação.");
@@ -264,16 +268,27 @@
 
   function renderQueue(sector) {
     const sectorLabel = displaySectorName(sector.name || sector.id);
-    state.hasAvailableTicket = (sector.tickets || []).some((ticket) => ["aguardando", "proximo", "standby"].includes(ticket.status));
+    state.hasAvailableTicket = (sector.tickets || []).some((ticket) => (
+      IS_PITCHDAY
+        ? ["aguardando", "proximo"].includes(ticket.status)
+        : ["aguardando", "proximo", "standby"].includes(ticket.status)
+    ));
     state.autisticQueueCount = IS_PITCHDAY
       ? (sector.tickets || []).filter((ticket) =>
         ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)
         && isAutisticTicket(ticket)
       ).length
       : 0;
-    const recentCalls = [...(sector.recentCalls || [])]
-      .filter((call) => call.ticket || call.ticketNumber)
-      .slice(0, 4);
+    const recentCalls = [];
+    const seenPitchdayTickets = new Set();
+    for (const call of sector.recentCalls || []) {
+      const ticket = String(call.ticket || call.ticketNumber || "");
+      if (!ticket) continue;
+      if (IS_PITCHDAY && seenPitchdayTickets.has(ticket)) continue;
+      if (IS_PITCHDAY) seenPitchdayTickets.add(ticket);
+      recentCalls.push(call);
+      if (recentCalls.length === 4) break;
+    }
     const latestCall = recentCalls.find((call) => call.action === "senha_chamada") || null;
     const latestCallTicket = String(latestCall?.ticket || latestCall?.ticketNumber || "");
     const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
@@ -286,11 +301,15 @@
       ? (IS_PITCHDAY ? latestCallTicket : `${latestCallTicket}|${latestCall.createdAt || ""}`)
       : "";
     const alreadyAnnouncedByAction = IS_PITCHDAY && state.manuallyAnnouncedCalls.delete(latestCallSignature);
+    const alreadyAnnouncedOnPitchday = IS_PITCHDAY
+      && latestCallSignature
+      && rememberPitchdayTicket(latestCallSignature);
     const changed = Boolean(
       latestCallSignature
       && state.lastCallSignature
       && latestCallSignature !== state.lastCallSignature
       && !alreadyAnnouncedByAction
+      && !alreadyAnnouncedOnPitchday
     );
     const autisticCurrent = IS_PITCHDAY && isAutisticTicket(active);
     const autisticLatestCall = IS_PITCHDAY
@@ -305,6 +324,17 @@
       : "Aguardando próxima chamada";
     elements.recentCalls.innerHTML = recentCalls.length ? recentCalls.map((call, index) => callRow(call, sector, index === 0)).join("") : emptyRow("Nenhuma chamada recente");
     if (changed) showCallAlert(sector, latestCall, { autistic: autisticLatestCall });
+  }
+
+  function rememberPitchdayTicket(ticket) {
+    const signature = String(ticket || "");
+    if (!signature) return false;
+    const alreadyAnnounced = state.announcedPitchdayTickets.has(signature);
+    state.announcedPitchdayTickets.add(signature);
+    while (state.announcedPitchdayTickets.size > 100) {
+      state.announcedPitchdayTickets.delete(state.announcedPitchdayTickets.values().next().value);
+    }
+    return alreadyAnnounced;
   }
 
   function isAutisticTicket(ticket) {

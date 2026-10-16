@@ -432,7 +432,7 @@ async function callControlLocalTicket(sectorId, action, user = null) {
   }
   if (normalizedAction === "next") {
     let result = await callNextLocalTicket(normalizedSectorId, user);
-    if (!result.ticket && !result.error) result = await callNextLocalTicket(normalizedSectorId, user, { preferStandby: true });
+    if (!result.ticket && !result.error && normalizedSectorId !== "pitch-day") result = await callNextLocalTicket(normalizedSectorId, user, { preferStandby: true });
     return result;
   }
 
