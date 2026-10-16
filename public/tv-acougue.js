@@ -8,7 +8,8 @@
   const AUTISM_MINIMUM_VOLUME = 0.1;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
-  const IS_PITCHDAY = new URLSearchParams(window.location.search).get("ecosystem")?.toLowerCase() === "pitchday";
+  const PITCHDAY_TV_EMAIL = "pitchday.tv@superpompeia.com";
+  let IS_PITCHDAY = false;
   const WEATHER_CONFIG = {
     city: "Pompéia, SP",
   };
@@ -100,12 +101,6 @@
   };
   const sessionReady = loadSession();
 
-  if (IS_PITCHDAY) {
-    document.querySelector("#tvScreen")?.classList.add("tv-pitchday");
-    const queueEyebrow = document.querySelector(".tv-queue-heading p");
-    if (queueEyebrow) queueEyebrow.textContent = "Pitchday · Atendimento";
-  }
-
   updateClock();
   loadWeather();
   loadPlaylist();
@@ -157,9 +152,16 @@
   async function loadSession() {
     try {
       const payload = await api("/api/auth/me");
+      const user = payload.user;
       state.userRole = String(payload.user?.role || "").toLowerCase();
       state.userId = String(payload.user?.id || "");
       state.tvDisplayAccess = payload.user?.tvDisplayAccess === true;
+      IS_PITCHDAY = String(user?.email || "").trim().toLowerCase() === PITCHDAY_TV_EMAIL;
+      if (IS_PITCHDAY) {
+        document.querySelector("#tvScreen")?.classList.add("tv-pitchday");
+        const queueEyebrow = document.querySelector(".tv-queue-heading p");
+        if (queueEyebrow) queueEyebrow.textContent = "Pitchday · Atendimento";
+      }
       if (state.tvDisplayAccess) document.querySelector("#tvScreen")?.classList.add("tv-dedicated-media");
     } catch {
       state.userRole = "";
