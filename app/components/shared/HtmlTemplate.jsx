@@ -24,7 +24,7 @@ export default function HtmlTemplate({ fileName, trackingDemo = false, pitchday 
         '<button class="icon-button" id="notifyButton"',
         '<button class="icon-button" id="notifyButton" hidden style="display:none"'
       )
-      .replace(/<nav class="tabbar"\b[^>]*>[\s\S]*?<\/nav>/i, "");
+      .replace(/<nav class="tabbar"[^>]*>[\s\S]*?<\/nav>/i, "");
   }
 
   return (
