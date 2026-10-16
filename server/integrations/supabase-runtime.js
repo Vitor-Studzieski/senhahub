@@ -163,6 +163,7 @@ const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
 const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
 const TABLET_ACCESS_ROLES = ["attendant", "tablet"];
+const PITCHDAY_LIMITED_EMAIL = "pitchday@superpompeia.com";
 const ADMIN_ROLES = ["manager", "admin"];
 const MEDIA_MANAGEMENT_ROLES = ["marketing", ...ADMIN_ROLES];
 const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
@@ -262,6 +263,9 @@ const printV2Api = createPrintV2Api({ rpc, select, supabaseFetch, log: logStruct
 async function handleRequestInternal(request, context = null) {
   const url = new URL(request.url);
   try {
+    if (isPitchdayLimitedSession(request) && !isPitchdayAllowedApiRequest(request.method, url.pathname)) {
+      return json({ error: "Esta conta tem acesso apenas à tela de solicitar senha." }, 403, { "cache-control": "no-store" });
+    }
     if (request.method === "GET" && url.pathname === "/api/health") {
       const health = healthResponse(process.env);
       return json(health, health.ok ? 200 : 503);
@@ -4053,6 +4057,20 @@ function verifySessionToken(token) {
   } catch {
     return null;
   }
+}
+
+function isPitchdayLimitedSession(request) {
+  const session = verifySessionToken(getCookie(request, "senhahub_auth"));
+  const email = String(session?.email || session?.user?.email || "").trim().toLowerCase();
+  return email === PITCHDAY_LIMITED_EMAIL;
+}
+
+function isPitchdayAllowedApiRequest(method, pathname) {
+  if (method === "GET" && pathname === "/api/auth/me") return true;
+  if (method === "POST" && pathname === "/api/auth/logout") return true;
+  if (method === "GET" && pathname === "/api/tablet/status") return true;
+  if (method === "POST" && pathname === "/api/tablet/tickets") return true;
+  return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(pathname);
 }
 
 function signValue(value) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const SHORTCUTS_HUB_EMAIL = "vitorstudzieski@superpompeia.com";
+const PITCHDAY_LIMITED_EMAIL = "pitchday@superpompeia.com";
 
 const pageRoles = {
   "/": ["customer", "manager", "admin"],
@@ -37,6 +38,13 @@ export async function proxy(request) {
     const target = request.nextUrl.clone();
     target.pathname = legacyTarget;
     return NextResponse.redirect(target);
+  }
+
+  if (request.cookies.get("senhahub_auth")?.value || request.cookies.get("senhahub_local_auth")?.value) {
+    const user = await loadCurrentUser(request);
+    if (normalizeEmail(user?.email) === PITCHDAY_LIMITED_EMAIL && pathname !== "/tablet") {
+      return NextResponse.redirect(new URL("/tablet", request.url));
+    }
   }
 
   if (pathname === "/admin/atalhos" || pathname.startsWith("/admin/atalhos/")) {

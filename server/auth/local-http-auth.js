@@ -4,6 +4,7 @@ const { getLocalSession } = require("./local-auth");
 const AUTH_COOKIE = "senhahub_local_auth";
 const CSRF_COOKIE = "senhahub_local_csrf";
 const LEGACY_CSRF_COOKIE = "senhahub_csrf";
+const PITCHDAY_LIMITED_EMAIL = "pitchday@superpompeia.com";
 
 function clientIp(request) {
   if (process.env.TRUST_PROXY_HEADERS !== "1") return "unknown";
@@ -36,7 +37,23 @@ function getCookie(request, name) {
 async function authenticateLocalRequest(request) {
   const sessionToken = getCookie(request, AUTH_COOKIE);
   const session = await getLocalSession(sessionToken);
+  if (session && String(session.user?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL) {
+    const url = new URL(request.url);
+    if (!isPitchdayAllowedApiRequest(request.method, url.pathname)) {
+      return { session: null, sessionToken, restricted: true };
+    }
+  }
   return { session, sessionToken };
+}
+
+function isPitchdayAllowedApiRequest(method, pathname) {
+  const normalizedPath = pathname.replace(/^\/api\/local-postgres(?=\/)/, "/api");
+  if (method === "GET" && normalizedPath === "/api/auth/me") return true;
+  if (method === "POST" && normalizedPath === "/api/auth/logout") return true;
+  if (method === "GET" && normalizedPath === "/api/tablet/status") return true;
+  if (method === "POST" && normalizedPath === "/api/tablet/tickets") return true;
+  if (method === "GET" && normalizedPath === "/api/tablet/print-job") return true;
+  return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(normalizedPath);
 }
 
 function hasValidCsrf(request, session) {

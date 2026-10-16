@@ -200,6 +200,7 @@ const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 const AUTH_ROLES = ["customer", "attendant", "manager", "admin", "tablet", "tv", "marketing"];
 const CUSTOMER_ROLES = ["customer", "manager", "admin"];
 const STAFF_ROLES = ["attendant", "manager", "admin"];
+const PITCHDAY_LIMITED_EMAIL = "pitchday@superpompeia.com";
 const CALL_CONTROL_ROLES = ["tv", ...STAFF_ROLES];
 const ADMIN_ROLES = ["manager", "admin"];
 const DISPLAY_ROLES = ["tv", ...STAFF_ROLES];
@@ -1080,6 +1081,14 @@ async function handleApiInternal(req, res, url) {
   if (!dev && !isSecureNodeRequest(req, url)) {
     sendJson(res, 426, { error: "Esta API aceita somente conexoes HTTPS." });
     return;
+  }
+  if (getCookie(req, "senhahub_auth") || getCookie(req, "senhahub_local_auth")) {
+    const user = await getPageAuthUser(req);
+    if (String(user?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL
+      && !isPitchdayAllowedApiRequest(req.method, url.pathname)) {
+      sendJson(res, 403, { error: "Esta conta tem acesso apenas à tela de solicitar senha." });
+      return;
+    }
   }
   if (req.method === "GET" && url.pathname === "/api/weather") {
     await handleWeatherRoute(res);
@@ -2147,6 +2156,16 @@ async function handlePage(req, res, url) {
   }
 
   const requested = normalizePagePath(url.pathname);
+  let pageUser = null;
+  if (getCookie(req, "senhahub_auth") || getCookie(req, "senhahub_local_auth")) {
+    pageUser = await getPageAuthUser(req);
+  }
+  if (String(pageUser?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL && requested !== "/tablet") {
+    res.writeHead(302, { location: "/tablet" });
+    res.end();
+    return;
+  }
+
   const pageRoles = {
     "/": CUSTOMER_ROLES,
     "/attendant": STAFF_ROLES,
@@ -2163,7 +2182,7 @@ async function handlePage(req, res, url) {
     || (requested.startsWith("/admin/") ? ADMIN_ROLES : null)
     || (requested.startsWith("/attendant/") ? STAFF_ROLES : null)
   if (requiredRoles) {
-    const user = await getPageAuthUser(req);
+    const user = pageUser || await getPageAuthUser(req);
     if (!user) {
       res.writeHead(302, { location: `/login?next=${encodeURIComponent(requested)}` });
       res.end();
@@ -2826,6 +2845,15 @@ function requireAuth(req, res, roles) {
     return null;
   }
   return user;
+}
+
+function isPitchdayAllowedApiRequest(method, pathname) {
+  if (method === "GET" && pathname === "/api/auth/me") return true;
+  if (method === "POST" && pathname === "/api/auth/logout") return true;
+  if (method === "GET" && pathname === "/api/tablet/status") return true;
+  if (method === "POST" && pathname === "/api/tablet/tickets") return true;
+  if (method === "GET" && pathname === "/api/tablet/print-job") return true;
+  return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(pathname);
 }
 
 function getPushStatus(user) {
