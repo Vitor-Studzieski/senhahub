@@ -51,7 +51,7 @@
     "@ffmpeg-installer/ffmpeg": "1.1.0",
     "@supabase/supabase-js": "2.112.3",
     "next": "16.4.2",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "serialport": "13.0.0",
