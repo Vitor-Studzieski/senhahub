@@ -57,8 +57,8 @@ export default function ShortcutsPage() {
         <header className="account-shortcuts__header">
           <img
             className="account-shortcuts__logo"
-            src="/assets/senhahub-pompeia-logo.png"
-            alt="SenhaHub Supermercado Pompeia"
+            src="/assets/senhahub-logo.png"
+            alt="SenhaHub"
             width="220"
             height="74"
           />

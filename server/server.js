@@ -6,7 +6,14 @@ const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { getLocalSession } = require("./auth/local-auth");
 const { checkConnection: checkLocalPostgresConnection } = require("./data/local-postgres");
-const { runLocalMaintenance } = require("./data/local-repository");
+const localPostgresRepository = require("./data/local-repository");
+const { runLocalMaintenance } = localPostgresRepository;
+const {
+  PITCHDAY_GUEST_COOKIE,
+  createPitchdayGuestToken,
+  pitchdayGuestCookie,
+  verifyPitchdayGuestToken
+} = require("./auth/pitchday-guest");
 const { DatabaseSync } = require("node:sqlite");
 const {
   DEFAULT_PREFERENCES,
@@ -917,6 +924,158 @@ async function handleSupabaseApiRoute(req, res, url) {
   } else res.end(Buffer.from(await response.arrayBuffer()));
 }
 
+async function handlePitchdayGuestApi(req, res, url) {
+  const sessionEndpoint = url.pathname === "/api/pitchday/session" && req.method === "POST";
+  const stateEndpoint = url.pathname === "/api/pitchday/state" && req.method === "GET";
+  const ticketEndpoint = url.pathname === "/api/pitchday/tickets" && req.method === "POST";
+  const ticketAction = url.pathname.match(/^\/api\/pitchday\/tickets\/([^/]+)\/(cancel|confirm|finish)$/);
+  if (!sessionEndpoint && !stateEndpoint && !ticketEndpoint && !(req.method === "POST" && ticketAction)) {
+    sendJson(res, 404, { error: "Rota Pitchday não encontrada." });
+    return;
+  }
+
+  if (req.method === "POST" && !verifyPushRequestOrigin(req, res)) return;
+
+  if (sessionEndpoint) {
+    let guest = verifyPitchdayGuestToken(getCookie(req, PITCHDAY_GUEST_COOKIE), AUTH_SECRET);
+    if (guest && !(await pitchdayGuestExists(guest.customerId))) guest = null;
+    if (!guest) {
+      if (!consumeSecurityRateLimit("pitchday:guest", clientIp(req), 500, 15 * 60)) {
+        sendJson(res, 429, { error: "Muitas sessões Pitchday. Aguarde alguns minutos." });
+        return;
+      }
+
+      const requestedCustomerId = crypto.randomUUID();
+      const requestedDeviceId = `device-${crypto.randomUUID()}`;
+      if (isLocalPostgresEnabled()) {
+        const email = `pitchday-${requestedCustomerId}@example.com`;
+        const devicePassword = crypto.randomBytes(48).toString("base64url");
+        const profile = await require("./data/local-postgres").withTransaction(async (client) => {
+          const user = await client.query(
+            `
+              INSERT INTO auth.users (
+                id, email, encrypted_password, raw_user_meta_data,
+                raw_app_meta_data, email_confirmed_at, created_at, updated_at
+              )
+              VALUES (
+                $1, $2, crypt($3, gen_salt('bf')),
+                jsonb_build_object('name', $4), '{}'::jsonb, now(), now(), now()
+              )
+              RETURNING id
+            `,
+            [requestedCustomerId, email, devicePassword, "Visitante Pitchday"]
+          );
+          const created = await client.query(
+            `
+              INSERT INTO public.profiles (id, name, email, role, status)
+              VALUES ($1, 'Visitante Pitchday', $2, 'customer'::public.user_role, 'active'::public.user_status)
+              ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                updated_at = now()
+              RETURNING id
+            `,
+            [user.rows[0].id, email]
+          );
+          return created.rows[0];
+        });
+        const device = await localPostgresRepository.upsertLocalDevice(
+          profile.id,
+          requestedDeviceId,
+          req.headers["user-agent"] || ""
+        );
+        guest = { customerId: profile.id, deviceId: device.deviceId };
+      } else {
+        guest = { customerId: requestedCustomerId, deviceId: requestedDeviceId };
+        upsertSession(guest, req.headers["user-agent"] || "");
+      }
+    }
+
+    const token = createPitchdayGuestToken(guest, AUTH_SECRET);
+    sendJson(res, 200, guest, {
+      "cache-control": "no-store",
+      "set-cookie": pitchdayGuestCookie(token, !dev)
+    });
+    return;
+  }
+
+  const guest = verifyPitchdayGuestToken(getCookie(req, PITCHDAY_GUEST_COOKIE), AUTH_SECRET);
+  if (!guest || !(await pitchdayGuestExists(guest.customerId))) {
+    sendJson(res, 401, { error: "Sessão Pitchday não encontrada. Atualize a página para continuar." }, { "cache-control": "no-store" });
+    return;
+  }
+
+  if (stateEndpoint) {
+    const state = isLocalPostgresEnabled()
+      ? await localPostgresRepository.getCustomerState(guest.customerId)
+      : getCustomerState(guest.customerId);
+    sendJson(res, 200, state, { "cache-control": "no-store" });
+    return;
+  }
+
+  if (ticketEndpoint) {
+    if (!consumeSecurityRateLimit(`pitchday:tickets:${guest.customerId}`, guest.customerId, 10, 10 * 60)) {
+      sendJson(res, 429, { error: "Muitas solicitações de senha. Aguarde alguns minutos." });
+      return;
+    }
+    const body = await readBody(req);
+    if (isLocalPostgresEnabled()) {
+      const result = await localPostgresRepository.createTicket({
+        ...body,
+        customerId: guest.customerId,
+        customerName: "Visitante Pitchday",
+        deviceId: guest.deviceId
+      });
+      const ticket = await localPostgresRepository.getLocalPublicTicket(result.ticket.id);
+      sendJson(res, result.alreadyExists ? 200 : 201, { ...result, ticket, source: "postgres-local" }, { "cache-control": "no-store" });
+      return;
+    }
+    const result = createTicket({ ...body, customerId: guest.customerId, deviceId: guest.deviceId, customerName: "Visitante Pitchday" });
+    broadcast();
+    sendApiResult(res, result.alreadyExists ? 200 : 201, result);
+    return;
+  }
+
+  if (ticketAction) {
+    const ticketId = decodeURIComponent(ticketAction[1]);
+    const action = ticketAction[2];
+    if (isLocalPostgresEnabled()) {
+      const user = { id: guest.customerId, customerId: guest.customerId, name: "Visitante Pitchday", role: "customer" };
+      const operation = action === "cancel"
+        ? localPostgresRepository.cancelTicket(ticketId, guest.customerId)
+        : action === "confirm"
+          ? localPostgresRepository.confirmLocalTicket(ticketId, user)
+          : localPostgresRepository.finishLocalTicket(ticketId, user);
+      const result = await operation;
+      sendJson(res, result?.error ? 400 : 200, result, { "cache-control": "no-store" });
+      return;
+    }
+    const guestUser = { id: guest.customerId, customerId: guest.customerId, name: "Visitante Pitchday", role: "customer" };
+    if (action !== "cancel" && !canOperateOnTicket(guestUser, ticketId)) {
+      sendJson(res, 403, { error: "Acesso negado." });
+      return;
+    }
+    const result = action === "cancel"
+      ? cancelTicket(ticketId, guest.customerId)
+      : action === "confirm"
+        ? confirmTicket(ticketId)
+        : finishTicket(ticketId);
+    broadcast();
+    sendApiResult(res, result?.error ? 400 : 200, result);
+  }
+}
+
+async function pitchdayGuestExists(customerId) {
+  if (isLocalPostgresEnabled()) {
+    const result = await require("./data/local-postgres").query(
+      "SELECT id FROM public.profiles WHERE id = $1 AND status = 'active'::public.user_status LIMIT 1",
+      [customerId]
+    );
+    return result.rowCount > 0;
+  }
+  return Boolean(db.prepare("SELECT id FROM customers WHERE id = ? LIMIT 1").get(customerId));
+}
+
 async function handleApiInternal(req, res, url) {
   if (!dev && !isSecureNodeRequest(req, url)) {
     sendJson(res, 426, { error: "Esta API aceita somente conexoes HTTPS." });
@@ -932,6 +1091,10 @@ async function handleApiInternal(req, res, url) {
   }
   if (supabaseRuntimeEnabled) {
     await handleSupabaseApiRoute(req, res, url);
+    return;
+  }
+  if (url.pathname.startsWith("/api/pitchday/")) {
+    await handlePitchdayGuestApi(req, res, url);
     return;
   }
   if (process.env.LOCAL_POSTGRES_ROUTES_ENABLED === "1" && url.pathname.startsWith("/api/local-postgres/")) {
@@ -4494,10 +4657,10 @@ function getStaffState(user = null) {
   `).all(...sectorIds);
   const { start: businessDayStart, end: businessDayEnd } = businessDayBounds(businessDateFor());
   const callRows = db.prepare(`
-    SELECT sector_id, action, created_at, customer_name, number, code, status, priority
+    SELECT sector_id, action, created_at, customer_name, number, code, status, priority, priority_reason
     FROM (
       SELECT calls.sector_id, calls.action, calls.created_at,
-        tickets.customer_name, tickets.number, tickets.code, tickets.status, tickets.priority,
+        tickets.customer_name, tickets.number, tickets.code, tickets.status, tickets.priority, tickets.priority_reason,
         ROW_NUMBER() OVER (PARTITION BY calls.sector_id ORDER BY calls.created_at DESC) AS row_number
       FROM calls
       JOIN tickets ON tickets.id = calls.ticket_id
@@ -4562,6 +4725,7 @@ function recentCallsFromRows(rows, sectorIds) {
       ticket: row.code,
       status: row.status,
       priority: Boolean(row.priority),
+      priorityReason: row.priority_reason || "",
       createdAt: row.created_at
     });
   }
@@ -4664,7 +4828,7 @@ function currentCodeFromCounter(sector, counter) {
 
 function recentSectorCalls(sectorId) {
   return db.prepare(`
-    SELECT calls.action, calls.created_at, tickets.customer_name, tickets.number, tickets.code, tickets.status, tickets.priority
+    SELECT calls.action, calls.created_at, tickets.customer_name, tickets.number, tickets.code, tickets.status, tickets.priority, tickets.priority_reason
     FROM calls
     JOIN tickets ON tickets.id = calls.ticket_id
     WHERE calls.sector_id = ?
@@ -4677,6 +4841,7 @@ function recentSectorCalls(sectorId) {
     ticket: row.code,
     status: row.status,
     priority: Boolean(row.priority),
+    priorityReason: row.priority_reason || "",
     createdAt: row.created_at
   }));
 }

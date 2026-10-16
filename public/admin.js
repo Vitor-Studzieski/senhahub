@@ -92,14 +92,24 @@ async function initAdmin() {
 function addShortcutsNavigationLink() {
   if (String(currentUser?.email || "").trim().toLowerCase() !== SHORTCUTS_HUB_EMAIL) return;
   const nav = document.querySelector(".manager-nav");
-  if (!nav || nav.querySelector('[data-shortcuts-hub-link="true"]')) return;
+  if (!nav) return;
 
-  const link = document.createElement("a");
-  link.href = "/admin/atalhos";
-  link.dataset.shortcutsHubLink = "true";
-  if (window.location.pathname === "/admin/atalhos") link.classList.add("active");
-  link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Atalhos</span><small>06</small>`;
-  nav.append(link);
+  if (!nav.querySelector('[data-shortcuts-hub-link="true"]')) {
+    const link = document.createElement("a");
+    link.href = "/admin/atalhos";
+    link.dataset.shortcutsHubLink = "true";
+    if (window.location.pathname === "/admin/atalhos") link.classList.add("active");
+    link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Atalhos</span><small>06</small>`;
+    nav.append(link);
+  }
+
+  if (!nav.querySelector('[data-ticket-qr-display-link="true"]')) {
+    const link = document.createElement("a");
+    link.href = "/acompanhar/demo?demo=1&atual=025&cliente=017";
+    link.dataset.ticketQrDisplayLink = "true";
+    link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4zM15 15h2v2h-2zM18 15h2M18 18v2M15 20h2"/><path d="M12 4v3M12 12h3M4 12h3"/></svg><span>Tela do QR da senha</span><small>07</small>`;
+    nav.append(link);
+  }
 }
 
 async function refreshDashboard() {

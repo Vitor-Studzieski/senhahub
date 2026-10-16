@@ -4,8 +4,11 @@
   const CALL_ALERT_SOUND_INTERVAL_MS = 360;
   const CALL_ALERT_SOUND_PULSE_MS = 260;
   const CALL_ALERT_SOUND_GAIN = 1.25;
+  const AUTISM_QUEUE_HALF_VOLUME_THRESHOLD = 5;
+  const AUTISM_MINIMUM_VOLUME = 0.1;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
+  const IS_PITCHDAY = new URLSearchParams(window.location.search).get("ecosystem")?.toLowerCase() === "pitchday";
   const WEATHER_CONFIG = {
     city: "Pompéia, SP",
   };
@@ -52,6 +55,7 @@
     callAlertAudioStopTimer: null,
     callAlertAudioNodes: [],
     callAlertAudioMaster: null,
+    autisticQueueCount: 0,
     hasAvailableTicket: false,
     timer: null,
     requestInFlight: false,
@@ -75,6 +79,7 @@
     queueTitle: document.querySelector("#tvQueueTitle"),
     recentCalls: document.querySelector("#tvRecentCalls"),
     currentTicket: document.querySelector("#tvCurrentTicket"),
+    currentTicketCard: document.querySelector(".tv-current-ticket-card"),
     currentStatus: document.querySelector("#tvCurrentStatus"),
     callAlert: document.querySelector("#tvCallAlert"),
     callAlertTicket: document.querySelector("#tvCallAlertTicket"),
@@ -94,6 +99,12 @@
     mediaFeedback: document.querySelector("#tvMediaFeedback")
   };
   const sessionReady = loadSession();
+
+  if (IS_PITCHDAY) {
+    document.querySelector("#tvScreen")?.classList.add("tv-pitchday");
+    const queueEyebrow = document.querySelector(".tv-queue-heading p");
+    if (queueEyebrow) queueEyebrow.textContent = "Pitchday · Atendimento";
+  }
 
   updateClock();
   loadWeather();
@@ -161,6 +172,8 @@
   function updateCallControls() {
     const canControl = ["tv", "attendant", "manager", "admin"].includes(state.userRole);
     const nextButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === "next");
+    const againButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === "again");
+    if (againButton) againButton.hidden = IS_PITCHDAY;
     elements.callActionButtons.forEach((button) => {
       button.disabled = !canControl || !state.sectorId || state.actionInFlight;
       button.setAttribute("aria-disabled", String(button.disabled));
@@ -189,7 +202,7 @@
 
     // Presentation remotes commonly report previous/next as arrows or page keys.
     const key = String(event.key || event.code || "").toLowerCase();
-    const action = ["arrowup", "pageup"].includes(key)
+    const action = !IS_PITCHDAY && ["arrowup", "pageup"].includes(key)
       ? "previous"
       : ["arrowdown", "pagedown"].includes(key)
         ? "next"
@@ -205,6 +218,7 @@
 
   async function executeCallAction(action) {
     if (!["previous", "again", "next"].includes(action) || state.actionInFlight) return;
+    if (IS_PITCHDAY && action !== "next") return;
     if (!["tv", "attendant", "manager", "admin"].includes(state.userRole)) {
       if (elements.feedback) elements.feedback.textContent = "Somente contas TV ou colaboradores podem controlar as chamadas.";
       return;
@@ -230,7 +244,8 @@
         if (ticket) {
           showCallAlert(
             { id: state.sectorId, name: elements.queueTitle?.textContent || "Açougue", prefix: String(ticket).match(/^[A-Z]+/i)?.[0] || "A" },
-            { ticket, createdAt: result.ticket.calledAt || new Date().toISOString() }
+            { ...result.ticket, ticket, createdAt: result.ticket.calledAt || new Date().toISOString() },
+            { autistic: isAutisticTicket(result.ticket) }
           );
         }
       }
@@ -246,34 +261,65 @@
   function renderQueue(sector) {
     const sectorLabel = displaySectorName(sector.name || sector.id);
     state.hasAvailableTicket = (sector.tickets || []).some((ticket) => ["aguardando", "proximo", "standby"].includes(ticket.status));
+    state.autisticQueueCount = IS_PITCHDAY
+      ? (sector.tickets || []).filter((ticket) =>
+        ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)
+        && isAutisticTicket(ticket)
+      ).length
+      : 0;
     const recentCalls = [...(sector.recentCalls || [])]
       .filter((call) => call.ticket || call.ticketNumber)
       .slice(0, 4);
     const latestCall = recentCalls.find((call) => call.action === "senha_chamada") || null;
     const latestCallTicket = latestCall?.ticket || latestCall?.ticketNumber || "";
     const activeTickets = (sector.tickets || []).filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status));
-    const active = activeTickets.find((ticket) => (ticket.ticket || ticket.ticketNumber) === latestCallTicket)
+    const matchingActive = activeTickets.find((ticket) => (ticket.ticket || ticket.ticketNumber) === latestCallTicket) || null;
+    const active = matchingActive
       || [...activeTickets].sort((left, right) => latestActivity(right) - latestActivity(left))[0]
       || null;
     const currentTicket = active?.ticket || active?.ticketNumber || latestCallTicket || (recentCalls.length ? sector.current : "--");
-    const latestCallSignature = latestCall ? `${latestCall.ticket || latestCall.ticketNumber || ""}|${latestCall.createdAt || ""}` : "";
+    const latestCallSignature = latestCall
+      ? (IS_PITCHDAY
+        ? String(latestCall.ticket || latestCall.ticketNumber || "")
+        : `${latestCall.ticket || latestCall.ticketNumber || ""}|${latestCall.createdAt || ""}`)
+      : "";
     const changed = Boolean(latestCallSignature && state.lastCallSignature && latestCallSignature !== state.lastCallSignature);
+    const autisticCurrent = IS_PITCHDAY && isAutisticTicket(active);
+    const autisticLatestCall = IS_PITCHDAY
+      && (matchingActive ? isAutisticTicket(matchingActive) : isAutisticTicket(latestCall));
 
     if (latestCallSignature) state.lastCallSignature = latestCallSignature;
     if (elements.queueTitle) elements.queueTitle.textContent = sectorLabel;
     if (elements.currentTicket) elements.currentTicket.textContent = formatTicket(currentTicket, sector.prefix);
+    elements.currentTicketCard?.classList.toggle("is-autistic-current", autisticCurrent);
     if (elements.currentStatus) elements.currentStatus.textContent = active
       ? (active.status === "em_atendimento" ? "Em atendimento" : "Dirija-se ao balcão")
       : "Aguardando próxima chamada";
     elements.recentCalls.innerHTML = recentCalls.length ? recentCalls.map((call, index) => callRow(call, sector, index === 0)).join("") : emptyRow("Nenhuma chamada recente");
-    if (changed) showCallAlert(sector, latestCall);
+    if (changed) showCallAlert(sector, latestCall, { autistic: autisticLatestCall });
+  }
+
+  function isAutisticTicket(ticket) {
+    const reason = String(ticket?.priorityReason || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+    return reason === "tea" || reason.includes("autismo");
+  }
+
+  function callAlertVolumeScale() {
+    if (state.autisticQueueCount >= AUTISM_QUEUE_HALF_VOLUME_THRESHOLD) return 0.5;
+    if (state.autisticQueueCount > 0) return AUTISM_MINIMUM_VOLUME;
+    return 1;
   }
 
   function latestActivity(ticket) {
     return new Date(ticket.serviceStartedAt || ticket.calledAt || ticket.updatedAt || ticket.createdAt || 0).getTime() || 0;
   }
 
-  function showCallAlert(sector, call) {
+  function showCallAlert(sector, call, options = {}) {
     if (!elements.callAlert || !call) return;
     const ticket = formatTicket(call.ticket || call.ticketNumber, sector.prefix);
     if (ticket === "--") return;
@@ -282,7 +328,10 @@
     if (elements.callAlertSector) elements.callAlertSector.textContent = `${displaySectorName(sector.name || sector.id)} · Dirija-se ao balcão`;
     elements.callAlert.hidden = false;
     elements.callAlert.dataset.state = "active";
-    playCallAlertSound();
+    const autisticCall = IS_PITCHDAY && (options.autistic === true || isAutisticTicket(call));
+    elements.callAlert.dataset.autistic = autisticCall ? "true" : "false";
+    if (autisticCall) stopCallAlertSound();
+    else playCallAlertSound(callAlertVolumeScale());
     state.callAlertTimer = window.setTimeout(hideCallAlert, CALL_ALERT_DURATION_MS);
   }
 
@@ -294,9 +343,10 @@
     state.callAlertTimer = null;
   }
 
-  function playCallAlertSound() {
+  function playCallAlertSound(volumeScale = 1) {
     stopCallAlertSound();
-    const context = ensureCallAlertAudio();
+    if (volumeScale <= 0) return;
+    const context = ensureCallAlertAudio(volumeScale);
     if (!context) return;
     const startAlert = () => {
       const startAt = context.currentTime + 0.02;
@@ -354,7 +404,7 @@
     }
   }
 
-  function ensureCallAlertAudio() {
+  function ensureCallAlertAudio(volumeScale = 1) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return null;
     try {
@@ -362,10 +412,10 @@
       const context = state.audioContext;
       if (!state.callAlertAudioMaster) {
         const master = context.createGain();
-        master.gain.value = CALL_ALERT_SOUND_GAIN;
         master.connect(context.destination);
         state.callAlertAudioMaster = master;
       }
+      state.callAlertAudioMaster.gain.value = CALL_ALERT_SOUND_GAIN * volumeScale;
       if (context.state === "suspended") context.resume().catch(() => {});
       return context;
     } catch {

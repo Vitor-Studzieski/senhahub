@@ -60,6 +60,10 @@ export async function proxy(request) {
     return allowPage(request);
   }
 
+  if (pathname === "/" && request.nextUrl.searchParams.get("ecosystem")?.toLowerCase() === "pitchday") {
+    return allowPage(request);
+  }
+
   const roles = rolesForPath(pathname);
   if (!roles) return allowPage(request);
 

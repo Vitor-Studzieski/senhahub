@@ -294,6 +294,7 @@ function allowedNextForRole(role, next, email) {
   const normalizedRole = role === "admin" ? "manager" : role;
   if (isShortcutsAccount && (!next || next === "/" || next === "/atalhos" || next === "/admin/atalhos")) return "/admin";
   if (!next) return home;
+  if (normalizedRole === "customer" && next === "/?ecosystem=pitchday") return next;
   if (normalizedRole === "manager" && ["/", "/totem"].includes(next)) return next;
   if (role === "attendant" && ["/attendant", "/tablet"].includes(next)) return next;
   if (role === "customer" && next === "/") return next;

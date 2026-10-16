@@ -1,5 +1,6 @@
 (function initializeTotem() {
   const GENERAL_QR_URL = "https://senhahub.vercel.app/";
+  const IS_PITCHDAY = new URLSearchParams(window.location.search).get("ecosystem")?.toLowerCase() === "pitchday";
   const RESULT_DISPLAY_MS = 4000;
   const QUEUE_REFRESH_INTERVAL_MS = 5000;
   // Novos tipos de atendimento podem ser adicionados aqui sem alterar a estrutura da tela.
@@ -75,7 +76,8 @@
     printJobStatuses: new Map(),
     printFailures: [],
     issuedTicketCount: 0,
-    issueInFlight: false
+    issueInFlight: false,
+    generalQrUrl: ""
   };
   const elements = {
     loading: document.querySelector("#totemLoading"),
@@ -502,8 +504,23 @@
   function renderGeneralQr(value) {
     if (!elements.generalQrCard) return;
     elements.generalQrCard.hidden = false;
-    if (elements.generalQr.childElementCount) return;
-    renderQr(elements.generalQr, value || GENERAL_QR_URL, "QR indisponível");
+    const baseUrl = value || (IS_PITCHDAY ? window.location.origin : GENERAL_QR_URL);
+    let targetUrl = normalizePwaUrl(baseUrl);
+    if (IS_PITCHDAY && targetUrl) {
+      const pitchdayUrl = new URL(targetUrl);
+      pitchdayUrl.searchParams.set("ecosystem", "pitchday");
+      pitchdayUrl.searchParams.set("view", "sectors");
+      targetUrl = pitchdayUrl.toString();
+      elements.generalQrCard.setAttribute("aria-label", "Abrir pedidos do Pitchday pelo celular");
+      const title = document.querySelector("#totemQrTitle");
+      const description = document.querySelector("#totemQrDescription");
+      if (title) title.textContent = "Faça seu pedido pelo celular";
+      if (description) description.textContent = "Leia o QR code para abrir diretamente a escolha de setor do Pitchday.";
+    }
+    if (state.generalQrUrl === targetUrl) return;
+    state.generalQrUrl = targetUrl;
+    elements.generalQr.innerHTML = "";
+    renderQr(elements.generalQr, targetUrl || GENERAL_QR_URL, "QR indisponível");
   }
 
   function renderQr(target, value, fallback) {

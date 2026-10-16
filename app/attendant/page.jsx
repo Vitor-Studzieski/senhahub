@@ -5,7 +5,7 @@ export default function AttendantPage() {
   return (
     <div className="attendant-page">
       <HtmlTemplate fileName="attendant.html" />
-      <Script src="/attendant.js?v=20260915.3" strategy="afterInteractive" />
+      <Script src="/attendant.js?v=20261015.queue-content-fit" strategy="afterInteractive" />
     </div>
   );
 }

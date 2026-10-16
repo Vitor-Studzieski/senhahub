@@ -2,6 +2,12 @@ const { createPrintV2Api } = require('../kiosk/print-v2-api');
 const { AsyncLocalStorage } = require("node:async_hooks");
 const crypto = require("node:crypto");
 const {
+  PITCHDAY_GUEST_COOKIE,
+  createPitchdayGuestToken,
+  pitchdayGuestCookie,
+  verifyPitchdayGuestToken
+} = require("../auth/pitchday-guest");
+const {
   DEFAULT_PREFERENCES,
   PushNotificationService,
   isAllowedPushEndpoint,
@@ -290,6 +296,13 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "POST" && url.pathname === "/api/auth/register") return registerCustomer(request);
     if (request.method === "POST" && url.pathname === "/api/auth/logout") return logout(request);
     if (request.method === "GET" && url.pathname === "/api/auth/me") return me(request);
+    if (request.method === "POST" && url.pathname === "/api/pitchday/session") return pitchdayGuestSessionRoute(request);
+    if (request.method === "GET" && url.pathname === "/api/pitchday/state") return pitchdayGuestStateRoute(request);
+    if (request.method === "POST" && url.pathname === "/api/pitchday/tickets") return pitchdayGuestTicketRoute(request);
+    const pitchdayGuestTicketAction = url.pathname.match(/^\/api\/pitchday\/tickets\/([^/]+)\/(cancel|confirm|finish)$/);
+    if (request.method === "POST" && pitchdayGuestTicketAction) {
+      return pitchdayGuestTicketActionRoute(request, pitchdayGuestTicketAction[1], pitchdayGuestTicketAction[2]);
+    }
     if (request.method === "GET" && url.pathname === "/api/tv/media") return tvMediaListRoute(request, url);
     if (request.method === "POST" && url.pathname === "/api/tv/media/upload-intent") return tvMediaUploadIntentRoute(request);
     const tvMediaStream = url.pathname.match(/^\/api\/tv\/media\/([0-9a-f-]{36})\/stream$/i);
@@ -2057,6 +2070,105 @@ async function resetTicketHistoryRoute(request) {
   return json(result || { deletedTickets: 0, deletedRatings: 0, skippedTickets: 0 }, 200, { "cache-control": "no-store" });
 }
 
+async function pitchdayGuestSessionRoute(request) {
+  if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
+
+  let guest = await getPitchdayGuest(request);
+  if (!guest) {
+    const creationLimit = await consumeSecurityRateLimit("pitchday:guest", clientIp(request), 500, 15 * 60);
+    if (creationLimit !== true) {
+      return json(
+        { error: creationLimit === false ? "Muitas sessões Pitchday. Aguarde alguns minutos." : "Sessão Pitchday temporariamente indisponível." },
+        creationLimit === false ? 429 : 503
+      );
+    }
+
+    const customerId = crypto.randomUUID();
+    const email = `pitchday-${customerId}@example.com`;
+    const password = `Pitchday!${crypto.randomBytes(36).toString("base64url")}A1`;
+    const auth = await supabaseFetch("/auth/v1/admin/users", {
+      method: "POST",
+      body: {
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name: "Visitante Pitchday" }
+      }
+    });
+    const userId = auth.id || auth.user?.id;
+    if (auth.error || !userId) {
+      console.error("pitchday_guest_create_failed", safeAuthProviderErrorCode(auth.error || "missing_user_id"));
+      return json({ error: "Nao foi possivel abrir a sessao do Pitchday." }, 503);
+    }
+
+    const profile = await upsert("profiles", {
+      id: userId,
+      email,
+      name: "Visitante Pitchday",
+      role: "customer",
+      status: "active"
+    }, "id");
+    if (!profile?.id) {
+      await supabaseFetch(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => null);
+      return json({ error: "Nao foi possivel abrir a sessao do Pitchday." }, 503);
+    }
+    guest = { customerId: userId, deviceId: `device-${crypto.randomUUID()}` };
+  }
+
+  const token = createPitchdayGuestToken(guest, AUTH_SECRET);
+  return json(guest, 200, {
+    "cache-control": "no-store",
+    "set-cookie": pitchdayGuestCookie(token, process.env.NODE_ENV === "production")
+  });
+}
+
+async function pitchdayGuestStateRoute(request) {
+  const guest = await getPitchdayGuest(request);
+  if (!guest) return json({ error: "Sessao Pitchday nao encontrada. Atualize a pagina para continuar." }, 401, { "cache-control": "no-store" });
+  return json(await getCustomerState(guest.customerId), 200, { "cache-control": "no-store" });
+}
+
+async function pitchdayGuestTicketRoute(request) {
+  if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
+  const guest = await getPitchdayGuest(request);
+  if (!guest) return json({ error: "Sessao Pitchday nao encontrada. Atualize a pagina para continuar." }, 401, { "cache-control": "no-store" });
+  const rateLimit = await consumeSecurityRateLimit(`pitchday:tickets:${guest.customerId}`, guest.customerId, 10, 10 * 60);
+  if (rateLimit !== true) {
+    return json({ error: rateLimit === false ? "Muitas solicitacoes de senha. Aguarde alguns minutos." : "Solicitacao temporariamente indisponivel." }, rateLimit === false ? 429 : 503);
+  }
+
+  const body = await readJson(request);
+  const result = await createTicket({
+    ...body,
+    customerId: guest.customerId,
+    deviceId: guest.deviceId,
+    customerName: "Visitante Pitchday"
+  });
+  return json(result, result.error ? 400 : (result.alreadyExists ? 200 : 201), { "cache-control": "no-store" });
+}
+
+async function pitchdayGuestTicketActionRoute(request, ticketId, action) {
+  if (!sameOriginRequest(request)) return json({ error: "Origem da requisicao nao autorizada." }, 403);
+  const guest = await getPitchdayGuest(request);
+  if (!guest) return json({ error: "Sessao Pitchday nao encontrada. Atualize a pagina para continuar." }, 401, { "cache-control": "no-store" });
+  const ticket = await getTicket(ticketId);
+  if (!ticket || ticket.customer_id !== guest.customerId) return json({ error: "Acesso negado." }, 403);
+
+  const result = action === "cancel"
+    ? await cancelTicket(ticketId, guest.customerId)
+    : action === "confirm"
+      ? await confirmTicket(ticketId)
+      : await finishTicket(ticketId);
+  return json(result, result.error ? 400 : 200, { "cache-control": "no-store" });
+}
+
+async function getPitchdayGuest(request) {
+  const guest = verifyPitchdayGuestToken(getCookie(request, PITCHDAY_GUEST_COOKIE), AUTH_SECRET);
+  if (!guest) return null;
+  const profile = await getProfile(guest.customerId);
+  return profile?.status === "active" ? guest : null;
+}
+
 async function createTicketRoute(request) {
   const user = await requireUser(request, CUSTOMER_ROLES);
   if (user.response) return user.response;
@@ -2712,6 +2824,7 @@ async function staffRecentCalls(sectorIds) {
         ticket: ticket?.code || "--",
         status: ticket?.status || "",
         priority: Boolean(ticket?.priority),
+        priorityReason: ticket?.priority_reason || "",
         createdAt: call.created_at
       };
     }));

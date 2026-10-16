@@ -645,11 +645,11 @@ p {
       color-mix(in srgb, var(--vr-terracotta-deep) 76%, transparent) 59%,
       color-mix(in srgb, var(--vr-terracotta-deep) 76%, transparent) 100%
     ),
-    url("/assets/mercado-pompeia-logo-hd.png"),
+    url("/assets/senhahub-mark.png"),
     linear-gradient(180deg, color-mix(in srgb, var(--vr-orange-light) 36%, var(--vr-surface)) 0%, var(--vr-surface) 100%);
   background-position: center, center center, center;
   background-repeat: no-repeat, no-repeat, no-repeat;
-  background-size: cover, cover, cover;
+  background-size: cover, contain, cover;
   color: var(--vr-heading);
   box-shadow: 0 14px 28px color-mix(in srgb, var(--vr-heading) 18%, transparent);
 }
@@ -4403,6 +4403,31 @@ textarea:focus {
   animation: tv-call-alert-in .3s ease-out !important;
 }
 
+.tv-screen .tv-current-ticket-card.is-autistic-current {
+  border-color: var(--tv-highlight);
+  background: #000;
+}
+
+.tv-screen .tv-current-ticket-card.is-autistic-current .tv-current-ticket-content strong {
+  color: var(--tv-highlight);
+}
+
+.tv-screen .tv-current-ticket-card.is-autistic-current .tv-current-ticket-content span {
+  color: #fff;
+}
+
+.tv-screen .tv-call-alert[data-autistic="true"] {
+  background: #000 !important;
+}
+
+.tv-screen .tv-call-alert[data-autistic="true"] .tv-call-alert-card strong {
+  color: var(--tv-highlight);
+}
+
+.tv-screen.tv-pitchday .tv-call-controls-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .tv-screen .tv-call-controls-actions button.is-ready {
   animation: tv-call-button-pulse 1s ease-in-out infinite !important;
   border-color: var(--tv-highlight);
@@ -5502,7 +5527,7 @@ textarea:focus {
   border: 3px solid color-mix(in srgb, var(--vr-border) 80%, transparent);
   border-radius: 14px;
   height: 58px;
-  object-fit: cover;
+  object-fit: contain;
   padding: 3px;
   width: 58px;
 }
@@ -7011,7 +7036,7 @@ textarea:focus {
   display: block;
   width: 62px;
   height: 62px;
-  object-fit: cover;
+  object-fit: contain;
   border: 2px solid color-mix(in srgb, var(--vr-amber) 72%, transparent);
   border-radius: 16px;
   background: var(--vr-surface-muted);
@@ -11003,7 +11028,7 @@ textarea:focus {
 .attendant-page .ops-card {
   align-content: start;
   grid-auto-rows: max-content;
-  grid-template-rows: 72px 128px 64px 34px 176px auto;
+  grid-template-rows: 72px 128px 64px 34px auto auto;
 }
 
 .attendant-page .ops-card-head {
@@ -11271,14 +11296,19 @@ textarea:focus {
 }
 
 .attendant-page .ops-queue-section {
-  height: 176px;
+  height: auto;
   min-height: 176px;
-  max-height: 176px;
+  max-height: none;
   align-content: start;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.attendant-page .ops-card.has-long-queue .ops-queue-section {
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
 }
 
 @media (max-width: 760px) {
@@ -11289,6 +11319,11 @@ textarea:focus {
     max-height: none;
     overflow: visible;
     scrollbar-gutter: auto;
+  }
+
+  .attendant-page .ops-card.has-long-queue .ops-queue-section {
+    max-height: none;
+    overflow: visible;
   }
 }
 

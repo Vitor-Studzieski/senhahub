@@ -1,5 +1,6 @@
+const IS_PITCHDAY = new URLSearchParams(location.search).get("ecosystem")?.toLowerCase() === "pitchday";
 const screens = {
-  home: "Supermercado Pompeia",
+  home: IS_PITCHDAY ? "Pitchday" : "Supermercado Pompeia",
   sectors: "Fila virtual",
   ticket: "Minha senha",
   status: "Acompanhamento",
@@ -89,13 +90,20 @@ async function init() {
   syncPriorityControls();
   syncAlertControls();
   navigate("home");
-  currentUser = await requireSession(["customer", "manager", "admin"]);
+  if (IS_PITCHDAY) {
+    const guest = await api("/api/pitchday/session", { method: "POST", body: {} });
+    identity.customerId = guest.customerId;
+    identity.deviceId = guest.deviceId;
+    currentUser = { customerId: guest.customerId, deviceId: guest.deviceId, name: "Visitante Pitchday", role: "customer", status: "active" };
+  } else {
+    currentUser = await requireSession(["customer", "manager", "admin"]);
+  }
   syncAccessArea();
   renderAccount();
   renderHome();
-  identity.customerId = currentUser.customerId;
+  if (!IS_PITCHDAY) identity.customerId = currentUser.customerId;
   writeAppStorage("senhaHubIdentity", JSON.stringify(identity));
-  await Promise.all([syncSession(), loadState()]);
+  await Promise.all([IS_PITCHDAY ? Promise.resolve() : syncSession(), loadState()]);
   applyRequestedView();
   connectRealtime();
   startCountdownTimer();
@@ -167,7 +175,10 @@ async function syncSession() {
 
 async function loadState() {
   if (stateRequestInFlight) return stateRequestInFlight;
-  stateRequestInFlight = api(`/api/state?customer_id=${encodeURIComponent(identity.customerId)}`)
+  const endpoint = IS_PITCHDAY
+    ? "/api/pitchday/state"
+    : `/api/state?customer_id=${encodeURIComponent(identity.customerId)}`;
+  stateRequestInFlight = api(endpoint)
     .then(applyState)
     .finally(() => {
       stateRequestInFlight = null;
@@ -215,7 +226,7 @@ function applyState(state) {
 
 function applyRequestedView() {
   const view = new URLSearchParams(location.search).get("view");
-  if (["status", "account"].includes(view)) navigate(view);
+  if (["sectors", "status", "account"].includes(view)) navigate(view);
 }
 
 async function handlePushRefresh(event) {
@@ -274,6 +285,7 @@ function navigate(screen) {
 }
 
 function maybeShowQueueTutorial(screen) {
+  if (IS_PITCHDAY) return;
   if (queueTutorialSeen) return;
   if (!["sectors", "ticket", "status"].includes(screen)) return;
   openQueueTutorial({ automatic: true });
@@ -327,6 +339,14 @@ function renderHome() {
   const sectorList = Object.values(sectors);
   const openSectorCount = sectorList.filter((sector) => sector.status === "open").length;
   const status = document.querySelector(".welcome-status");
+
+  if (IS_PITCHDAY) {
+    setText(".welcome-eyebrow", "SenhaHub · Pitchday");
+    setText(".welcome-hero > p", "Seu atendimento no Pitchday começa aqui.");
+    setText(".welcome-assurance-copy span", "Atendimento do evento");
+    setText(".welcome-assurance-copy h2", "Acompanhe sua vez no Pitchday.");
+    setText(".welcome-assurance-copy p", "Retire sua senha e acompanhe o atendimento do evento pelo celular.");
+  }
 
   setText("#homeFirstName", firstName(name));
   setText("#homeQueueActionTitle", "Retirar minha senha");
@@ -568,7 +588,7 @@ async function requestSelectedTickets() {
 }
 
 function createDigitalTicket(sectorId, priority = priorityPayload()) {
-  return api("/api/tickets", {
+  return api(IS_PITCHDAY ? "/api/pitchday/tickets" : "/api/tickets", {
     method: "POST",
     body: { ...identity, sectorId, ...priority }
   });
@@ -722,7 +742,10 @@ async function cancelCurrentTicket(ticketId = null) {
   if (!confirm(`Cancelar ${displayCustomerName(data)} (${supportCode(data)}) de ${data.sector}?`)) return;
 
   try {
-    await api(`/api/tickets/${encodeURIComponent(data.id)}/cancel`, { method: "POST", body: identity });
+    const endpoint = IS_PITCHDAY
+      ? `/api/pitchday/tickets/${encodeURIComponent(data.id)}/cancel`
+      : `/api/tickets/${encodeURIComponent(data.id)}/cancel`;
+    await api(endpoint, { method: "POST", body: identity });
     await loadState();
     navigate(hasActiveQueues() ? "status" : "sectors");
   } catch (exception) {
@@ -740,7 +763,10 @@ async function confirmCall() {
     button.textContent = "Confirmando...";
   }
   try {
-    await api(`/api/tickets/${encodeURIComponent(data.id)}/confirm`, { method: "POST", body: identity });
+    const endpoint = IS_PITCHDAY
+      ? `/api/pitchday/tickets/${encodeURIComponent(data.id)}/confirm`
+      : `/api/tickets/${encodeURIComponent(data.id)}/confirm`;
+    await api(endpoint, { method: "POST", body: identity });
     await loadState();
     navigate("done");
   } catch (exception) {
@@ -763,7 +789,10 @@ async function finishCurrentService() {
 
   const ticket = activeQueues[serviceSector];
   try {
-    await api(`/api/tickets/${encodeURIComponent(ticket.id)}/finish`, { method: "POST", body: identity });
+    const endpoint = IS_PITCHDAY
+      ? `/api/pitchday/tickets/${encodeURIComponent(ticket.id)}/finish`
+      : `/api/tickets/${encodeURIComponent(ticket.id)}/finish`;
+    await api(endpoint, { method: "POST", body: identity });
     await loadState();
     const called = getCurrentQueueData();
     if (called?.status === "chamado") {
@@ -1255,7 +1284,7 @@ async function api(path, options = {}) {
     const payload = await parseApiPayload(response);
     window.senhaHubPwa?.reportNetworkSuccess();
     if (response.status === 401) {
-      location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+      if (!IS_PITCHDAY) location.href = `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`;
       throw new Error("Login necessÃ¡rio.");
     }
     if (!response.ok || payload.error) throw new Error(payload.error || "Falha na API.");
@@ -1309,7 +1338,7 @@ function escapeHtml(value) {
 async function requireSession(roles) {
   const { user } = await api("/api/auth/me");
   if (!user || !roles.includes(user.role)) {
-    location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+    location.href = `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`;
     throw new Error("Acesso negado.");
   }
   return user;

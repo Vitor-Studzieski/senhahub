@@ -5,7 +5,7 @@ export default function AdminKiosksPage() {
   return (
     <div className="manager-page">
       <HtmlTemplate fileName="admin-totens.html" />
-      <Script src="/admin.js?v=20261015.admin-shortcuts-tab" strategy="afterInteractive" />
+      <Script src="/admin.js?v=20261016.ticket-tracking-view" strategy="afterInteractive" />
     </div>
   );
 }

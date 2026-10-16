@@ -5,7 +5,7 @@ export default function CustomerPage() {
   return (
     <>
       <HtmlTemplate fileName="index.html" />
-      <Script src="/app.js?v=20260916.6" strategy="afterInteractive" />
+      <Script src="/app.js?v=20261016.pitchday-orders" strategy="afterInteractive" />
     </>
   );
 }

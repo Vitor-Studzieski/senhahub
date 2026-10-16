@@ -96,6 +96,7 @@ function renderAttendant() {
     const latestCall = latestRecentCall(recentCalls);
     const activeTicket = latestActiveTicket(sector.tickets || []);
     const recentCallHighlight = isCallHighlightActive(latestCall) ? latestCall : null;
+    const hasLongQueue = waiting.length > 4;
     const callHighlight = activeTicket
       ? {
           ...activeTicket,
@@ -117,7 +118,7 @@ function renderAttendant() {
       : "Chamar próxima senha";
     const feedback = callNextFeedback.get(sector.id);
     return `
-      <article class="ops-card">
+      <article class="ops-card ${hasLongQueue ? "has-long-queue" : ""}">
         <div class="ops-card-head">
           <div>
             <strong>${escapeHtml(sector.name)}</strong>
