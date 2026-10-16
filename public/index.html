@@ -109,7 +109,7 @@
                 <option value="obesidade">Pessoa com obesidade</option>
               </select>
             </section>
-            <section class="multi-sector-panel" aria-label="Solicitação para vários locais">
+            <section class="multi-sector-panel" id="multiSectorPanel" aria-label="Solicitação para vários locais">
               <div>
                 <strong>Selecionar vários setores</strong>
                 <span id="selectedSectorHint">Opcional</span>
@@ -118,7 +118,15 @@
                 Solicitar selecionadas
               </button>
             </section>
-            <article class="sector-card">
+            <article class="sector-card pitchday-request-card" id="pitchdayRequestCard" hidden style="display:none">
+              <div class="sector-head">
+                <div><strong>Senha do Pitchday</strong></div>
+                <b>Pitchday</b>
+              </div>
+              <p class="muted">Retire aqui sua senha para o ecossistema do Pitchday.</p>
+              <button class="yellow-action compact" data-join="acougue" data-pitchday-request="true" data-online-required>Retirar senha</button>
+            </article>
+            <article class="sector-card" data-pitchday-idle="true">
               <div class="sector-head">
                 <div><strong>Açougue</strong></div>
                 <b>Balcão 1</b>
@@ -129,7 +137,7 @@
               </label>
               <button class="yellow-action compact" data-join="acougue" data-online-required>Solicitar senha</button>
             </article>
-            <article class="sector-card">
+            <article class="sector-card" data-pitchday-idle="true">
               <div class="sector-head">
                 <div><strong>Frios e Laticínios</strong></div>
                 <b>Balcão 2</b>
@@ -140,7 +148,7 @@
               </label>
               <button class="yellow-action compact" data-join="frios" data-online-required>Solicitar senha</button>
             </article>
-            <article class="sector-card">
+            <article class="sector-card" data-pitchday-idle="true">
               <div class="sector-head">
                 <div><strong>Padaria</strong></div>
                 <b>Balcão 3</b>
@@ -370,6 +378,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20261016.pitchday-request-screen"></script>
+    <script src="app.js?v=20261016.pitchday-request-card"></script>
   </body>
 </html>

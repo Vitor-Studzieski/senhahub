@@ -8,7 +8,7 @@ export default async function CustomerPage({ searchParams }) {
   return (
     <>
       <HtmlTemplate fileName="index.html" pitchday={isPitchday} />
-      <Script src="/app.js?v=20261016.pitchday-request-screen" strategy="afterInteractive" />
+      <Script src="/app.js?v=20261016.pitchday-request-card" strategy="afterInteractive" />
     </>
   );
 }

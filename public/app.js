@@ -86,6 +86,7 @@ init();
 
 async function init() {
   hidePitchdayNonRequestNavigation();
+  configurePitchdayRequestScreen();
   syncMobileViewport();
   bindEvents();
   syncPriorityControls();
@@ -108,6 +109,35 @@ async function init() {
   applyRequestedView();
   connectRealtime();
   startCountdownTimer();
+}
+
+function configurePitchdayRequestScreen() {
+  if (!IS_PITCHDAY) return;
+
+  const requestCard = document.querySelector("#pitchdayRequestCard");
+  if (requestCard) {
+    requestCard.hidden = false;
+    requestCard.style.removeProperty("display");
+  }
+  const multiSectorPanel = document.querySelector("#multiSectorPanel");
+  if (multiSectorPanel) {
+    multiSectorPanel.hidden = true;
+    multiSectorPanel.style.display = "none";
+  }
+  selectedSectorIds.clear();
+
+  document.querySelectorAll("[data-pitchday-idle='true']").forEach((card) => {
+    card.classList.add("pitchday-idle-sector");
+    card.querySelectorAll("[data-join]").forEach((button) => {
+      button.disabled = true;
+      button.textContent = "";
+      button.setAttribute("aria-label", "Opção indisponível no Pitchday");
+    });
+    card.querySelectorAll("[data-select-sector]").forEach((input) => {
+      input.checked = false;
+      input.disabled = true;
+    });
+  });
 }
 
 function hidePitchdayNonRequestNavigation() {
@@ -1112,6 +1142,24 @@ function renderSectorCards() {
     const card = button.closest(".sector-card");
     if (!card) return;
     const hasTicket = Boolean(activeQueues[sectorId]);
+
+    if (IS_PITCHDAY && button.dataset.pitchdayRequest === "true") {
+      card.classList.toggle("has-ticket", hasTicket);
+      button.disabled = sector.status !== "open" || ticketRequestInFlight;
+      button.textContent = activeJoinSector === sectorId
+        ? "Gerando senha..."
+        : hasTicket
+          ? "Ver minha senha"
+          : "Retirar senha";
+      return;
+    }
+
+    if (IS_PITCHDAY && card.dataset.pitchdayIdle === "true") {
+      button.disabled = true;
+      button.textContent = "";
+      return;
+    }
+
     card.classList.toggle("has-ticket", hasTicket);
     card.querySelector(".sector-head strong").textContent = sector.name;
     card.querySelector(".sector-head b").textContent = sector.counterLabel;
