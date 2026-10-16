@@ -14,7 +14,7 @@ export default async function TabletPage() {
     <>
       <HtmlTemplate fileName="tablet.html" />
       <Script src="/vendor/qrcode-generator.js" nonce={nonce} strategy="beforeInteractive" />
-      <Script src="/tablet.js?v=20260923.3" strategy="afterInteractive" />
+      <Script src="/tablet.js?v=20261016.pitchday-account-qr" strategy="afterInteractive" />
     </>
   );
 }

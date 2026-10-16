@@ -11,6 +11,7 @@ const PRIORITY_CATEGORIES = [
   { id: "fibromialgia", label: "FIBROMIALGIA", image: "/assets/tablet-priority/fibromialgia.png" }
 ];
 const PWA_FALLBACK_URL = "https://senhahub.vercel.app/";
+const PITCHDAY_ACCOUNT_EMAIL = "pitchday@superpompeia.com";
 const PRINT_POLL_INITIAL_MS = 1200;
 const PRINT_POLL_MAX_MS = 10000;
 const PRINTED_RESULT_DISPLAY_MS = 4000;
@@ -169,7 +170,30 @@ function renderStatus() {
 }
 
 function renderPwaQr(value) {
-  renderQr(elements.pwaQr, value || PWA_FALLBACK_URL, "QR indisponível");
+  const pitchdayAccount = String(state.status?.user?.email || "").trim().toLowerCase() === PITCHDAY_ACCOUNT_EMAIL;
+  const qrCard = document.querySelector("#tabletPwaQrCard");
+  const title = qrCard?.querySelector("strong");
+  const description = qrCard?.querySelector("span");
+  let targetUrl = value || PWA_FALLBACK_URL;
+
+  if (pitchdayAccount) {
+    const configuredUrl = normalizePwaUrl(targetUrl);
+    if (configuredUrl) {
+      const pitchdayUrl = new URL(configuredUrl);
+      pitchdayUrl.pathname = "/";
+      pitchdayUrl.search = "";
+      pitchdayUrl.hash = "";
+      pitchdayUrl.searchParams.set("ecosystem", "pitchday");
+      pitchdayUrl.searchParams.set("view", "sectors");
+      targetUrl = pitchdayUrl.toString();
+    }
+
+    if (qrCard) qrCard.setAttribute("aria-label", "Abrir pedidos do Pitchday pelo celular");
+    if (title) title.textContent = "Faça seu pedido pelo celular";
+    if (description) description.textContent = "Leia o QR Code para escolher um setor no Pitchday, sem fazer login.";
+  }
+
+  renderQr(elements.pwaQr, targetUrl, "QR indisponível");
 }
 
 function renderResultQr(value) {
