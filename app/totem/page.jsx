@@ -7,7 +7,7 @@ export const metadata = {
   description: "Emissao de senhas fisicas do SenhaHub."
 };
 
-const TOTEM_ASSET_VERSION = "20261016.pitchday-orders";
+const TOTEM_ASSET_VERSION = "20261016.pitchday-qr-root";
 
 export default async function TotemPage() {
   const nonce = (await headers()).get("x-nonce") || undefined;

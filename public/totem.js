@@ -508,6 +508,9 @@
     let targetUrl = normalizePwaUrl(baseUrl);
     if (IS_PITCHDAY && targetUrl) {
       const pitchdayUrl = new URL(targetUrl);
+      pitchdayUrl.pathname = "/";
+      pitchdayUrl.search = "";
+      pitchdayUrl.hash = "";
       pitchdayUrl.searchParams.set("ecosystem", "pitchday");
       pitchdayUrl.searchParams.set("view", "sectors");
       targetUrl = pitchdayUrl.toString();
