@@ -109,27 +109,35 @@ test("proxy só aceita forwarded headers quando explicitamente confiável", () =
   assert.ok(runtimeClientIp.indexOf("x-vercel-forwarded-for") < runtimeClientIp.indexOf("cf-connecting-ip"));
 });
 
-test("login limita por IP sem bloqueio global por conta", () => {
+test("login limita tentativas por IP e aplica pausa progressiva por conta", () => {
   const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
+  const localAuth = fs.readFileSync(path.join(__dirname, "..", "server/auth/local-auth.js"), "utf8");
+  const loginSecurity = require("../server/auth/login-security");
   const loginFunctions = [
     extractFunction(standalone, "function loginLocalUser(body, req)"),
     extractFunction(standalone, "async function loginSupabaseUser(body, req)"),
     extractFunction(runtime, "async function login(request)")
   ];
   for (const login of loginFunctions) {
-    assert.match(login, /login:ip/);
-    assert.doesNotMatch(login, /login:account|isLoginLocked|registerLoginFailure/);
+    assert.match(login, /consumeLoginIpRateLimit|login:ip/);
+    assert.match(login, /loginAccountAttemptKey/);
   }
+  assert.equal(loginSecurity.LOGIN_IP_RATE_LIMIT, 10);
+  assert.equal(loginSecurity.LOGIN_IP_BURST_LIMIT, 3);
+  assert.equal(loginSecurity.LOGIN_IP_BURST_WINDOW_SECONDS, 10);
+  assert.equal(loginSecurity.LOGIN_FAILURE_LIMIT, 5);
+  assert.match(localAuth, /registerAccountLoginFailure/);
+  assert.match(runtime, /record_login_failure/);
 });
 
 test("login não diferencia credencial inválida de perfil inativo", () => {
   const standalone = fs.readFileSync(path.join(__dirname, "..", "server/server.js"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
   const supabaseLogin = extractFunction(runtime, "async function login(request)");
-  assert.equal((supabaseLogin.match(/AUTH_CREDENTIALS_ERROR/g) || []).length, 2);
+  assert.equal((supabaseLogin.match(/AUTH_CREDENTIALS_ERROR/g) || []).length, 3);
   const legacyLogin = extractFunction(standalone, "async function loginSupabaseUser(body, req)");
-  assert.equal((legacyLogin.match(/Não foi possível concluir a autenticação/g) || []).length, 2);
+  assert.equal((legacyLogin.match(/Não foi possível concluir a autenticação/g) || []).length, 3);
 });
 
 test("login permanece sem MFA ou CAPTCHA forçados", () => {
@@ -212,11 +220,12 @@ test("a verificação de backup valida manifesto, idade, permissões e AES-GCM",
   }
 });
 
-test("lockout não é aplicado quando o IP não foi identificado com confiança", () => {
+test("pausa da conta funciona sem IP confiável e mantém limite por IP quando disponível", () => {
   const localAuth = fs.readFileSync(path.join(__dirname, "..", "server/auth/local-auth.js"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "..", "server/integrations/supabase-runtime.js"), "utf8");
-  assert.match(localAuth, /count >= LOGIN_LIMIT && shouldApplyLoginLock\(attemptKey\)/);
-  assert.match(runtime, /attempts >= LOGIN_ATTEMPT_LIMIT && shouldApplyLoginLock\(key\)/);
+  assert.match(localAuth, /loginAccountAttemptKey/);
+  assert.match(localAuth, /registerAccountLoginFailure/);
+  assert.match(runtime, /isLoginLocked\(accountAttemptKey\)/);
   assert.match(runtime, /isKnownClientIp\(requestIp\)/);
 });
 

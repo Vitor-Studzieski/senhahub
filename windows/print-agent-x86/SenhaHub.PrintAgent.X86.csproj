@@ -7,9 +7,9 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>SenhaHub.PrintAgent.X86</RootNamespace>
     <AssemblyName>SenhaHub.PrintAgent.X86</AssemblyName>
-    <AssemblyVersion>1.2.8.0</AssemblyVersion>
-    <FileVersion>1.2.8.0</FileVersion>
-    <InformationalVersion>x86/1.2.8</InformationalVersion>
+    <AssemblyVersion>1.2.9.0</AssemblyVersion>
+    <FileVersion>1.2.9.0</FileVersion>
+    <InformationalVersion>x86/1.2.9</InformationalVersion>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -38,6 +38,7 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Security" />
     <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Web.Extensions" />

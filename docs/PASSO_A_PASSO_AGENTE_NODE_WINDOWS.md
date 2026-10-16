@@ -1,188 +1,65 @@
-# Passo a passo: agente Node.js de impressão no Windows
+# Instalação e diagnóstico do agente Node no Windows
 
-> A operação atual do agente é o protocolo v2. Consulte primeiro [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md); as referências a token v1, polling ou heartbeat neste documento são históricas e servem apenas para a transição de destinos ainda não ativados.
+Este guia cobre o agente Node.js do protocolo v2 com a Bematech MP-4200 TH. O protocolo atual usa dispositivo pareado, sessão local, lease, journal SQLite e confirmação transacional. As instruções antigas de `PRINT_AGENT_TOKEN`, polling v1 e `printed-jobs.log` não se aplicam ao agente atual.
 
-Projeto: SenhaHub Supermercado Pompeia
-Componente: agente Node.js + Bematech MP-4200 TH  
-Objetivo: instalar, testar, operar e diagnosticar a impressão de senhas físicas
+## Instalação do agente `.exe` no totem
 
-## 1. O que este agente faz
+Para instalar sem colocar código-fonte, Node.js ou npm no mini PC, copie apenas `SenhaHub.PrintAgent.Node-Setup.zip` para o totem e siga o [guia do executável Windows](../windows/print-agent-node/README.md). O pacote inclui o executável, o modelo de configuração, o diagnóstico e o instalador da tarefa agendada. O instalador gráfico exige um código temporário atual do console em toda execução e apaga os arquivos anteriores do agente, incluindo sessão e journal SQLite. Use-o somente quando essa instalação limpa for desejada.
 
-O agente Node.js é um processo que fica no computador Windows conectado à impressora Bematech.
+As instruções abaixo descrevem a instalação pela árvore Node.js, útil para manutenção e desenvolvimento.
 
-```text
-consultar a API
-      ↓
-reivindicar um print_job
-      ↓
-montar o cupom ESC/POS
-      ↓
-enviar os bytes para a COM3
-      ↓
-registrar o job no journal local
-      ↓
-confirmar sucesso ou falha na API
-      ↓
-aguardar e repetir
-```
+## Primeira instalação do totem
 
-O agente não cria a senha e não decide a fila. Essas responsabilidades ficam no backend e no Supabase. O agente somente consome trabalhos de impressão já registrados.
+O primeiro pareamento exige um código novo, de uso único e válido por dez minutos. O instalador faz a preparação antes de pedir o código para que o tempo não seja consumido enquanto o Node e as dependências são instalados.
 
-## 2. Arquivos envolvidos
+1. Cadastre e ative no console administrativo o dispositivo para o totem e a impressora corretos.
+2. Conecte a Bematech ao mini PC e confirme o papel, a alimentação e o cabo.
+3. Instale Node.js 22.13 ou superior na série 22.x e copie o projeto para uma pasta fixa, por exemplo `C:\SenhaHub`.
+4. Copie `.env.print-agent.example` para `.env.print-agent`, configure o servidor e a COM real. Deixe `PRINT_ENROLLMENT_CODE` vazio.
+5. Rode o teste físico abaixo e confirme que o cupom saiu.
+6. Abra PowerShell como administrador e execute `windows\print-agent\install.ps1`.
+7. Quando o instalador pedir, gere no console administrativo um código temporário para esse dispositivo e cole-o no PowerShell. O código não aparece no log.
+8. O instalador grava o código com ACL restrita, registra e inicia a tarefa do Windows e aguarda até 45 segundos pelo primeiro bootstrap autenticado.
 
-| Arquivo | Função |
-|---|---|
-| `scripts/print-agent.js` | Loop principal, consumo da fila e processamento do trabalho. |
-| `scripts/print-agent/runtime.js` | Carrega `.env.print-agent`, configura logs e journal. |
-| `scripts/print-agent/serial-printer.js` | Abre a porta serial e envia ESC/POS. |
-| `server/kiosk/escpos-receipt.js` | Monta o conteúdo binário do recibo. |
-| `.env.print-agent.example` | Modelo de configuração do agente. |
-| `windows/print-agent/install.ps1` | Instala a tarefa automática do Windows. |
-| `windows/print-agent/uninstall.ps1` | Remove a tarefa automática. |
-| `data/print-agent/print-agent.log` | Log operacional. |
-| `data/print-agent/printed-jobs.log` | Journal contra reimpressão. |
+Gere o código do console somente quando o instalador pedir. Se ele expirar, for usado ou o pareamento não concluir, gere outro no console, substitua `PRINT_ENROLLMENT_CODE` em `.env.print-agent` e reinicie a tarefa. Este procedimento via scripts do repositório mantém a sessão e o journal em reinstalações; o instalador gráfico `.exe` faz uma instalação limpa e os apaga.
 
-## 3. Como a fila funciona
+## Pré-requisitos
 
-Quando o cliente escolhe um setor no totem:
+- Windows 10 ou superior, preferencialmente 64 bits;
+- Node.js 22.13 ou superior dentro da série 22.x e npm;
+- PowerShell como administrador para registrar a tarefa;
+- projeto em uma pasta fixa e com `package-lock.json`;
+- internet HTTPS até o SenhaHub;
+- Bematech MP-4200 TH conectada como porta serial COM e driver/conversor instalado.
 
-1. o totem envia `POST /api/kiosk/tickets`;
-2. o backend valida a sessão do totem;
-3. o Supabase cria o ticket físico;
-4. o Supabase cria um registro em `print_jobs` com status `pending`;
-5. a API devolve o número da senha e o ID do trabalho.
-
-O agente chama:
-
-```text
-POST /api/print/jobs/claim
-```
-
-Com:
-
-```json
-{
-  "kioskId": "totem-pompeia-01"
-}
-```
-
-E com o cabeçalho:
-
-```text
-x-print-agent-token: <PRINT_AGENT_TOKEN>
-```
-
-Se houver trabalho disponível, a API muda o status de `pending` para `printing` e devolve o payload do recibo.
-
-Depois da impressão, o agente chama:
-
-```text
-POST /api/print/jobs/<jobId>/finish
-```
-
-Sucesso:
-
-```json
-{
-  "kioskId": "totem-pompeia-01",
-  "success": true,
-  "error": null
-}
-```
-
-Falha:
-
-```json
-{
-  "kioskId": "totem-pompeia-01",
-  "success": false,
-  "error": "COM3 indisponivel"
-}
-```
-
-Estados:
-
-```text
-pending → printing → printed
-                    ↘ failed → nova tentativa
-```
-
-Um trabalho que ficou em `printing` por mais de dois minutos pode ser reivindicado novamente. A RPC usa `FOR UPDATE SKIP LOCKED` para impedir que dois agentes peguem o mesmo trabalho simultaneamente.
-
-## 4. Pré-requisitos do Windows
-
-Confirme antes de instalar:
-
-- Windows 10 ou superior, 64 bits;
-- Node.js 22 instalado;
-- acesso de administrador para criar a tarefa automática;
-- internet HTTPS funcionando;
-- Bematech MP-4200 TH conectada;
-- driver ou conversor USB/serial instalado;
-- impressora configurada para ESC/POS;
-- cabo, alimentação e papel funcionando;
-- projeto copiado para uma pasta fixa.
-
-Recomenda-se uma pasta como:
-
-```text
-C:\SenhaHub
-```
-
-Não instale o agente dentro de Downloads ou de uma pasta temporária.
-
-## 5. Instalar e validar o Node.js
-
-Instale o Node.js 22 LTS. Depois abra o PowerShell e execute:
+Confirme o Node e o npm:
 
 ```powershell
 node --version
 npm --version
 ```
 
-O primeiro comando deve mostrar uma versão `22.x`. Se `node` não for encontrado, reabra o PowerShell para atualizar o PATH.
+O Node deve mostrar `v22.13.0` ou superior dentro da série 22.x. O agente usa `node:sqlite` para o journal local. Se o comando `node` não for encontrado, reabra o PowerShell depois de instalar Node.js.
 
-## 6. Copiar o projeto e instalar dependências
+## Configuração
 
-Copie ou clone o projeto para uma pasta fixa:
+Copie o modelo e ajuste o arquivo:
 
 ```powershell
 Set-Location C:\SenhaHub
-```
-
-Confirme os arquivos:
-
-```powershell
-Get-ChildItem package.json
-Get-ChildItem scripts\print-agent.js
-Get-ChildItem scripts\print-agent\serial-printer.js
-```
-
-Instale as versões travadas no lockfile:
-
-```powershell
-npm ci --omit=dev
-```
-
-O pacote principal do agente é `serialport`, usado para acessar a porta serial.
-
-## 7. Criar o `.env.print-agent`
-
-Copie o modelo:
-
-```powershell
 Copy-Item .env.print-agent.example .env.print-agent
 notepad .env.print-agent
 ```
 
-Preencha:
+Configuração principal para primeira instalação:
 
 ```env
 PRINT_API_URL=https://senhahub.vercel.app
-PRINT_AGENT_TOKEN=cole-o-mesmo-segredo-configurado-no-servidor
-KIOSK_ID=totem-pompeia-01
+PRINT_ENROLLMENT_CODE=
+PRINT_REALTIME_ENABLED=1
+PRINT_RECONCILIATION_MS=600000
 
-KIOSK_PRINTER_PORT=COM3
+KIOSK_PRINTER_PORT=COM4
 PRINT_SERIAL_BAUD_RATE=115200
 PRINT_SERIAL_DATA_BITS=8
 PRINT_SERIAL_STOP_BITS=1
@@ -191,368 +68,138 @@ PRINT_SERIAL_RTSCTS=0
 
 PRINT_STATUS_CHECK_ENABLED=0
 PRINT_STATUS_TIMEOUT_MS=1500
-PRINT_POLL_INTERVAL_MS=2000
-PRINT_FALLBACK_POLL_INTERVAL_MS=30000
-PRINT_HEARTBEAT_INTERVAL_MS=60000
-PRINT_RETRY_MAX_MS=60000
 PRINT_AGENT_STATE_DIR=./data/print-agent
 ```
 
-Regras importantes:
+Use a porta mostrada no Gerenciador de Dispositivos. Durante a configuração inicial, mantenha `PRINT_STATUS_CHECK_ENABLED=0`; algumas unidades não respondem ao comando ESC/POS de consulta de estado. Não configure `PRINT_AGENT_TOKEN` para o fluxo v2. O agente recebe uma sessão restrita pelo pareamento. Nunca coloque `SUPABASE_SERVICE_ROLE_KEY` ou senha de banco neste computador.
 
-- `PRINT_API_URL` deve apontar para a API que contém a fila.
-- Em produção, use `https://`.
-- `PRINT_AGENT_TOKEN` deve ser idêntico ao token configurado na hospedagem.
-- O token deve ter pelo menos 32 caracteres.
-- `KIOSK_ID` deve corresponder ao cadastro do banco.
-- `KIOSK_PRINTER_PORT` deve ser a porta real encontrada no Windows.
-- `PRINT_POLL_INTERVAL_MS` é usado durante a implantação ou quando o Realtime estiver desabilitado.
-- Com o Realtime ativo, o fallback consulta a fila a cada 30 segundos e o heartbeat atualiza o totem a cada 60 segundos.
-- Nunca envie `.env.print-agent` para o Git ou para o navegador.
+## Descobrir e testar a impressora
 
-O agente não precisa receber a `SUPABASE_SERVICE_ROLE_KEY`, senha de banco ou senha de usuário. Ele precisa somente da URL da API, do token exclusivo e da configuração da impressora.
-
-## 8. Descobrir a porta da Bematech
-
-Com a impressora conectada, execute:
+Na pasta do projeto, liste as COM:
 
 ```powershell
+npm ci --omit=dev
 npm run print:agent:ports
 ```
 
-Exemplo esperado:
-
-```json
-[
-  {
-    "path": "COM3",
-    "manufacturer": "..."
-  }
-]
-```
-
-Se aparecer outra porta, como `COM4`, ajuste:
-
-```env
-KIOSK_PRINTER_PORT=COM4
-```
-
-Também confira em:
-
-```text
-Gerenciador de Dispositivos → Portas (COM e LPT)
-```
-
-Uma forma prática de identificar a porta é observar qual item desaparece ao desconectar o cabo e reaparece ao conectá-lo novamente.
-
-## 9. Testar a impressora diretamente
-
-Antes de testar a fila, execute:
+Se a Bematech aparecer, ajuste `KIOSK_PRINTER_PORT` no `.env.print-agent`. Para confirmar a impressão física:
 
 ```powershell
 npm run print:agent:test
 ```
 
-Esse comando:
+Esse comando envia um cupom identificado como **Teste** e não consulta a fila. Faça o teste quando puder recolher o papel. Se não imprimir, confira energia, papel, cabo, porta, driver, modo ESC/POS, baud rate e se outro programa já abriu a COM.
 
-1. carrega o `.env.print-agent`;
-2. monta um cupom de diagnóstico;
-3. abre a porta configurada;
-4. envia ESC/POS;
-5. aguarda o buffer esvaziar;
-6. fecha a porta.
+## Instalar execução automática
 
-Esse teste não consulta o Supabase e não precisa de `print_job` pendente.
-
-Se não imprimir, verifique nesta ordem:
-
-1. impressora ligada;
-2. papel instalado;
-3. porta correta;
-4. cabo conectado;
-5. driver ou conversor USB/serial;
-6. modo ESC/POS;
-7. baud rate `115200`;
-8. 8 bits, sem paridade e 1 stop bit;
-9. porta não utilizada por outro programa;
-10. permissões do usuário.
-
-## 10. Validar o status da impressora
-
-A configuração inicial é:
-
-```env
-PRINT_STATUS_CHECK_ENABLED=0
-```
-
-Nesse modo, o agente envia o cupom sem consultar o estado da impressora.
-
-Depois que o teste básico funcionar, pode-se experimentar:
-
-```env
-PRINT_STATUS_CHECK_ENABLED=1
-```
-
-Nesse modo, o agente envia `DLE EOT`, um comando ESC/POS, e tenta detectar tampa aberta, falta de papel e falha informada pela impressora.
-
-Se a Bematech não responder a esse comando, o agente pode informar timeout mesmo que consiga imprimir. Por isso, mantenha `0` durante a primeira instalação e habilite `1` somente após validar o comportamento real do equipamento.
-
-## 11. Iniciar o agente manualmente
-
-Para executar em primeiro plano:
-
-```powershell
-npm run print:agent
-```
-
-Para parar:
-
-```text
-Ctrl + C
-```
-
-O código também aceita uma execução única:
-
-```powershell
-node scripts\print-agent.js --once
-```
-
-Esse modo consulta uma vez, processa um trabalho se encontrar e encerra. É útil para estudar a fila sem deixar um processo permanente rodando.
-
-Mensagens esperadas:
-
-```text
-Agente de impressao iniciado.
-Enviando senha para a impressora.
-Impressao concluida.
-```
-
-Quando a API ou a impressora falha, o agente aumenta progressivamente o intervalo até `PRINT_RETRY_MAX_MS`.
-
-## 12. Testar a fila completa
-
-### Preparação
-
-1. confirmar que as migrations da fila foram aplicadas no Supabase;
-2. confirmar que existe o kiosk `totem-pompeia-01` ativo;
-3. confirmar que `PRINT_AGENT_TOKEN` está configurado na hospedagem;
-4. configurar o mesmo token no `.env.print-agent`;
-5. confirmar que o totem está pareado.
-
-### Execução
-
-1. abrir `/totem`;
-2. selecionar um setor aberto;
-3. confirmar a emissão;
-4. observar a senha aparecer;
-5. observar `Aguardando a impressora`;
-6. iniciar `npm run print:agent`;
-7. observar `Imprimindo sua senha`;
-8. retirar o papel;
-9. observar `Senha impressa`.
-
-### Conferência no banco
-
-O trabalho deve seguir:
-
-```text
-pending → printing → printed
-```
-
-Na tabela `print_jobs`, confira:
-
-- `status = 'printed'`;
-- `attempts` incrementado;
-- `printed_at` preenchido;
-- `last_error` nulo;
-- `kiosk_id` correto.
-
-## 13. Como o agente evita reimpressão
-
-O agente usa:
-
-```text
-data\print-agent\printed-jobs.log
-```
-
-A ordem é:
-
-1. reivindicar o trabalho;
-2. imprimir fisicamente;
-3. gravar o ID no journal;
-4. confirmar sucesso na API.
-
-Se a API cair depois da impressão, o trabalho pode voltar para a fila. Na nova tentativa, o agente encontra o mesmo ID no journal e não imprime novamente; apenas tenta confirmar a conclusão.
-
-Existe uma pequena janela inevitável: se a energia cair depois do corte e antes de o journal ser gravado, uma nova tentativa pode gerar uma segunda via. Por isso, nunca apague o journal sem confirmar primeiro se o papel já saiu.
-
-## 14. Verificar os logs
-
-O agente cria automaticamente:
-
-```text
-data\print-agent\print-agent.log
-data\print-agent\printed-jobs.log
-```
-
-Comandos úteis:
-
-```powershell
-Get-Content .\data\print-agent\print-agent.log -Wait
-Get-Content .\data\print-agent\print-agent.log -Tail 50
-Get-Content .\data\print-agent\printed-jobs.log -Tail 20
-```
-
-O log registra horário, início, busca, impressão, falhas, tentativas e encerramento.
-
-## 15. Instalar execução automática
-
-Depois que o teste manual funcionar, abra o PowerShell como Administrador:
+Depois de confirmar o teste físico, em PowerShell como administrador:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\windows\print-agent\install.ps1
 ```
 
-O instalador:
+O instalador registra a saída de `npm ci`, valida Node 22.13+ e dependências, executa o diagnóstico local e confirma que a COM configurada aparece. Na primeira instalação, ele solicita o código atual do console depois dessa preparação. A tarefa é executada como `SYSTEM`, inicia com o Windows e tem até 20 reinícios automáticos, separados por um minuto.
 
-1. confirma privilégios administrativos;
-2. verifica o projeto e o `.env.print-agent`;
-3. executa `npm ci --omit=dev`;
-4. restringe a leitura da configuração;
-5. registra uma tarefa no Agendador do Windows;
-6. configura execução no início do Windows;
-7. configura reinício em caso de falha;
-8. inicia a tarefa.
-
-A tarefa é criada como:
+A tarefa criada se chama:
 
 ```text
 SenhaHub - Agente de Impressao
 ```
 
-Conferir:
+Comandos para conferir e controlar a tarefa:
 
 ```powershell
 Get-ScheduledTask -TaskName "SenhaHub - Agente de Impressao"
 Get-ScheduledTaskInfo -TaskName "SenhaHub - Agente de Impressao"
-```
-
-Parar e iniciar manualmente:
-
-```powershell
 Stop-ScheduledTask -TaskName "SenhaHub - Agente de Impressao"
 Start-ScheduledTask -TaskName "SenhaHub - Agente de Impressao"
 ```
 
-Remover:
+O instalador aguarda até 45 segundos pelo bootstrap. Se o pareamento falhar, a tarefa continua tentando com espera progressiva e o log registra HTTP/status/motivo sem gravar credenciais. Depois de trocar por um código novo, reinicie a tarefa.
+
+## Diagnóstico
+
+Rode na pasta do projeto, como administrador para ler a pasta de estado protegida:
 
 ```powershell
-.\windows\print-agent\uninstall.ps1
+npm run print:agent:diagnose
 ```
 
-Remover a tarefa não apaga automaticamente os logs nem o journal.
+O relatório verifica:
 
-## 16. Diagnóstico rápido
+- Node, arquivos do projeto, dependências e `serialport`;
+- configuração sem revelar tokens ou código de pareamento;
+- portas COM e presença da porta configurada;
+- tarefa agendada, ação, estado, último resultado e reinícios;
+- processos Node do agente, tempo ligado e eventos de suspensão/retomada;
+- log da instalação, falhas de inicialização, erros do agente e estado do journal SQLite;
+- bootstrap autenticado, se já existir uma sessão salva.
 
-| Sintoma | Causa provável | Ação |
-|---|---|---|
-| `PRINT_API_URL deve usar HTTPS` | URL sem HTTPS em produção | Corrigir `PRINT_API_URL`. |
-| `PRINT_AGENT_TOKEN deve ter ao menos 32 caracteres` | Token ausente ou curto | Gerar segredo forte e configurar nos dois lados. |
-| `Credencial do agente invalida` | Token diferente entre servidor e Windows | Comparar os valores localmente e fazer redeploy se necessário. |
-| `Porta serial COM3 nao encontrada` | Porta mudou, cabo ou driver | Executar `npm run print:agent:ports`. |
-| Porta em uso | Outro programa abriu a COM | Fechar utilitários, monitor serial ou outro agente. |
-| Trabalho fica em `printing` | Agente caiu após reivindicar | Verificar logs e aguardar a recuperação após dois minutos. |
-| Nenhum trabalho encontrado | Fila vazia ou `KIOSK_ID` errado | Conferir emissão, banco e configuração. |
-| Imprime, mas fica como falha | Confirmação HTTP caiu após a impressão | Conferir o papel, o journal e `last_error` antes de repetir. |
-| Status ESC/POS não responde | Modelo não responde a `DLE EOT` | Voltar `PRINT_STATUS_CHECK_ENABLED=0`. |
+O diagnóstico não imprime nem reivindica trabalhos e não consome o código de pareamento. Com sessão salva, ele chama `bootstrap` para confirmar autenticação e escopo. Se a tarefa estiver parada ou ausente, também chama `recover` para mostrar o estado remoto e aplicar a recuperação normal de leases vencidos; isso pode mudar um lease antigo para `retry_wait` ou `needs_review`. Se a tarefa estiver rodando, pula essa consulta para não interferir em uma impressão ativa. O comando retorna código de saída `1` se encontrar uma falha.
 
-## 17. Teste com o simulador
-
-O simulador valida a fila sem Bematech física:
+Para ver o relatório como JSON ou validar localmente antes de instalar:
 
 ```powershell
-$env:PRINT_API_URL="https://senhahub.vercel.app"
-$env:PRINT_AGENT_TOKEN="o-mesmo-token-do-servidor"
-$env:KIOSK_ID="totem-pompeia-01"
-npm run print:simulate -- --once
+npm run print:agent:diagnose -- --json
+node scripts\print-agent\diagnostic.js --local-only --preinstall
 ```
 
-Ele reivindica um trabalho, mostra uma representação no terminal e confirma a API. Ele não testa COM3, cabo, driver, ESC/POS real ou corte físico.
+## Logs e estado local
 
-## 18. Segurança
+Por padrão, os arquivos ficam em `data\print-agent`:
 
-Nunca:
+```text
+install.log             saída do instalador e erros de pré-instalação
+print-agent.log         operação, autenticação, Realtime e falhas de impressão
+print-agent.log.1       log anterior após rotação
+agent-startup.log       exceções fatais durante a inicialização
+agent-v2.sqlite         sessão do dispositivo e journal de trabalhos
+```
 
-- coloque `PRINT_AGENT_TOKEN` no código;
-- use `NEXT_PUBLIC_*` para o token;
-- envie `.env.print-agent` para o Git;
-- envie `SUPABASE_SERVICE_ROLE_KEY` para o Windows;
-- compartilhe logs contendo tokens;
-- apague o journal sem verificar o papel;
-- abra uma API local publicamente sem HTTPS e autenticação.
+Veja o log ao vivo e as últimas linhas:
 
-O agente precisa apenas de URL da API, token exclusivo, ID do totem e configuração da impressora. As tabelas e RPCs de impressão permanecem protegidas no Supabase para uso do backend.
+```powershell
+Get-Content .\data\print-agent\print-agent.log -Wait
+Get-Content .\data\print-agent\print-agent.log -Tail 60
+Get-Content .\data\print-agent\install.log -Tail 60
+```
 
-## 19. Checklist de instalação
+Se `PRINT_AGENT_STATE_DIR` apontar para outro lugar, use essa pasta nos comandos. O instalador restringe a leitura do arquivo de configuração e do journal ao `SYSTEM` e aos administradores locais. Não apague `agent-v2.sqlite` manualmente: ele guarda sessão e estado de trabalhos que podem precisar de revisão para evitar uma segunda impressão. O instalador gráfico `.exe` apaga esse arquivo como parte da instalação limpa.
 
-### Windows
+## Interpretar falhas comuns
 
-- [ ] Node.js 22 instalado;
-- [ ] `node --version` validado;
-- [ ] projeto copiado para pasta fixa;
-- [ ] `npm ci --omit=dev` concluído;
-- [ ] `.env.print-agent` criado;
-- [ ] token configurado sem espaços extras;
-- [ ] `KIOSK_ID` correto;
-- [ ] porta encontrada;
-- [ ] `npm run print:agent:test` imprimiu;
-- [ ] logs criados;
-- [ ] tarefa automática instalada.
+| Sinal no relatório/log | O que verificar |
+|---|---|
+| `Node.js 22.13 ou superior` | Atualize para Node 22 LTS e confirme o caminho mostrado pelo diagnóstico. |
+| `serialport` ausente ou módulo nativo não carregou | Rode `npm ci --omit=dev` com Node 22 e consulte `install.log`. |
+| Porta configurada ausente | Confira cabo, driver e `KIOSK_PRINTER_PORT` em `npm run print:agent:ports`. |
+| Porta em uso ou sem permissão | Feche monitor serial e outras instâncias; confira usuário/tarefa e ACL. |
+| `invalid_enrollment` / HTTP 401 na primeira instalação | Gere um código novo no console; o anterior pode ter expirado ou já ter sido usado. |
+| HTTP 401 depois de pareado | A sessão local expirou ou foi recusada; confira o log e rode o diagnóstico autenticado. |
+| HTTP 403 / `device_revoked` / `device_scope_invalid` | Confirme que o dispositivo está ativo e vinculado ao totem, loja e impressora corretos no console. |
+| Erro de DNS, TLS ou `fetch failed` | Confira internet, DNS, data/hora do Windows e acesso HTTPS ao servidor. |
+| `needs_review` ou resultado físico incerto | Confira se o papel saiu e resolva o trabalho no painel antes de nova impressão. Não limpe o journal. |
+| Tarefa ativa, mas sem impressão | Confirme Realtime, emissão do trabalho, estado do dispositivo e eventos recentes do journal/log. |
 
-### Servidor e Supabase
+Um resultado físico incerto bloqueia a impressora para impedir duplicidade. Se a senha saiu, confirme no painel; se não saiu, resolva o trabalho para reimpressão após verificar fisicamente.
 
-- [ ] migration da fila aplicada;
-- [ ] `print_kiosks` possui `totem-pompeia-01` ativo;
-- [ ] `PRINT_AGENT_TOKEN` configurado no servidor;
-- [ ] novo deploy feito depois da configuração;
-- [ ] API acessível por HTTPS;
-- [ ] RPCs disponíveis apenas ao backend;
-- [ ] `print_jobs` criado ao emitir uma senha.
+## Operação manual e simulador
 
-### Operação
+Para iniciar em primeiro plano:
 
-- [ ] totem pareado;
-- [ ] senha física emitida;
-- [ ] job passou por `pending` e `printing`;
-- [ ] papel impresso;
-- [ ] job terminou em `printed`;
-- [ ] senha apareceu na fila do setor;
-- [ ] falha controlada testada;
-- [ ] recuperação sem reimpressão indevida validada.
+```powershell
+npm run print:agent
+```
 
-## 20. Ordem recomendada para estudar
+Use `Ctrl+C` para parar. O agente usa Realtime como sinal de nova fila e reconciliação periódica para recuperar eventos perdidos. Com `PRINT_REALTIME_ENABLED=0`, a reconciliação segue ativa, mas pode aumentar o tempo até buscar uma nova senha.
 
-1. leia este documento;
-2. leia `scripts/print-agent.js` para entender o loop;
-3. leia `scripts/print-agent/runtime.js` para entender configuração e journal;
-4. leia `scripts/print-agent/serial-printer.js` para entender a COM3;
-5. leia `server/kiosk/escpos-receipt.js` para entender os bytes do cupom;
-6. leia a migration `20260729154028_print_kiosk_jobs.sql` para entender a fila;
-7. execute `npm run print:agent:ports`;
-8. execute `npm run print:agent:test`;
-9. faça um teste com o simulador;
-10. faça um teste completo com o totem e a impressora real.
+O protocolo v2 e o painel de impressão estão descritos em [docs/IMPRESSAO_V2.md](IMPRESSAO_V2.md). A fila usa leases e journal. Um envio interrompido depois que os bytes começaram pode ficar em `needs_review`; ele não deve ser reivindicado para reimpressão automática.
 
-## 21. Arquivos relacionados
+## Segurança
 
-- [Guia resumido do totem](totem-impressao.md)
-- [Código principal do agente](../scripts/print-agent.js)
-- [Runtime do agente](../scripts/print-agent/runtime.js)
-- [Comunicação serial](../scripts/print-agent/serial-printer.js)
-- [Recibo ESC/POS](../server/kiosk/escpos-receipt.js)
-- [Serviço de sessão do totem](../server/kiosk/print-kiosk-service.js)
-- [Runtime Supabase](../server/integrations/supabase-runtime.js)
-- [Migration da fila](../supabase/migrations/20260729154028_print_kiosk_jobs.sql)
-- [Instalador Windows](../windows/print-agent/install.ps1)
-# Agente Node no Windows
+- Não envie `.env.print-agent` nem `agent-v2.sqlite` para o Git ou para atendimento.
+- Não compartilhe logs sem revisar dados operacionais do dispositivo.
+- Não apague manualmente journal ou estado para “destravar” impressão; a instalação gráfica `.exe` limpa esses arquivos deliberadamente e deve ser usada só quando se deseja reiniciar o pareamento e o journal.
+- Gere um código de pareamento próprio para cada dispositivo; ele é de uso único e expira em dez minutos.
+- Use credenciais administrativas somente no console/backend de provisionamento, nunca no totem.

@@ -46,6 +46,7 @@
     tvDisplayAccess: false,
     sectorId: "",
     actionInFlight: false,
+    lastRemoteActionAt: 0,
     callAlertTimer: null,
     audioContext: null,
     callAlertAudioStopTimer: null,
@@ -61,7 +62,8 @@
     currentVideoIndex: -1,
     failedVideos: new Set(),
     videoErrorHandled: false,
-    mediaAdvanceTimer: null
+    mediaAdvanceTimer: null,
+    mediaBackdropTimer: null
   };
   const elements = {
     clock: document.querySelector("#tvClock"),
@@ -81,6 +83,7 @@
     callActionButtons: [...document.querySelectorAll("[data-tv-call-action]")],
     feedback: document.querySelector("#tvFeedback"),
     videoStage: document.querySelector("#tvVideoStage"),
+    videoBackdrop: document.querySelector("#tvVideoBackdrop"),
     video: document.querySelector("#tvPlaylistVideo"),
     image: document.querySelector("#tvPlaylistImage"),
     videoPlaceholder: document.querySelector("#tvVideoPlaceholder"),
@@ -90,8 +93,8 @@
     playlistStatus: document.querySelector("#tvPlaylistStatus"),
     mediaFeedback: document.querySelector("#tvMediaFeedback")
   };
-
   const sessionReady = loadSession();
+
   updateClock();
   loadWeather();
   loadPlaylist();
@@ -103,6 +106,7 @@
   elements.callActionButtons.forEach((button) => {
     button.addEventListener("click", () => executeCallAction(button.dataset.tvCallAction));
   });
+  window.addEventListener("keydown", handlePresenterKeydown);
   window.setInterval(updateClock, 1000);
   loadState();
   state.timer = window.setInterval(loadState, POLL_INTERVAL_MS);
@@ -177,6 +181,26 @@
     } else {
       elements.callControlsStatus.textContent = "Entre como colaborador para usar";
     }
+  }
+
+  function handlePresenterKeydown(event) {
+    if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.target?.isContentEditable || event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+
+    // Presentation remotes commonly report previous/next as arrows or page keys.
+    const key = String(event.key || event.code || "").toLowerCase();
+    const action = ["arrowup", "pageup"].includes(key)
+      ? "previous"
+      : ["arrowdown", "pagedown"].includes(key)
+        ? "next"
+        : "";
+    if (!action || !["tv", "attendant", "manager", "admin"].includes(state.userRole) || !state.sectorId) return;
+
+    event.preventDefault();
+    const now = Date.now();
+    if (state.actionInFlight || now - state.lastRemoteActionAt < 450) return;
+    state.lastRemoteActionAt = now;
+    void executeCallAction(action);
   }
 
   async function executeCallAction(action) {
@@ -461,6 +485,7 @@
     const item = state.playlist[nextIndex];
     state.videoErrorHandled = false;
     if (state.mediaAdvanceTimer) window.clearTimeout(state.mediaAdvanceTimer);
+    stopMediaBackdrop();
     if (elements.videoStage) {
       elements.videoStage.dataset.state = "loading";
       elements.videoStage.dataset.orientation = item.orientation;
@@ -486,6 +511,7 @@
       if (!elements.image) return;
       elements.image.onload = () => {
         if (state.playlist[state.currentVideoIndex] !== item) return;
+        if (item.orientation === "portrait") paintMediaBackdrop(elements.image);
         if (elements.videoStage) elements.videoStage.dataset.state = "playing";
         state.mediaAdvanceTimer = window.setTimeout(playNextVideo, item.durationSeconds * 1000);
       };
@@ -530,7 +556,37 @@
   }
 
   function handleVideoReady() {
-    if (state.playlist[state.currentVideoIndex] && elements.videoStage) elements.videoStage.dataset.state = "playing";
+    const item = state.playlist[state.currentVideoIndex];
+    if (!item || !elements.videoStage) return;
+    elements.videoStage.dataset.state = "playing";
+    if (item.orientation !== "portrait" || !elements.videoBackdrop) return;
+    paintMediaBackdrop(elements.video);
+    if (!state.mediaBackdropTimer) {
+      state.mediaBackdropTimer = window.setInterval(() => paintMediaBackdrop(elements.video), 250);
+    }
+  }
+
+  function paintMediaBackdrop(media) {
+    const canvas = elements.videoBackdrop;
+    const width = media?.videoWidth || media?.naturalWidth;
+    const height = media?.videoHeight || media?.naturalHeight;
+    if (!canvas || !width || !height) return;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    try {
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) return;
+      context.drawImage(media, 0, 0, width, height);
+      canvas.hidden = false;
+    } catch {
+      canvas.hidden = true;
+    }
+  }
+
+  function stopMediaBackdrop() {
+    if (state.mediaBackdropTimer) window.clearInterval(state.mediaBackdropTimer);
+    state.mediaBackdropTimer = null;
+    if (elements.videoBackdrop) elements.videoBackdrop.hidden = true;
   }
 
   function startVideoPlayback(item) {
@@ -545,6 +601,7 @@
 
   function showEmptyPlaylist(status) {
     if (state.mediaAdvanceTimer) window.clearTimeout(state.mediaAdvanceTimer);
+    stopMediaBackdrop();
     if (elements.videoStage) elements.videoStage.dataset.state = "empty";
     if (elements.image) {
       elements.image.hidden = true;

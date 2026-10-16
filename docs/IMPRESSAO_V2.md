@@ -30,7 +30,7 @@ Todos os comandos v2 usam `POST /api/print/v2/...` e Bearer de um dispositivo; o
 
 ## Provisionamento seguro
 
-O provisionamento cloud roda em um backend confiável com `PRINT_PROVISIONING_SECRET` de 32 bytes hexadecimais. Um administrador chama `/api/print/v2/provision`; a resposta contém um código de uso único por dez minutos. O agente envia o código uma vez a `/enroll`, recebe a sessão Supabase e grava a sessão cifrada localmente. Se o código for perdido ou expirar, reprovisione o dispositivo; nenhum trabalho é impresso pelo código antigo. O administrador pode revogar o dispositivo sem apagar os jobs ou o journal.
+O provisionamento cloud roda em um backend confiável com `PRINT_PROVISIONING_SECRET` de 32 bytes hexadecimais. Um administrador chama `/api/print/v2/provision`; a resposta contém um código de uso único por dez minutos. O agente Node envia o código uma vez a `/enroll`, recebe a sessão Supabase e guarda a sessão no SQLite local, protegido por ACL do Windows. O agente x86 protege sua sessão com DPAPI. Se o código for perdido ou expirar, reprovisione o dispositivo; nenhum trabalho é impresso pelo código antigo. O administrador pode revogar o dispositivo sem apagar os jobs ou o journal.
 
 Para um backend local, use `scripts/print-device-sqlite.js` ou `scripts/print-device-admin.js` em um host confiável. O arquivo de saída da credencial é criado com modo `0600`. O token local nunca deve entrar no Git, em logs ou em uma variável pública.
 
@@ -50,7 +50,7 @@ No backend cloud: `PRINT_PROVISIONING_SECRET`, `PRINT_REALTIME_ENABLED=1`, `PRIN
 
 ## Operação diária
 
-No Windows, use `npm run print:agent:ports` para descobrir a porta e `npm run print:agent:test` para um cupom de diagnóstico. O serviço mantém a configuração e o journal em `data/print-agent`; o instalador aplica ACL ao diretório padrão. Se `PRINT_AGENT_STATE_DIR` apontar para outro diretório, aplique ACL equivalente manualmente.
+No Windows, use `npm run print:agent:ports` para descobrir a porta, `npm run print:agent:test` para um cupom de diagnóstico e `npm run print:agent:diagnose` para verificar instalação, tarefa, logs, journal, autenticação e estado remoto. O instalador mantém a configuração e o journal em `data/print-agent` e aplica ACL também ao diretório configurado em `PRINT_AGENT_STATE_DIR`.
 
 Nos mini PCs Windows, o agente x86 precisa permanecer instalado como serviço e ter acesso exclusivo à porta serial virtual da Bematech. A primeira validação de campo deve cobrir pareamento do dispositivo, reboot, queda de rede, queda de energia, papel, corte e recuperação de lease. A ausência de um Android físico não impede o build, os testes unitários ou a revisão do protocolo.
 

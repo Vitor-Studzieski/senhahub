@@ -11,7 +11,7 @@ if (isVercelProduction) {
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self'${isDevelopment ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' https://fonts.googleapis.com",
+  `style-src 'self' https://fonts.googleapis.com${isDevelopment ? " 'unsafe-inline'" : ""}`,
   "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
   `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co${isDevelopment ? " ws: http://localhost:*" : ""}`,
   "font-src 'self' https://fonts.gstatic.com",

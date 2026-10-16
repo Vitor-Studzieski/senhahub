@@ -45,7 +45,7 @@ namespace SenhaHub.PrintAgent.Setup
 
         public InstallerForm()
         {
-            Text = "Instalação do agente MP-4200 TH x86 1.2.8 — SenhaHub";
+            Text = "Instalação do agente MP-4200 TH x86 1.2.9 — SenhaHub";
             ClientSize = new Size(620, 430);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -93,7 +93,7 @@ namespace SenhaHub.PrintAgent.Setup
             log.SetBounds(20, 285, 575, 120);
             Controls.Add(log);
 
-            WriteLog("Agente oficial: x86/1.2.8 — Bematech MP-4200 TH.");
+            WriteLog("Agente oficial: x86/1.2.9 — Bematech MP-4200 TH.");
 
             Load += delegate { LoadPorts(); };
         }

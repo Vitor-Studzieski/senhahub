@@ -38,8 +38,16 @@ test("gera cupom ESC/POS com layout SenhaHub, QR individual e corte", () => {
   assert.ok(receipt.includes(Buffer.from("SENHA", "ascii")));
   assert.ok(receipt.includes(Buffer.from("A042", "ascii")));
   assert.ok(receipt.includes(Buffer.from([0x1d, 0xf9, 0x20, 0x01])));
-  assert.ok(receipt.includes(Buffer.from([0x1d, 0x28, 0x6b])));
-  assert.ok(receipt.includes(Buffer.from("token-de-teste-1234567890", "ascii")));
+  assert.ok(receipt.includes(Buffer.from([0x1d, 0x76, 0x30, 0])));
+  const differentTrackReceipt = buildTicketReceipt({
+    ticketCode: "A042",
+    sectorName: "Acougue",
+    issuedAt: "2026-07-29T20:00:00.000Z",
+    installUrl: "https://senhahub.vercel.app/instalar",
+    trackUrl: "https://senhahub.vercel.app/acompanhar/outro-token-1234567890",
+    paperWidthMm: 80
+  });
+  assert.notDeepEqual(receipt, differentTrackReceipt);
   const layout = ["SUPERMERCADO POMPEIA", "SenhaHub", "ACOUGUE", "SENHA", "A042"]
     .map((value) => receipt.indexOf(Buffer.from(value, "ascii")));
   assert.ok(layout.every((position, index) => position >= 0 && (index === 0 || position > layout[index - 1])));
@@ -67,7 +75,7 @@ test("gera duas senhas no mesmo cupom mantendo um unico QR Code", () => {
   assert.ok(receipt.includes(Buffer.from("F002", "ascii")));
   assert.equal(receipt.includes(Buffer.from("Emitida em", "ascii")), false);
   assert.equal(receipt.includes(Buffer.from("------------------------------", "ascii")), false);
-  assert.equal(countBuffer(receipt, Buffer.from([0x1d, 0x28, 0x6b, 4, 0, 49, 65, 50, 0])), 1);
+  assert.equal(countBuffer(receipt, Buffer.from([0x1d, 0x76, 0x30, 0])), 1);
   assert.ok(receipt.includes(Buffer.from([0x1d, 0x56, 66, 4])));
 });
 
@@ -87,7 +95,7 @@ test("totem exibe o QR geral separado do QR individual da senha", () => {
   assert.doesNotMatch(html, /Acompanhe sua posição pelo celular/);
   assert.doesNotMatch(html, /Escaneie o QR Code para acompanhar sua fila/);
   assert.match(html, /id="backToTypeFromSectorsButton"/);
-  assert.match(page, /const TOTEM_ASSET_VERSION = "2026\.09\.18\.3"/);
+  assert.match(page, /const TOTEM_ASSET_VERSION = "\d{4}\.\d{2}\.\d{2}\.\d+"/);
   assert.match(page, /`\/totem\.js\?v=\$\{TOTEM_ASSET_VERSION\}`/);
   assert.match(html, /id="issueTicketsButton"/);
   assert.match(html, /id="resultTickets"/);

@@ -1,7 +1,7 @@
 import Script from "next/script";
 import HtmlTemplate from "../../components/shared/HtmlTemplate";
 
-const TRACKING_ASSET_VERSION = "2026.09.15.1";
+const TRACKING_ASSET_VERSION = "2026.09.25.1";
 
 export const metadata = {
   title: "Acompanhar senha",
@@ -11,7 +11,7 @@ export const metadata = {
 export default function TrackTicketPage() {
   return (
     <>
-      <HtmlTemplate fileName="acompanhar.html" />
+      <HtmlTemplate fileName="acompanhar.html" trackingDemo={process.env.NODE_ENV === "development"} />
       <Script src={`/vibration.js?v=${TRACKING_ASSET_VERSION}`} strategy="afterInteractive" />
       <Script src={`/acompanhar.js?v=${TRACKING_ASSET_VERSION}`} strategy="afterInteractive" />
     </>

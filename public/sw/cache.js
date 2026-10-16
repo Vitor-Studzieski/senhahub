@@ -14,15 +14,17 @@
   function isNetworkOnly(request, url) {
     if (request.method !== "GET") return true;
     if (request.headers.has("authorization")) return true;
-    if (url.origin !== scope.location.origin) return true;
     return (
       url.pathname.startsWith("/api/")
       || url.pathname === "/login"
       || url.pathname.startsWith("/login/")
       || url.pathname === "/sw.js"
       || url.pathname.startsWith("/sw/")
-      || functionalScripts.has(url.pathname)
     );
+  }
+
+  function shouldBypassServiceWorker(url) {
+    return url.origin !== scope.location.origin || functionalScripts.has(url.pathname);
   }
 
   function isHashedStatic(url) {
@@ -35,7 +37,7 @@
       url.pathname.startsWith("/assets/")
       || url.pathname.startsWith("/icons/")
       || url.pathname.startsWith("/data/")
-      || ["/styles.css", "/pwa.css", "/app.js", "/admin.js", "/attendant.js", "/login.js", "/install.js", "/totem.js", "/acompanhar.js", "/vibration.js", "/pwa.js", "/pwa-utils.js"].includes(url.pathname)
+      || ["/styles.css", "/pwa.css", "/install.js", "/acompanhar.js", "/vibration.js"].includes(url.pathname)
       || ["image", "style", "font"].includes(request.destination)
     );
   }
@@ -123,6 +125,7 @@
     networkFirstNavigation,
     precache,
     removeOldCaches,
+    shouldBypassServiceWorker,
     staleWhileRevalidate
   };
 })(self);

@@ -5,7 +5,7 @@ class PrintRealtimeSignal {
   }
   get enabled(){return Boolean(this.client&&this.topic);}
   isConnected(){return this.connected;}
-  async start(){if(!this.enabled)return false;this.stopped=false;try{await this.connect()}catch{this.reconnect()}return true;}
+  async start(){if(!this.enabled)return false;this.stopped=false;try{await this.connect()}catch(error){this.logger?.error('Falha ao conectar ao canal Realtime.',{message:error.message||String(error),code:error.code||undefined});this.reconnect()}return true;}
   async connect(){
     if(this.stopped)return;
     const previous=this.channel;this.channel=null;this.connected=false;clearTimeout(this.timer);this.timer=null;
@@ -19,29 +19,33 @@ class PrintRealtimeSignal {
       if(this.stopped||this.channel!==channel)return;
       this.connected=status==='SUBSCRIBED';
       if(this.connected){this.failures=0;this.logger?.info('Canal privado conectado.');this.onSignal();}
-      else if(['CHANNEL_ERROR','TIMED_OUT','CLOSED'].includes(status))this.reconnect();
+      else if(['CHANNEL_ERROR','TIMED_OUT','CLOSED'].includes(status)){
+        this.logger?.error('Canal Realtime desconectado.',{status});
+        this.reconnect();
+      }
     });
   }
   reconnect(){
     if(this.stopped||this.timer)return;
-    const delay=Math.min(300000,5000*2**Math.min(this.failures++,6))*(0.75+this.random()/2);
-    this.timer=setTimeout(()=>{this.timer=null;this.connect().catch(()=>this.reconnect());},delay);
+    const attempt=++this.failures;
+    const delay=Math.min(300000,5000*2**Math.min(attempt-1,6))*(0.75+this.random()/2);
+    this.timer=setTimeout(()=>{this.timer=null;this.connect().catch(error=>{this.logger?.error('Falha ao restabelecer o canal Realtime.',{attempt,message:error.message||String(error),code:error.code||undefined});this.reconnect();});},delay);
   }
   async stop(){this.stopped=true;this.connected=false;clearTimeout(this.timer);if(this.channel)await this.client.removeChannel(this.channel);}
 }
 // Same wake interface on local backends; stream authentication never uses URL tokens.
 class PrintSseSignal {
-  constructor({apiUrl,token,onSignal,signal}){Object.assign(this,{apiUrl,token,onSignal,signal});this.controller=new AbortController();}
+  constructor({apiUrl,token,onSignal,signal,logger}){Object.assign(this,{apiUrl,token,onSignal,signal,logger});this.controller=new AbortController();}
   async start(){this.task=this.run();return true;}
   async run(){
     let failures=0;const signal=AbortSignal.any([this.signal,this.controller.signal]);
     while(!signal.aborted){
       try{
         const response=await fetch(`${this.apiUrl}/api/print/v2/events`,{headers:{authorization:`Bearer ${await this.token()}`},signal});
-        if(!response.ok)throw new Error('SSE unavailable');
+        if(!response.ok)throw Object.assign(new Error(`SSE indisponível (HTTP ${response.status}).`),{status:response.status});
         let buffer='';const decoder=new TextDecoder();
         for await(const chunk of response.body){buffer+=decoder.decode(chunk,{stream:true});let at;while((at=buffer.indexOf('\n\n'))>=0){const event=buffer.slice(0,at);buffer=buffer.slice(at+2);if(event.includes('event: ready')||event.includes('event: print_job.available')){failures=0;this.onSignal();}}}
-      }catch{if(signal.aborted)break;}
+      }catch(error){if(signal.aborted)break;this.logger?.error('Canal SSE indisponível; reconexão programada.',{status:error.status||0,code:error.code||undefined,message:error.message||String(error),attempt:failures+1});}
       await require('node:timers/promises').setTimeout(Math.min(300000,5000*2**Math.min(failures++,6))*(0.75+Math.random()/2),null,{signal}).catch(()=>{});
     }
   }

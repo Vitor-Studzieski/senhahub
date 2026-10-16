@@ -62,12 +62,9 @@
 
         </section>
 
-        <aside class="tv-media-area" aria-labelledby="tvMediaTitle">
-          <div class="tv-media-header">
-            <div><p>Comunicação Pompeia</p><h2 id="tvMediaTitle">Conteúdos da loja</h2><span>Vídeos institucionais e informativos</span></div>
-            <b class="tv-media-badge">PLAYLIST</b>
-          </div>
+        <aside class="tv-media-area" aria-label="Vídeos da loja">
           <div class="tv-video-stage" id="tvVideoStage" data-state="empty">
+            <canvas class="tv-video-backdrop-canvas" id="tvVideoBackdrop" aria-hidden="true" hidden></canvas>
             <video id="tvPlaylistVideo" playsinline muted autoplay preload="metadata" aria-label="Vídeo da playlist da loja"></video>
             <img id="tvPlaylistImage" hidden alt="Conteúdo da loja" />
             <div class="tv-video-placeholder" id="tvVideoPlaceholder">

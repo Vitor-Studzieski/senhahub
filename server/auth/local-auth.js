@@ -1,42 +1,30 @@
 const crypto = require("node:crypto");
 const { query, withTransaction } = require("../data/local-postgres");
 const { evaluatePasswordPolicy, passwordPolicyError } = require("./password-policy");
+const {
+  calculateAccountLoginFailure,
+  loginAccountAttemptKey
+} = require("./login-security");
 
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_LIMIT = 5;
-const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
-async function loginLocalUser({ email, password, attemptKey = email } = {}) {
+async function loginLocalUser({ email, password } = {}) {
   const normalizedEmail = normalizeEmail(email);
   const normalizedPassword = String(password || "");
-  const normalizedAttemptKey = String(attemptKey || normalizedEmail || "unknown").slice(0, 240);
+  const normalizedAttemptKey = loginAccountAttemptKey(normalizedEmail);
 
-  if (!normalizedEmail || !normalizedPassword) {
+  if (!normalizedEmail || !normalizedPassword || !normalizedAttemptKey) {
     return { error: "E-mail ou senha inválidos." };
   }
 
   return withTransaction(async (client) => {
-    const attemptResult = await client.query(
-      `
-        SELECT attempt_key, count, first_attempt_at, locked_until
-        FROM auth.login_attempts
-        WHERE attempt_key = $1
-        FOR UPDATE
-      `,
-      [normalizedAttemptKey]
-    );
-    const attempt = attemptResult.rows[0];
-    if (shouldApplyLoginLock(normalizedAttemptKey) && attempt?.locked_until && new Date(attempt.locked_until).getTime() > Date.now()) {
-      return { error: "Muitas tentativas. Aguarde alguns minutos." };
-    }
-
     const userResult = await client.query(
       `
         SELECT
           u.id,
           u.email,
           u.raw_app_meta_data,
+          u.encrypted_password,
           p.name,
           p.role,
           p.status,
@@ -46,15 +34,34 @@ async function loginLocalUser({ email, password, attemptKey = email } = {}) {
         WHERE lower(u.email) = lower($1)
           AND p.status = 'active'::public.user_status
           AND nullif(u.encrypted_password, '') IS NOT NULL
-          AND crypt($2, u.encrypted_password) = u.encrypted_password
         LIMIT 1
+        FOR UPDATE OF u
       `,
-      [normalizedEmail, normalizedPassword]
+      [normalizedEmail]
     );
     const user = userResult.rows[0];
+    if (!user) return { error: "E-mail ou senha inválidos." };
 
-    if (!user) {
-      await registerLoginFailure(client, normalizedAttemptKey, attempt);
+    const attemptResult = await client.query(
+      `
+        SELECT attempt_key, count, first_attempt_at, locked_until, lockout_level, last_failure_at
+        FROM auth.login_attempts
+        WHERE attempt_key = $1
+        FOR UPDATE
+      `,
+      [normalizedAttemptKey]
+    );
+    const attempt = attemptResult.rows[0];
+    if (attempt?.locked_until && new Date(attempt.locked_until).getTime() > Date.now()) {
+      return { error: "E-mail ou senha inválidos." };
+    }
+
+    const passwordResult = await client.query(
+      "SELECT crypt($1, $2) = $2 AS valid",
+      [normalizedPassword, user.encrypted_password]
+    );
+    if (!passwordResult.rows[0]?.valid) {
+      await registerAccountLoginFailure(client, normalizedAttemptKey, attempt);
       return { error: "E-mail ou senha inválidos." };
     }
 
@@ -194,7 +201,7 @@ async function changeLocalPassword({ email, currentPassword, newPassword, attemp
   return withTransaction(async (client) => {
     const userResult = await client.query(
       `
-        SELECT u.id
+        SELECT u.id, u.email
         FROM auth.users u
         JOIN public.profiles p ON p.id = u.id
         WHERE lower(u.email) = lower($1)
@@ -214,6 +221,8 @@ async function changeLocalPassword({ email, currentPassword, newPassword, attemp
     );
     await client.query("UPDATE auth.sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [user.id]);
     await client.query("DELETE FROM auth.login_attempts WHERE attempt_key = $1", [String(attemptKey || normalizedEmail).slice(0, 240)]);
+    const accountAttemptKey = loginAccountAttemptKey(user.email);
+    if (accountAttemptKey) await client.query("DELETE FROM auth.login_attempts WHERE attempt_key = $1", [accountAttemptKey]);
     return { ok: true, message: "Senha alterada com sucesso. Entre usando a nova senha." };
   });
 }
@@ -270,13 +279,14 @@ async function resetLocalPassword({ token, newPassword } = {}) {
   return withTransaction(async (client) => {
     const result = await client.query(
       `
-        SELECT id, user_id
-        FROM auth.password_resets
-        WHERE token_hash = $1
-          AND used_at IS NULL
-          AND expires_at > now()
+        SELECT resets.id, resets.user_id, users.email
+        FROM auth.password_resets resets
+        JOIN auth.users users ON users.id = resets.user_id
+        WHERE resets.token_hash = $1
+          AND resets.used_at IS NULL
+          AND resets.expires_at > now()
         LIMIT 1
-        FOR UPDATE
+        FOR UPDATE OF resets
       `,
       [hashSessionToken(resetToken)]
     );
@@ -289,6 +299,8 @@ async function resetLocalPassword({ token, newPassword } = {}) {
     );
     await client.query("UPDATE auth.sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [reset.user_id]);
     await client.query("UPDATE auth.password_resets SET used_at = now() WHERE id = $1", [reset.id]);
+    const accountAttemptKey = loginAccountAttemptKey(reset.email);
+    if (accountAttemptKey) await client.query("DELETE FROM auth.login_attempts WHERE attempt_key = $1", [accountAttemptKey]);
     return { ok: true, message: "Senha redefinida com sucesso. Entre usando a nova senha." };
   });
 }
@@ -387,36 +399,33 @@ async function createSessionInTransaction(client, userId) {
   return { sessionToken, csrfToken, expiresAt };
 }
 
-async function registerLoginFailure(client, attemptKey, previousAttempt) {
-  const now = Date.now();
-  const firstAttemptAt = previousAttempt?.first_attempt_at
-    ? new Date(previousAttempt.first_attempt_at).getTime()
-    : 0;
-  const withinWindow = firstAttemptAt > 0 && now - firstAttemptAt <= LOGIN_WINDOW_MS;
-  const count = withinWindow ? Number(previousAttempt.count || 0) + 1 : 1;
-  const firstAttempt = withinWindow ? new Date(firstAttemptAt).toISOString() : new Date(now).toISOString();
-  const lockedUntil = count >= LOGIN_LIMIT && shouldApplyLoginLock(attemptKey)
-    ? new Date(now + LOGIN_LOCK_MS).toISOString()
-    : null;
+async function registerAccountLoginFailure(client, attemptKey, previousAttempt) {
+  const state = calculateAccountLoginFailure(previousAttempt);
+  const lockedUntil = state.lockedUntil ? new Date(state.lockedUntil).toISOString() : null;
 
   await client.query(
     `
       INSERT INTO auth.login_attempts (
-        attempt_key, count, first_attempt_at, locked_until, updated_at
+        attempt_key, count, first_attempt_at, locked_until, lockout_level, last_failure_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, now())
+      VALUES ($1, $2, $3, $4, $5, $6, now())
       ON CONFLICT (attempt_key) DO UPDATE SET
         count = EXCLUDED.count,
         first_attempt_at = EXCLUDED.first_attempt_at,
         locked_until = EXCLUDED.locked_until,
+        lockout_level = EXCLUDED.lockout_level,
+        last_failure_at = EXCLUDED.last_failure_at,
         updated_at = now()
     `,
-    [attemptKey, count, firstAttempt, lockedUntil]
+    [
+      attemptKey,
+      state.count,
+      new Date(state.firstAttemptAt).toISOString(),
+      lockedUntil,
+      state.lockoutLevel,
+      new Date(state.lastFailureAt).toISOString()
+    ]
   );
-}
-
-function shouldApplyLoginLock(attemptKey) {
-  return !String(attemptKey || "").startsWith("unknown:");
 }
 
 async function loadUserSectorIds(client, userId) {

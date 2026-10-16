@@ -60,10 +60,10 @@ function Configure-FirstRun {
     throw "A URL precisa ser absoluta e usar HTTPS. Corrija PRINT_API_URL e execute novamente."
   }
 
-  $printerPort = Read-Host "Porta serial da Bematech [COM4]"
-  if ([string]::IsNullOrWhiteSpace($printerPort)) { $printerPort = "COM4" }
+  $printerPort = Read-Host "Porta serial da Bematech [COM3]"
+  if ([string]::IsNullOrWhiteSpace($printerPort)) { $printerPort = "COM3" }
   $printerPort = $printerPort.Trim().ToUpperInvariant()
-  if ($printerPort -notmatch '^COM\d+$') { throw "Informe uma porta válida no formato COM4, COM5 etc." }
+  if ($printerPort -notmatch '^COM\d+$') { throw "Informe uma porta válida no formato COM3, COM4 etc." }
 
   Set-ConfigValue -FilePath $FilePath -Name "PRINT_API_URL" -Value $apiUrl
   Set-ConfigValue -FilePath $FilePath -Name "KIOSK_PRINTER_PORT" -Value $printerPort

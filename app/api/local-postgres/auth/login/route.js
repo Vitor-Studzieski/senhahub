@@ -1,5 +1,11 @@
 import { consumeLocalRateLimit, loginLocalUser } from "../../../../../server/auth/local-auth.js";
 import { clientIp } from "../../../../../server/auth/local-http-auth.js";
+import {
+  LOGIN_IP_BURST_LIMIT,
+  LOGIN_IP_BURST_WINDOW_SECONDS,
+  LOGIN_IP_RATE_LIMIT,
+  LOGIN_IP_RATE_WINDOW_SECONDS
+} from "../../../../../server/auth/login-security.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,13 +26,16 @@ export async function POST(request) {
 
   const email = String(body?.email || "").trim().toLowerCase();
   const requestIp = clientIp(request);
-  if (requestIp !== "unknown" && !await consumeLocalRateLimit("local-login-ip", requestIp, 30, 60)) {
-    return Response.json({ error: "Muitas tentativas. Aguarde alguns minutos." }, { status: 429 });
+  if (requestIp !== "unknown") {
+    const ipRate = await consumeLocalRateLimit("local-login-ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
+    const burstRate = await consumeLocalRateLimit("local-login-ip:burst", requestIp, LOGIN_IP_BURST_LIMIT, LOGIN_IP_BURST_WINDOW_SECONDS);
+    if (!ipRate || !burstRate) {
+      return Response.json({ error: "Muitas tentativas. Aguarde alguns minutos." }, { status: 429 });
+    }
   }
   const result = await loginLocalUser({
     email,
-    password: body?.password,
-    attemptKey: `${requestIp}:${email || "unknown"}`
+    password: body?.password
   });
 
   if (result.error) {

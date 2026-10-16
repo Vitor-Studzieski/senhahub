@@ -2,6 +2,8 @@
   const SUCCESS_MESSAGE_MS = 5000;
   const TRACKING_POLL_INTERVAL_MS = 5000;
   const token = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
+  const query = new URLSearchParams(location.search);
+  const isDemo = document.querySelector('[data-tracking-demo="enabled"]') && query.get("demo") === "1";
   const AUTO_RETURN_SECONDS = 12;
   const loading = document.querySelector("#trackingLoading");
   const content = document.querySelector("#trackingContent");
@@ -83,7 +85,15 @@
 
   retryButton?.addEventListener("click", retryLoad);
 
-  if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) {
+  if (isDemo) {
+    const current = query.get("atual") || "025";
+    const ticket = query.get("cliente") || "017";
+    if (/^\d{3}$/.test(current) && /^\d{3}$/.test(ticket)) {
+      render([{ current, ticket, sector: "Atendimento", status: "aguardando" }]);
+    } else {
+      showFeedback("invalid");
+    }
+  } else if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) {
     showFeedback("invalid");
   } else {
     loadTicket();

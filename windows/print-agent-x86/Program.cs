@@ -11,6 +11,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.ServiceProcess;
 using System.Security.Principal;
@@ -39,7 +40,7 @@ namespace SenhaHub.PrintAgent.X86
         public const string StateLogFile = "print-agent-totem.log";
 #else
         public const string DisplayName = "Agente x86";
-        public const string Version = "windows-x86/1.2.8";
+        public const string Version = "windows-x86/1.2.9";
         public const string ServiceName = "SenhaHubPrintAgentX86";
         public const string ServiceDisplayName = "SenhaHub Print Agent x86";
         public const string DefaultPrinterMode = "native-serial";
@@ -112,7 +113,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             Directory.CreateDirectory(config.StateDirectory);
             var log = new AgentLog(config.StateDirectory);
-            var state = new AgentState(config.StateDirectory);
+            var state = new AgentState(config.StateDirectory, log);
             var auth = new DeviceAuth(config, state, log);
             var api = new PrintApi(config, auth);
             var printer = PrinterTransport.Create(config);
@@ -355,7 +356,7 @@ namespace SenhaHub.PrintAgent.X86
 
                 var dependencyNote = UpdateInstalledAgent();
                 MessageBox.Show(
-                    "Agente atualizado para a versão 1.2.8.\r\n\r\n" +
+                    "Agente atualizado para a versão 1.2.9.\r\n\r\n" +
                     "A recuperação automática está configurada e o serviço foi iniciado.\r\n" +
                     "O pareamento e os dados locais foram preservados.\r\n\r\n" + dependencyNote,
                     "Atualização concluída",
@@ -832,6 +833,45 @@ namespace SenhaHub.PrintAgent.X86
 
         private async Task RecoverAsync()
         {
+            if (state.ServerReconciliationRequired)
+            {
+                var serverRecovery = await api.CommandAsync("recover", new Dictionary<string, object>());
+                var serverJob = Json.Object(serverRecovery, "job");
+                if (serverJob == null)
+                {
+                    state.CompleteServerReconciliation();
+                    log.Info("Estado local restaurado; servidor confirmou que não há impressão em andamento.", null);
+                    return;
+                }
+
+                var serverStatus = Json.String(serverJob, "status");
+                if (serverStatus == "leased")
+                {
+                    const string error = "Lease reconciliado após recuperação do estado local; nenhum envio físico será repetido.";
+                    state.SaveExecution(serverJob, "result", "before_send", error);
+                    await FinishAsync(serverJob, "before_send", error);
+                }
+                else if (serverStatus == "printing")
+                {
+                    await ReportUnknownAsync(serverJob);
+                }
+                else if (serverStatus == "needs_review")
+                {
+                    needsReview = true;
+                }
+                else
+                {
+                    throw new InvalidOperationException("O servidor retornou um estado de impressão desconhecido durante a reconciliação.");
+                }
+
+                state.CompleteServerReconciliation();
+                log.Info("Estado local restaurado e reconciliado com o servidor.", new Dictionary<string, object>
+                {
+                    { "jobStatus", serverStatus }
+                });
+                return;
+            }
+
             var pending = state.LoadExecution();
             if (pending != null)
             {
@@ -1623,16 +1663,40 @@ namespace SenhaHub.PrintAgent.X86
 
     internal sealed class AgentState
     {
-        private readonly string directory;
+        private const int MaximumStateFileBytes = 1024 * 1024;
+        private const string ServerReconciliationKey = "serverReconciliationRequired";
         private readonly string path;
+        private readonly string backupPath;
+        private readonly AgentLog log;
         private readonly object sync = new object();
         private readonly JavaScriptSerializer serializer = new JavaScriptSerializer();
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
-        public AgentState(string directory)
+        public AgentState(string directory, AgentLog log)
         {
-            this.directory = directory;
             path = Path.Combine(directory, "agent-state.bin");
+            backupPath = path + ".bak";
+            this.log = log;
             Directory.CreateDirectory(directory);
+        }
+
+        public bool ServerReconciliationRequired
+        {
+            get
+            {
+                var state = Load();
+                object value;
+                return state.TryGetValue(ServerReconciliationKey, out value) && value is bool && (bool)value;
+            }
+        }
+
+        public void CompleteServerReconciliation()
+        {
+            var state = Load();
+            state.Remove("execution");
+            state.Remove("claimRequestId");
+            state.Remove(ServerReconciliationKey);
+            Save(state);
         }
 
         public SessionData LoadSession()
@@ -1706,11 +1770,23 @@ namespace SenhaHub.PrintAgent.X86
         {
             lock (sync)
             {
-                if (!File.Exists(path)) return new Dictionary<string, object>();
-                var encrypted = File.ReadAllBytes(path);
-                var clear = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.LocalMachine);
-                var result = serializer.DeserializeObject(Encoding.UTF8.GetString(clear)) as Dictionary<string, object>;
-                return result ?? new Dictionary<string, object>();
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        var encrypted = File.ReadAllBytes(path);
+                        var state = DeserializeState(encrypted);
+                        EnsureBackup(encrypted, state);
+                        return state;
+                    }
+                    catch (Exception error) when (IsStateCorruption(error))
+                    {
+                        return RecoverFromBackup(error);
+                    }
+                }
+
+                if (File.Exists(backupPath)) return RecoverFromBackup(null);
+                return new Dictionary<string, object>();
             }
         }
 
@@ -1718,12 +1794,227 @@ namespace SenhaHub.PrintAgent.X86
         {
             lock (sync)
             {
-                var clear = Encoding.UTF8.GetBytes(serializer.Serialize(value));
-                var encrypted = ProtectedData.Protect(clear, null, DataProtectionScope.LocalMachine);
-                var temporary = path + ".tmp";
-                File.WriteAllBytes(temporary, encrypted);
-                if (File.Exists(path)) File.Replace(temporary, path, null);
-                else File.Move(temporary, path);
+                SaveLocked(value);
+            }
+        }
+
+        private void SaveLocked(Dictionary<string, object> value)
+        {
+            Dictionary<string, object> previousState = null;
+            if (File.Exists(path))
+            {
+                var previous = File.ReadAllBytes(path);
+                previousState = DeserializeState(previous);
+                WriteAtomically(backupPath, previous);
+            }
+
+            var clear = Encoding.UTF8.GetBytes(serializer.Serialize(value));
+            var encrypted = ProtectedData.Protect(clear, null, DataProtectionScope.LocalMachine);
+            WriteAtomically(path, encrypted);
+
+            // The first successful write also creates a recovery point. Later
+            // writes replace it with the last known-good primary before commit.
+            if (!File.Exists(backupPath) || !SessionsEqual(previousState, value)) WriteAtomically(backupPath, encrypted);
+        }
+
+        private Dictionary<string, object> RecoverFromBackup(Exception primaryError)
+        {
+            Dictionary<string, object> recovered = null;
+            Exception backupError = null;
+            string backupArchive = null;
+
+            if (File.Exists(backupPath))
+            {
+                try
+                {
+                    recovered = DeserializeState(File.ReadAllBytes(backupPath));
+                }
+                catch (Exception error) when (IsStateCorruption(error))
+                {
+                    backupError = error;
+                    backupArchive = Quarantine(backupPath);
+                }
+            }
+
+            var primaryArchive = File.Exists(path) ? Quarantine(path) : null;
+            if (recovered == null) recovered = new Dictionary<string, object>();
+
+            // A backup can lag the final write before a physical print. Never
+            // act on its old execution journal until the server is reconciled.
+            recovered[ServerReconciliationKey] = true;
+            SaveLocked(recovered);
+
+            if (Json.Object(recovered, "session") != null)
+            {
+                log.Error("Estado local inválido; cópia válida restaurada. O agente vai reconciliar trabalhos com o servidor antes de imprimir.", new Dictionary<string, object>
+                {
+                    { "reason", SafeError(primaryError) },
+                    { "preservedFile", backupPath },
+                    { "quarantinedFile", primaryArchive }
+                });
+            }
+            else
+            {
+                log.Error("Estado local inválido sem sessão recuperável; arquivo preservado. O agente tentará as credenciais configuradas e, se não houver sessão válida, exigirá novo pareamento. A fila será reconciliada antes de buscar senhas.", new Dictionary<string, object>
+                {
+                    { "reason", SafeError(primaryError) },
+                    { "backupError", SafeError(backupError) },
+                    { "quarantinedFile", primaryArchive },
+                    { "quarantinedBackup", backupArchive }
+                });
+            }
+
+            return recovered;
+        }
+
+        private void EnsureBackup(byte[] primaryBytes, Dictionary<string, object> primaryState)
+        {
+            if (File.Exists(backupPath))
+            {
+                try
+                {
+                    var backupState = DeserializeState(File.ReadAllBytes(backupPath));
+                    if (SessionsEqual(primaryState, backupState)) return;
+                }
+                catch (Exception error) when (IsStateCorruption(error))
+                {
+                    var archive = Quarantine(backupPath);
+                    log.Info("Cópia local inválida foi preservada e será substituída por uma cópia válida.", new Dictionary<string, object>
+                    {
+                        { "reason", error.Message },
+                        { "preservedFile", archive }
+                    });
+                }
+            }
+
+            WriteAtomically(backupPath, primaryBytes);
+        }
+
+        private static bool SessionsEqual(Dictionary<string, object> first, Dictionary<string, object> second)
+        {
+            var firstSession = first == null ? null : Json.Object(first, "session");
+            var secondSession = second == null ? null : Json.Object(second, "session");
+            if (firstSession == null || secondSession == null) return firstSession == secondSession;
+
+            return SameSessionValue(firstSession, secondSession, "supabaseUrl") &&
+                   SameSessionValue(firstSession, secondSession, "supabaseKey") &&
+                   SameSessionValue(firstSession, secondSession, "accessToken") &&
+                   SameSessionValue(firstSession, secondSession, "refreshToken");
+        }
+
+        private static bool SameSessionValue(Dictionary<string, object> first, Dictionary<string, object> second, string key)
+        {
+            return string.Equals(Json.String(first, key), Json.String(second, key), StringComparison.Ordinal);
+        }
+
+        private Dictionary<string, object> DeserializeState(byte[] encrypted)
+        {
+            if (encrypted == null || encrypted.Length == 0 || encrypted.Length > MaximumStateFileBytes)
+                throw new InvalidDataException("O arquivo de estado está vazio ou excede o tamanho permitido.");
+
+            byte[] clear;
+            try
+            {
+                clear = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.LocalMachine);
+            }
+            catch (CryptographicException error) when (IsDpapiDataCorruption(error))
+            {
+                throw new InvalidDataException("O Windows não conseguiu validar os dados cifrados do estado local.", error);
+            }
+
+            var result = serializer.DeserializeObject(StrictUtf8.GetString(clear)) as Dictionary<string, object>;
+            if (result == null) throw new InvalidDataException("O conteúdo descriptografado do estado local não é um objeto válido.");
+            ValidateState(result);
+            return result;
+        }
+
+        private static void ValidateState(Dictionary<string, object> value)
+        {
+            object item;
+            if (value.TryGetValue("session", out item) && item != null)
+            {
+                var session = item as Dictionary<string, object>;
+                if (session == null || string.IsNullOrWhiteSpace(Json.String(session, "supabaseUrl")) ||
+                    string.IsNullOrWhiteSpace(Json.String(session, "supabaseKey")) ||
+                    string.IsNullOrWhiteSpace(Json.String(session, "accessToken")) ||
+                    string.IsNullOrWhiteSpace(Json.String(session, "refreshToken")))
+                    throw new InvalidDataException("A sessão salva do dispositivo está incompleta.");
+            }
+
+            if (value.TryGetValue("claimRequestId", out item) && item != null)
+            {
+                Guid requestId;
+                if (!(item is string) || !Guid.TryParse((string)item, out requestId))
+                    throw new InvalidDataException("O identificador de solicitação salvo está inválido.");
+            }
+
+            if (value.TryGetValue("execution", out item) && item != null)
+            {
+                var execution = item as Dictionary<string, object>;
+                var job = execution == null ? null : Json.Object(execution, "job");
+                if (execution == null || job == null || string.IsNullOrWhiteSpace(Json.String(job, "id")) ||
+                    string.IsNullOrWhiteSpace(Json.String(job, "lease_id")) ||
+                    string.IsNullOrWhiteSpace(Json.String(execution, "phase")))
+                    throw new InvalidDataException("O journal de impressão salvo está incompleto.");
+            }
+
+            if (value.TryGetValue(ServerReconciliationKey, out item) && item != null && !(item is bool))
+                throw new InvalidDataException("A marca de reconciliação do estado local está inválida.");
+        }
+
+        private static bool IsStateCorruption(Exception error)
+        {
+            for (var current = error; current != null; current = current.InnerException)
+            {
+                if (current is InvalidDataException || current is DecoderFallbackException || current is SerializationException ||
+                    current is ArgumentException || current is InvalidOperationException)
+                    return true;
+                var crypto = current as CryptographicException;
+                if (crypto != null && IsDpapiDataCorruption(crypto)) return true;
+            }
+            return false;
+        }
+
+        private static bool IsDpapiDataCorruption(CryptographicException error)
+        {
+            return error.HResult == unchecked((int)0x80090005) || error.HResult == unchecked((int)0x8007000D);
+        }
+
+        private static string SafeError(Exception error)
+        {
+            if (error == null || string.IsNullOrWhiteSpace(error.Message)) return "sem detalhe adicional";
+            return error.Message.Replace("\r", " ").Replace("\n", " ");
+        }
+
+        private string Quarantine(string file)
+        {
+            var archived = file + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ");
+            if (File.Exists(archived)) archived += "-" + Guid.NewGuid().ToString("N");
+            File.Move(file, archived);
+            return archived;
+        }
+
+        private static void WriteAtomically(string destination, byte[] bytes)
+        {
+            var temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+                {
+                    stream.Write(bytes, 0, bytes.Length);
+                    stream.Flush(true);
+                }
+
+                if (File.Exists(destination)) File.Replace(temporary, destination, null);
+                else File.Move(temporary, destination);
+            }
+            finally
+            {
+                if (File.Exists(temporary))
+                {
+                    try { File.Delete(temporary); }
+                    catch { }
+                }
             }
         }
     }
@@ -1913,7 +2204,7 @@ namespace SenhaHub.PrintAgent.X86
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.2.8");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("SenhaHub-PrintAgent-x86/1.2.9");
             return client;
         }
     }

@@ -7,14 +7,21 @@ let adminMetrics = { sectors: [], satisfaction: { count: 0, average: 0 } };
 let currentUser = null;
 let adminRefreshTimer = null;
 let adminRefreshInFlight = null;
+let printerPaperRollData = null;
+let printerPaperRollError = "";
+let printerPaperRollMessage = "";
+let printerPaperRollBusyKey = "";
+const printerPaperRollRequestIds = new Map();
 const ADMIN_REFRESH_INTERVAL_MS = 30000;
 const MANAGER_SECTOR_TONE_COUNT = 5;
+const SHORTCUTS_HUB_EMAIL = "vitorstudzieski@superpompeia.com";
 const managerSectorToneAssignments = new Map();
 
 initAdmin();
 
 async function initAdmin() {
   currentUser = await requireSession(["manager", "admin"]);
+  addShortcutsNavigationLink();
   document.querySelector("#logoutButton")?.addEventListener("click", logout);
   document.querySelector("#resetTicketHistoryButton")?.addEventListener("click", resetTicketHistory);
   document.querySelectorAll(".manager-nav a").forEach((link) => {
@@ -27,8 +34,12 @@ async function initAdmin() {
   document.querySelector("#userRole")?.addEventListener("change", updateUserRoleFields);
   document.querySelector("#toggleAdminUsers")?.addEventListener("click", toggleUserDirectory);
   document.querySelector("#adminUserSectorList")?.addEventListener("click", selectUserSector);
+  document.querySelector("#printerPaperRolls")?.addEventListener("click", handlePrinterPaperRollAction);
+  document.querySelector("#refreshPrinterPaperRollsButton")?.addEventListener("click", refreshPrinterPaperRolls);
   updateUserRoleFields();
   document.querySelector("#refreshPrintReview")?.addEventListener("click", loadPrintReview);
+  document.querySelector("#generateAgentPairingCode")?.addEventListener("click", provisionPrintAgent);
+  document.querySelector("#copyAgentPairingCode")?.addEventListener("click", copyAgentPairingCode);
   if(document.querySelector("#printReviewList")) await loadPrintReview();
   document.querySelector("#sectorFilter")?.addEventListener("change", renderQueueTable);
   document.querySelector("#statusFilter")?.addEventListener("change", renderQueueTable);
@@ -39,6 +50,7 @@ async function initAdmin() {
     button.setAttribute("aria-busy", "true");
     button.textContent = "Atualizando…";
     try {
+      printerPaperRollMessage = "";
       await refreshDashboard();
     } catch (error) {
       const alerts = document.querySelector("#dashboardAlerts");
@@ -58,6 +70,7 @@ async function initAdmin() {
     const requests = [];
     if (needsAdminState() || document.querySelector("#adminUsers")) requests.push(loadAdminState());
     if (needsAdminMetrics()) requests.push(loadMetrics());
+    if (document.querySelector("#printerPaperRolls")) requests.push(loadPrinterPaperRolls());
     await Promise.all(requests);
   } catch (error) {
     const alerts = document.querySelector("#dashboardAlerts");
@@ -76,11 +89,25 @@ async function initAdmin() {
   startAdminPolling();
 }
 
+function addShortcutsNavigationLink() {
+  if (String(currentUser?.email || "").trim().toLowerCase() !== SHORTCUTS_HUB_EMAIL) return;
+  const nav = document.querySelector(".manager-nav");
+  if (!nav || nav.querySelector('[data-shortcuts-hub-link="true"]')) return;
+
+  const link = document.createElement("a");
+  link.href = "/admin/atalhos";
+  link.dataset.shortcutsHubLink = "true";
+  if (window.location.pathname === "/admin/atalhos") link.classList.add("active");
+  link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Atalhos</span><small>06</small>`;
+  nav.append(link);
+}
+
 async function refreshDashboard() {
   if (adminRefreshInFlight) return adminRefreshInFlight;
   const requests = [];
   if (needsAdminState()) requests.push(loadAdminState());
   if (needsAdminMetrics()) requests.push(loadMetrics());
+  if (document.querySelector("#printerPaperRolls")) requests.push(loadPrinterPaperRolls());
   adminRefreshInFlight = Promise.all(requests).finally(() => {
     adminRefreshInFlight = null;
   });
@@ -106,6 +133,120 @@ function needsAdminState() {
 
 function needsAdminMetrics() {
   return Boolean(document.querySelector("#dashboardKpis, #dashboardOperations, #adminSectors"));
+}
+
+async function loadPrinterPaperRolls() {
+  const panel = document.querySelector("#printerPaperRolls");
+  if (!panel) return;
+  panel.setAttribute("aria-busy", "true");
+  try {
+    printerPaperRollData = await api("/api/printer-paper-rolls");
+    printerPaperRollError = "";
+  } catch (error) {
+    printerPaperRollError = error.message || "Falha ao consultar as impressoras.";
+  } finally {
+    panel.removeAttribute("aria-busy");
+    renderPrinterPaperRolls();
+  }
+}
+
+async function refreshPrinterPaperRolls(event) {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Atualizando…";
+  printerPaperRollMessage = "";
+  await loadPrinterPaperRolls();
+  button.disabled = false;
+  button.removeAttribute("aria-busy");
+  button.textContent = "Atualizar contadores";
+}
+
+function renderPrinterPaperRolls() {
+  const panel = document.querySelector("#printerPaperRolls");
+  if (!panel) return;
+  if (printerPaperRollError) {
+    panel.innerHTML = `<div class="printer-paper-empty" role="status"><strong>Não foi possível carregar os contadores</strong><p>${escapeHtml(printerPaperRollError)}</p><button class="manager-button secondary" type="button" data-paper-roll-refresh>Atualizar</button></div>`;
+    return;
+  }
+  const printers = printerPaperRollData?.printers || [];
+  if (!printers.length) {
+    panel.innerHTML = `${printerPaperRollMessage ? `<div class="printer-paper-message" role="alert">${escapeHtml(printerPaperRollMessage)}</div>` : ""}<p class="printer-paper-empty">Nenhuma impressora está configurada.</p>`;
+    return;
+  }
+  panel.innerHTML = `${printerPaperRollMessage ? `<div class="printer-paper-message" role="alert">${escapeHtml(printerPaperRollMessage)}</div>` : ""}${printers.map(printerPaperRollCard).join("")}`;
+}
+
+function printerPaperRollCard(printer) {
+  const activeLabel = printer.active ? "Ativa" : "Inativa";
+  const recordLabel = printer.startAction === "replaced" ? "Última troca" : "Contador iniciado";
+  const busy = printerPaperRollBusyKey === printer.printerKey;
+  const reviewNotice = printer.reviewJobCount
+    ? `<div class="printer-paper-review" role="alert"><strong>${printer.reviewJobCount} ${printer.reviewJobCount === 1 ? "impressão aguardando" : "impressões aguardando"} conferência.</strong><span>Resolva antes de iniciar ou trocar a bobina em <a href="/admin/totens">Totens e impressão</a>.</span></div>`
+    : "";
+  const counter = printer.initialized
+    ? `<div class="printer-paper-reading"><div><strong>${Number(printer.count).toLocaleString("pt-BR")}</strong><span>de ${printer.capacity} senhas estimadas</span></div><span class="printer-paper-status ${escapeHtml(printer.tone)}">${escapeHtml(printer.label)}</span></div>
+       <div class="printer-paper-track" role="progressbar" aria-label="Consumo estimado da bobina de ${escapeHtml(printer.name)}" aria-valuemin="0" aria-valuemax="${printer.capacity}" aria-valuenow="${Math.min(Number(printer.count), printer.capacity)}"><span class="${escapeHtml(printer.tone)}" style="width:${Math.min(100, Math.max(0, Number(printer.percentage) || 0))}%"></span></div>
+       <div class="printer-paper-meta"><span>${escapeHtml(printer.detail)}</span><span>${recordLabel}: ${escapeHtml(formatPrinterPaperDate(printer.startedAt))} · ${escapeHtml(printer.actorName || "Gerente")}</span></div>
+       <button class="manager-button ${printer.count >= printer.capacity ? "warning" : "secondary"}" type="button" data-paper-roll-action="replace" data-printer-key="${escapeHtml(printer.printerKey)}" ${busy || printer.reviewJobCount ? "disabled" : ""}>${busy ? "Registrando…" : "Registrar troca da bobina"}</button>`
+    : `<p class="printer-paper-intro">${escapeHtml(printer.detail)}</p><label class="printer-paper-initial">Senhas já impressas nesta bobina<input type="number" min="0" max="10000" step="1" inputmode="numeric" placeholder="Informe uma estimativa" data-paper-initial="${escapeHtml(printer.printerKey)}" value="" ${busy || printer.reviewJobCount ? "disabled" : ""}><small>Use 0 se a bobina acabou de ser trocada.</small></label><button class="manager-button" type="button" data-paper-roll-action="initialize" data-printer-key="${escapeHtml(printer.printerKey)}" ${busy || printer.reviewJobCount ? "disabled" : ""}>${busy ? "Iniciando…" : "Iniciar contador"}</button>`;
+
+  return `<article class="printer-paper-card ${printer.initialized ? `tone-${escapeHtml(printer.tone)}` : "tone-neutral"}">
+    <div class="printer-paper-card-head"><div><h3>${escapeHtml(printer.name)}</h3><span class="printer-paper-location">${escapeHtml(printer.location || "Local não informado")}</span><span>${activeLabel}</span></div><span class="printer-paper-capacity">Bobina média · ${printer.capacity}</span></div>
+    ${reviewNotice}${counter}
+  </article>`;
+}
+
+async function handlePrinterPaperRollAction(event) {
+  if (event.target.closest("[data-paper-roll-refresh]")) {
+    printerPaperRollMessage = "";
+    await loadPrinterPaperRolls();
+    return;
+  }
+  const button = event.target.closest("button[data-paper-roll-action]");
+  if (!button || button.disabled || printerPaperRollBusyKey) return;
+  const action = button.dataset.paperRollAction;
+  const printerKey = button.dataset.printerKey;
+  let initialCount;
+  if (action === "initialize") {
+    const input = button.closest(".printer-paper-card")?.querySelector("[data-paper-initial]");
+    initialCount = Number(input?.value);
+    if (!input?.value.trim() || !Number.isInteger(initialCount) || initialCount < 0 || initialCount > 10000) {
+      input?.focus();
+      printerPaperRollMessage = "Informe um número inteiro entre 0 e 10.000 senhas.";
+      renderPrinterPaperRolls();
+      return;
+    }
+  } else if (action === "replace" && !window.confirm("Confirma que a bobina desta impressora foi trocada? O contador será reiniciado para 0.")) {
+    return;
+  }
+
+  const requestKey = `${printerKey}:${action}`;
+  const requestId = printerPaperRollRequestIds.get(requestKey) || crypto.randomUUID();
+  printerPaperRollRequestIds.set(requestKey, requestId);
+  printerPaperRollBusyKey = printerKey;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    await api("/api/printer-paper-rolls", {
+      method: "POST",
+      body: { action, printerKey, requestId, ...(action === "initialize" ? { initialCount } : {}) }
+    });
+    printerPaperRollRequestIds.delete(requestKey);
+    printerPaperRollMessage = "";
+  } catch (error) {
+    printerPaperRollMessage = error.message || "Não foi possível registrar a bobina.";
+  } finally {
+    printerPaperRollBusyKey = "";
+    await loadPrinterPaperRolls();
+  }
+}
+
+function formatPrinterPaperDate(value) {
+  if (!value) return "sem registro anterior";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "sem registro anterior" : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
 async function loadAdminState() {
@@ -263,7 +404,7 @@ function renderAdmin() {
           <div><span>Senha atual</span><strong>${escapeHtml(snapshot.currentTicket ? supportCode(snapshot.currentTicket).replace("Senha ", "") : "--")}</strong></div>
           <div><span>Tempo médio</span><strong class="${averageClass.trim()}"${Number(metric.serviceSamples || 0) > 0 ? "" : ' title="Sem atendimentos concluídos na data consultada"'}>${escapeHtml(serviceAverageLabel(metric))}</strong></div>
         </div>
-        <div class="manager-progress" aria-label="${escapeHtml(snapshot.load)}% da capacidade ocupada"><span style="width:${escapeHtml(snapshot.load)}%"></span></div>
+        <div class="manager-progress"><progress max="100" value="${escapeHtml(snapshot.load)}" aria-label="${escapeHtml(snapshot.load)}% da capacidade ocupada"></progress></div>
         <div class="manager-sector-load"><span>${escapeHtml(snapshot.load)}% da capacidade definida</span><b>${escapeHtml(snapshot.waiting.length)} aguardando</b></div>
         <p class="manager-sector-current">${escapeHtml(snapshot.currentTicket ? `${displayCustomerName(snapshot.currentTicket)} · ${ticketStatus(snapshot.currentTicket)}` : "Nenhum atendimento ativo")}</p>
         <details class="manager-sector-settings">
@@ -522,7 +663,7 @@ function operationBar(sector) {
         <span>${escapeHtml(sector.waiting.length)} aguardando · ${escapeHtml(sector.currentTicket ? `atual ${supportCode(sector.currentTicket).replace("Senha ", "")}` : "sem chamada")}</span>
       </div>
       <b>${escapeHtml(averageLabel)}</b>
-      <i><em style="width:${escapeHtml(width)}%"></em></i>
+      <progress class="manager-bar-meter" max="100" value="${escapeHtml(width)}" aria-label="${escapeHtml(sector.name)}: ${escapeHtml(width)}% da capacidade"></progress>
     </article>
   `;
 }
@@ -1019,4 +1160,66 @@ async function loadPrintReview() {
     });
   }catch(error){container.innerHTML=`<p class="manager-empty" role="status">Não foi possível consultar as impressões. ${escapeHtml(error.message)}</p>`;}
   finally{container.removeAttribute('aria-busy');if(refreshButton){refreshButton.disabled=false;refreshButton.removeAttribute('aria-busy');refreshButton.textContent='Atualizar lista';}}
+}
+
+async function provisionPrintAgent(event) {
+  const button = event.currentTarget;
+  const feedback = document.querySelector("#agentPairingFeedback");
+  const result = document.querySelector("#agentPairingResult");
+  const codeField = document.querySelector("#agentPairingCode");
+  const name = document.querySelector("#agentPairingName")?.value.trim();
+  if (!button || !feedback || !codeField) return;
+  if (currentUser?.role !== "admin") {
+    feedback.textContent = "A emissão de códigos está disponível somente para administradores.";
+    return;
+  }
+  if (!name) {
+    feedback.textContent = "Informe um nome para identificar este agente.";
+    return;
+  }
+  if (!window.confirm("Será criada uma nova identidade de agente para o Totem Pompeia/Bematech. O código é de uso único e expira em 30 minutos. Deseja emitir agora?")) return;
+
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Emitindo código…";
+  feedback.textContent = "Registrando o agente no SenhaHub…";
+  if (result) result.hidden = true;
+  codeField.value = "";
+  try {
+    const pairing = await api("/api/print/v2/provision", {
+      method: "POST",
+      body: { kioskId: "totem-pompeia-01", name }
+    });
+    if (!/^[A-Za-z0-9_-]{32}$/.test(String(pairing.enrollmentCode || ""))) {
+      throw new Error("O servidor não retornou um código de pareamento válido.");
+    }
+    codeField.value = pairing.enrollmentCode;
+    if (result) result.hidden = false;
+    const expiresAt = new Date(Date.now() + Number(pairing.expiresIn || 1800) * 1000);
+    const expiry = document.querySelector("#agentPairingExpiry");
+    if (expiry) expiry.textContent = `Válido até ${expiresAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}. Use este código no instalador original agora.`;
+    feedback.textContent = "Código emitido. Ele não será salvo nesta página após atualizar.";
+    codeField.focus();
+    codeField.select();
+  } catch (error) {
+    feedback.textContent = `Não foi possível emitir o código. ${error.message || "Verifique o console e tente novamente."}`;
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Gerar código de pareamento";
+  }
+}
+
+async function copyAgentPairingCode() {
+  const codeField = document.querySelector("#agentPairingCode");
+  const feedback = document.querySelector("#agentPairingFeedback");
+  if (!codeField?.value) return;
+  try {
+    await navigator.clipboard.writeText(codeField.value);
+    if (feedback) feedback.textContent = "Código copiado. Cole-o no instalador original.";
+  } catch {
+    codeField.focus();
+    codeField.select();
+    if (feedback) feedback.textContent = "Selecione o código e copie-o manualmente.";
+  }
 }

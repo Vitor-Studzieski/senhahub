@@ -8,6 +8,11 @@ function readBodyTemplate(fileName) {
   return body.replace(/<script[\s\S]*?<\/script>/gi, "").trim();
 }
 
-export default function HtmlTemplate({ fileName }) {
-  return <div dangerouslySetInnerHTML={{ __html: readBodyTemplate(fileName) }} />;
+export default function HtmlTemplate({ fileName, trackingDemo = false }) {
+  return (
+    <div
+      data-tracking-demo={trackingDemo ? "enabled" : undefined}
+      dangerouslySetInnerHTML={{ __html: readBodyTemplate(fileName) }}
+    />
+  );
 }

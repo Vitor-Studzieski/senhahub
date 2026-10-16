@@ -675,11 +675,3 @@ Ao fazer uma mudança relevante:
 
 
 
-Escanear o qrcode no tablet
-Mouse na tela da tv
-Decritivo na impressao
-Vibraçao ativada
-Hardware funcionando
-Tela vr 
-Adesivo 
-

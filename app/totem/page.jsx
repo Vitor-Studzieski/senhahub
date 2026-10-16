@@ -1,4 +1,5 @@
 import Script from "next/script";
+import { headers } from "next/headers";
 import HtmlTemplate from "../components/shared/HtmlTemplate";
 
 export const metadata = {
@@ -8,11 +9,13 @@ export const metadata = {
 
 const TOTEM_ASSET_VERSION = "2026.09.23.3";
 
-export default function TotemPage() {
+export default async function TotemPage() {
+  const nonce = (await headers()).get("x-nonce") || undefined;
+
   return (
     <>
       <HtmlTemplate fileName="totem.html" />
-      <Script src="/vendor/qrcode-generator.js" strategy="beforeInteractive" />
+      <Script src="/vendor/qrcode-generator.js" nonce={nonce} strategy="beforeInteractive" />
       <Script src={`/totem.js?v=${TOTEM_ASSET_VERSION}`} strategy="afterInteractive" />
     </>
   );

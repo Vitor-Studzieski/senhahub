@@ -64,6 +64,15 @@ const state = {
   refreshTimer: null
 };
 
+let screenWakeLock = null;
+let screenWakeLockRequest = null;
+
+requestScreenWakeLock();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") requestScreenWakeLock();
+});
+document.addEventListener("pointerdown", requestFullscreenFromGesture, { once: true });
+
 const elements = {
   loading: document.querySelector("#tabletLoading"),
   error: document.querySelector("#tabletError"),
@@ -90,10 +99,42 @@ document.querySelector("#tabletBackToType")?.addEventListener("click", () => set
 document.querySelector("#tabletBackToSector")?.addEventListener("click", () => setStep("type"));
 elements.issueButton?.addEventListener("click", issueTicket);
 document.querySelector("#tabletNewRequest")?.addEventListener("click", resetOperation);
-document.querySelector("#tabletLogoutButton")?.addEventListener("click", logout);
 
 renderPriorityOptions();
 loadStatus();
+
+async function requestScreenWakeLock() {
+  if (!navigator.wakeLock || document.visibilityState !== "visible" || screenWakeLockRequest) return;
+  if (screenWakeLock && !screenWakeLock.released) return;
+
+  screenWakeLockRequest = navigator.wakeLock.request("screen");
+  try {
+    screenWakeLock = await screenWakeLockRequest;
+    screenWakeLock.addEventListener("release", () => {
+      screenWakeLock = null;
+    }, { once: true });
+  } catch {
+    screenWakeLock = null;
+  } finally {
+    screenWakeLockRequest = null;
+  }
+}
+
+async function requestFullscreenFromGesture() {
+  if (window.matchMedia?.("(display-mode: fullscreen)").matches || document.fullscreenElement) return;
+  const requestFullscreen = document.documentElement.requestFullscreen;
+  if (typeof requestFullscreen !== "function") return;
+
+  try {
+    await requestFullscreen.call(document.documentElement, { navigationUI: "hide" });
+  } catch {
+    try {
+      await requestFullscreen.call(document.documentElement);
+    } catch {
+      // Installed PWA display mode or device kiosk settings may manage fullscreen instead.
+    }
+  }
+}
 
 async function loadStatus() {
   setConnection("loading", "Conectando");
@@ -356,11 +397,6 @@ function resetOperation() {
   setStep("type");
   elements.result.hidden = true;
   elements.operation.hidden = false;
-}
-
-async function logout() {
-  try { await api("/api/auth/logout", { method: "POST", body: {} }); } catch { /* A sessão pode já estar expirada. */ }
-  location.href = "/login";
 }
 
 function showError(title, message) {

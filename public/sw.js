@@ -15,6 +15,11 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
+  // Let the browser load cross-origin assets under the page's own CSP
+  // directives (for example font-src), and keep application scripts usable
+  // by the document's preload cache instead of proxying them through the SW.
+  if (self.SenhaHubCache.shouldBypassServiceWorker(url)) return;
+
   if (self.SenhaHubCache.isNetworkOnly(request, url)) {
     event.respondWith(fetch(request).catch(() => Response.error()));
     return;

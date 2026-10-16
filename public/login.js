@@ -13,7 +13,7 @@ document.querySelector("#loginForm").addEventListener("submit", async (event) =>
       body: formValues(form)
     });
     const next = new URLSearchParams(location.search).get("next");
-    location.href = allowedNextForRole(result.user.role, next);
+    location.href = allowedNextForRole(result.user.role, next, result.user.email);
   } catch (exception) {
     error.textContent = exception.message;
     showLoginToast(exception.message);
@@ -280,7 +280,8 @@ function getCookie(name) {
     ?.slice(name.length + 1) || "";
 }
 
-function allowedNextForRole(role, next) {
+function allowedNextForRole(role, next, email) {
+  const isShortcutsAccount = String(email || "").trim().toLowerCase() === "vitorstudzieski@superpompeia.com";
   const home = {
     customer: "/",
     attendant: "/attendant",
@@ -291,6 +292,7 @@ function allowedNextForRole(role, next) {
     marketing: "/marketing/conteudos-tv"
   }[role] || "/";
   const normalizedRole = role === "admin" ? "manager" : role;
+  if (isShortcutsAccount && (!next || next === "/" || next === "/atalhos" || next === "/admin/atalhos")) return "/admin";
   if (!next) return home;
   if (normalizedRole === "manager" && ["/", "/totem"].includes(next)) return next;
   if (role === "attendant" && ["/attendant", "/tablet"].includes(next)) return next;
@@ -298,5 +300,5 @@ function allowedNextForRole(role, next) {
   if (role === "tablet" && next === "/tablet") return next;
   if (role === "tv" && next === "/tv/acougue") return next;
   if (role === "marketing" && next === "/marketing/conteudos-tv") return next;
-  return home;
+  return isShortcutsAccount ? "/admin" : home;
 }

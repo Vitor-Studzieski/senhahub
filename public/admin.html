@@ -4,15 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestor - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20260916.4" />
+    <link rel="stylesheet" href="styles.css?v=20261014.pompeia-color-balance-v2" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
         <div class="manager-brand">
-          <img class="manager-brand-logo" src="/assets/vr-software-mark.svg?v=20260916.3" alt="VR Software" width="60" height="36" />
+          <img class="manager-brand-logo" src="/assets/senhahub-pompeia-logo.png" alt="SenhaHub" width="132" height="44" />
           <div>
-            <strong>SenhaHub</strong>
             <span>Painel do gestor</span>
           </div>
         </div>
@@ -92,6 +91,13 @@
           <div class="manager-alert manager-alert-neutral"><span class="manager-alert-mark" aria-hidden="true">i</span><div><strong>Preparando análise</strong><p>Os alertas aparecerão assim que os dados da operação forem carregados.</p></div></div>
         </section>
 
+        <section class="manager-section-title manager-section-compact">
+          <div><p class="manager-eyebrow">Impressão</p><h2>Bobinas das impressoras</h2><p>Estimativa baseada em até 420 senhas por bobina. O contador é atualizado com impressões confirmadas.</p></div>
+        </section>
+        <section class="printer-paper-panel" id="printerPaperRolls" aria-live="polite" aria-busy="true">
+          <p class="manager-empty" role="status">Consultando as impressoras…</p>
+        </section>
+
         <section class="manager-panel manager-history-reset" aria-labelledby="ticketHistoryResetHeading">
           <div class="manager-panel-header">
             <div>
@@ -107,6 +113,6 @@
 
       </main>
     </div>
-    <script src="admin.js?v=20260917.1"></script>
+    <script src="admin.js?v=20261015.shortcuts-email"></script>
   </body>
 </html>

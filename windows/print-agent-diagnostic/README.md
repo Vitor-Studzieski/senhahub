@@ -12,6 +12,8 @@ Se aparecer **A impressora está bloqueada para revisão**, uma tentativa começ
 
 Se a porta COM não aparecer, confira cabo USB, driver Bematech e a porta configurada. Se aparecer HTTP 401/403 ou erro de escopo, confira o pareamento e o vínculo do dispositivo com o Açougue 2.
 
+Para o agente Node do protocolo v2, rode `npm run print:agent:diagnose` na pasta do projeto. Esse comando verifica a tarefa agendada, dependências, COM, sessão/journal, logs de instalação e erros do agente. A recuperação remota ocorre apenas quando a tarefa Node está parada ou ausente; com a tarefa em execução, é pulada para não interferir em uma impressão.
+
 ## Compilar
 
 Em Windows com Visual Studio ou Build Tools e .NET Framework 4.8:

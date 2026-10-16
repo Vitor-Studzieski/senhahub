@@ -1,6 +1,7 @@
 const ESC = 0x1b;
 const GS = 0x1d;
 const LF = 0x0a;
+const qrcode = require("../../public/vendor/qrcode-generator.js");
 
 function buildTicketReceipt(payload = {}) {
   const tickets = normalizeReceiptTickets(payload);
@@ -53,15 +54,37 @@ function cutPaper() {
 
 function qrCode(value) {
   if (!value) return asciiLine("QR Code indisponivel");
-  const data = Buffer.from(value, "utf8");
-  const length = data.length + 3;
+  const code = qrcode(0, "M");
+  code.addData(value, "Byte");
+  code.make();
+
+  // Render the QR as ESC/POS raster data instead of relying on the printer's
+  // native GS ( k QR firmware command, which may otherwise be printed as text.
+  const moduleCount = code.getModuleCount();
+  const scale = 4;
+  const quietZoneModules = 4;
+  const imageSize = (moduleCount + quietZoneModules * 2) * scale;
+  const rowBytes = Math.ceil(imageSize / 8);
+  const bitmap = Buffer.alloc(rowBytes * imageSize);
+
+  for (let y = 0; y < imageSize; y += 1) {
+    const moduleY = Math.floor(y / scale) - quietZoneModules;
+    if (moduleY < 0 || moduleY >= moduleCount) continue;
+    for (let x = 0; x < imageSize; x += 1) {
+      const moduleX = Math.floor(x / scale) - quietZoneModules;
+      if (moduleX < 0 || moduleX >= moduleCount || !code.isDark(moduleY, moduleX)) continue;
+      bitmap[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+
   return Buffer.concat([
-    command(GS, 0x28, 0x6b, 4, 0, 49, 65, 50, 0),
-    command(GS, 0x28, 0x6b, 3, 0, 49, 67, 6),
-    command(GS, 0x28, 0x6b, 3, 0, 49, 69, 49),
-    command(GS, 0x28, 0x6b, length & 0xff, (length >> 8) & 0xff, 49, 80, 48),
-    data,
-    command(GS, 0x28, 0x6b, 3, 0, 49, 81, 48)
+    command(
+      GS, 0x76, 0x30, 0,
+      rowBytes & 0xff, (rowBytes >> 8) & 0xff,
+      imageSize & 0xff, (imageSize >> 8) & 0xff
+    ),
+    bitmap,
+    command(LF)
   ]);
 }
 

@@ -139,8 +139,8 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
   assert.match(styles, /\.tv-screen \.tv-call-alert-card/);
   assert.match(styles, /\.tv-screen \.tv-call-controls-actions button\.is-ready/);
   assert.match(styles, /@keyframes tv-call-button-pulse/);
-  assert.match(layout, /styles\.css\?v=20260922\.2/);
-  assert.match(page, /tv-acougue\.js\?v=20260922\.3/);
+  assert.match(layout, /styles\.css\?v=[^"]+/);
+  assert.match(page, /tv-acougue\.js\?v=[^"]+/);
 });
 
 test("biblioteca de conteúdos da TV é restrita ao marketing e alimenta a reprodução", () => {

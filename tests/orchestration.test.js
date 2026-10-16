@@ -17,6 +17,7 @@ const cronSecret = crypto.randomBytes(48).toString("base64url");
 let server;
 let dataDir;
 let adminCookie = "";
+let loginIpSequence = 1;
 
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "senhahub-test-"));
@@ -32,6 +33,7 @@ test.before(async () => {
       LOCAL_POSTGRES_ROUTES_ENABLED: "0",
       SUPABASE_AUTH_ENABLED: "0",
       PRESENCE_CHECK_ENABLED: "0",
+      TRUST_PROXY_HEADERS: "1",
       DEMO_USERS_JSON: JSON.stringify(testCredentials.seedUsers),
       AUTH_SECRET: crypto.randomBytes(32).toString("hex"),
       PRINT_AGENT_TOKEN: printAgentToken,
@@ -372,11 +374,11 @@ test("permite senha sem presenca durante testes controlados", async () => {
   assert.equal(result.ticket.qrVerified, false);
 });
 
-test("tentativas inválidas para uma conta não bloqueiam o login correto", async () => {
+test("cinco tentativas inválidas pausam o login correto da conta", async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: loginRequestHeaders(),
       body: JSON.stringify({ email: testCredentials.lockedCustomer.email, password: crypto.randomUUID() })
     });
     assert.equal(response.status, 401);
@@ -384,12 +386,12 @@ test("tentativas inválidas para uma conta não bloqueiam o login correto", asyn
 
   const response = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: loginRequestHeaders(),
     body: JSON.stringify({ email: testCredentials.lockedCustomer.email, password: testCredentials.lockedCustomer.password })
   });
   const payload = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(payload.user.email, testCredentials.lockedCustomer.email);
+  assert.equal(response.status, 401);
+  assert.equal(payload.error, "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte.");
 });
 
 test("rota interna de jobs exige o segredo do cron", async () => {
@@ -1079,7 +1081,7 @@ test("gestor limpa o histórico encerrado sem apagar a fila ativa nem a numeraç
 async function login(email, password) {
   const response = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: loginRequestHeaders(),
     body: JSON.stringify({ email, password })
   });
   assert.ok(response.ok, response.statusText);
@@ -1089,6 +1091,15 @@ async function login(email, password) {
   assert.ok(auth, "Cookie de autenticacao ausente.");
   assert.ok(csrf, "Cookie CSRF ausente.");
   return `${auth}; ${csrf}`;
+}
+
+function loginRequestHeaders() {
+  const ipOctet = ((loginIpSequence - 1) % 254) + 1;
+  loginIpSequence += 1;
+  return {
+    "content-type": "application/json",
+    "x-vercel-forwarded-for": `192.0.2.${ipOctet}`
+  };
 }
 
 async function createCustomer(slug) {

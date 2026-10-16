@@ -7,7 +7,8 @@ const LEGACY_CSRF_COOKIE = "senhahub_csrf";
 
 function clientIp(request) {
   if (process.env.TRUST_PROXY_HEADERS !== "1") return "unknown";
-  const forwarded = request.headers.get("cf-connecting-ip")
+  const forwarded = request.headers.get("x-vercel-forwarded-for")
+    || request.headers.get("cf-connecting-ip")
     || request.headers.get("x-forwarded-for")
     || request.headers.get("x-real-ip");
   return String(forwarded || "unknown").split(",")[0].trim() || "unknown";

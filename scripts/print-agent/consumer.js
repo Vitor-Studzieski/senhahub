@@ -48,7 +48,14 @@ class PrintConsumer {
       if(this.stopped)return;
       this.pending=false;
       if(this.state!=='needs_review')this.state=error.status===401||error.status===403?'unauthorized':'degraded';
-      this.logger.error('Ciclo de impressao interrompido.',{state:this.state,status:error.status||0});
+      this.logger.error('Ciclo de impressão interrompido.',{
+        state:this.state,
+        status:error.status||0,
+        code:error.code||undefined,
+        name:error.name||'Error',
+        message:error.message||String(error),
+        failures:this.failures+1
+      });
       this.arm(this.state==='unauthorized'?this.reconciliationMs:Math.min(300000,15000*2**Math.min(this.failures++,4))*(0.75+this.random()/2));
     }
   }
@@ -56,7 +63,7 @@ class PrintConsumer {
   async confirm(entry) {
     const result=await this.api('finish',{...ownership(entry.job),outcome:entry.outcome,error:entry.error});
     this.store.acknowledge(entry.job.lease_id);this.rememberRetry(result.nextAttemptAt);
-    if(result.job?.status==='needs_review')this.state='needs_review';
+    if(result.job?.status==='needs_review')this.markNeedsReview(entry.job.id,'O servidor marcou o resultado físico como incerto.');
   }
   async recover() {
     // A later wake may follow an operator resolution; recompute the fence
@@ -84,8 +91,14 @@ class PrintConsumer {
         this.store.save(recovered.job,'result','before_send','Recovered lease without a local result');
         await this.confirm({job:recovered.job,outcome:'before_send',error:'Recovered lease before send'});
       } else if(recovered.job.status==='printing')await this.reportUnknown(recovered.job);
-      else if(recovered.job.status==='needs_review')this.state='needs_review';
+      else if(recovered.job.status==='needs_review')this.markNeedsReview(recovered.job.id,'O servidor mantém este trabalho bloqueado para revisão.');
     }
+    if(recovered.blocked&&!recovered.job)this.markNeedsReview(null,'A impressora está bloqueada por um trabalho que não foi retornado para este dispositivo.');
+  }
+  markNeedsReview(jobId,message){
+    const changed=this.state!=='needs_review';
+    this.state='needs_review';
+    if(changed)this.logger.error('Impressora bloqueada para revisão.',{jobId:jobId||undefined,message});
   }
   async reportUnknown(job) {
     this.store.save(job,'result','unknown','Physical result unavailable');
@@ -107,7 +120,18 @@ class PrintConsumer {
     this.state='printing';this.store.save(job,'writing');
     let outcome='printed',message=null;
     try {await this.printer.print(bytes,{signal:this.signal});}
-    catch(error){outcome=error.beforeSend===true?'before_send':'unknown';message=outcome==='unknown'?'Physical send uncertain':'Printer unavailable before send';}
+    catch(error){
+      outcome=error.beforeSend===true?'before_send':'unknown';
+      message=outcome==='unknown'?'Physical send uncertain':'Printer unavailable before send';
+      this.logger.error('Falha ao enviar impressão para a impressora.',{
+        jobId:job.id,
+        leaseId:job.lease_id,
+        outcome,
+        code:error.code||undefined,
+        name:error.name||'Error',
+        message:error.message||String(error)
+      });
+    }
     // A journal error after physical I/O leaves "writing" for conservative recovery.
     this.store.save(job,'result',outcome,message);
     this.state='confirming';await this.confirm({job,outcome,error:message});

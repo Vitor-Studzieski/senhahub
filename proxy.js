@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+const SHORTCUTS_HUB_EMAIL = "vitorstudzieski@superpompeia.com";
+
 const pageRoles = {
   "/": ["customer", "manager", "admin"],
   "/attendant": ["attendant", "manager", "admin"],
@@ -21,6 +23,7 @@ const legacyPageRedirects = {
   "/admin-setores.html": "/admin/setores",
   "/admin-totens.html": "/admin/totens",
   "/admin-usuarios.html": "/admin/usuarios",
+  "/admin-atalhos.html": "/admin/atalhos",
   "/totem.html": "/totem",
   "/tv-acougue.html": "/tv/acougue",
   "/install.html": "/instalar",
@@ -34,6 +37,20 @@ export async function proxy(request) {
     const target = request.nextUrl.clone();
     target.pathname = legacyTarget;
     return NextResponse.redirect(target);
+  }
+
+  if (pathname === "/admin/atalhos" || pathname.startsWith("/admin/atalhos/")) {
+    const user = await loadCurrentUser(request);
+    if (isShortcutsManager(user)) return allowPage(request);
+    if (user) return NextResponse.redirect(new URL(roleHome(user), request.url));
+    return redirectToLogin(request, "/admin");
+  }
+
+  if (pathname === "/atalhos" || pathname.startsWith("/atalhos/")) {
+    const user = await loadCurrentUser(request);
+    if (isShortcutsManager(user)) return NextResponse.redirect(new URL("/admin", request.url));
+    if (user) return NextResponse.redirect(new URL(roleHome(user), request.url));
+    return redirectToLogin(request, "/admin");
   }
 
   if ((pathname === "/totem" || pathname.startsWith("/totem/")) && !(await hasValidKioskSession(request))) {
@@ -75,6 +92,14 @@ function normalizePathname(pathname) {
   return normalized || "/";
 }
 
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function isShortcutsManager(user) {
+  return normalizeEmail(user?.email) === SHORTCUTS_HUB_EMAIL && hasManagerRole(user);
+}
+
 function redirectToLogin(request, pathname) {
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", pathname);
@@ -103,7 +128,7 @@ function buildContentSecurityPolicy(nonce) {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'${development ? " 'unsafe-eval'" : ""}`,
-    "style-src 'self' https://fonts.googleapis.com",
+    `style-src 'self' https://fonts.googleapis.com${development ? " 'unsafe-inline'" : ""}`,
     "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
     `connect-src 'self' https://api.open-meteo.com https://fonts.googleapis.com https://*.supabase.co${development ? " ws: http://localhost:*" : ""}`,
     "font-src 'self' https://fonts.gstatic.com",
@@ -234,6 +259,7 @@ function roleHome(user) {
 export const config = {
   matcher: [
     "/",
+    "/atalhos/:path*",
     "/attendant/:path*",
     "/admin/:path*",
     "/marketing/conteudos-tv",
@@ -254,6 +280,7 @@ export const config = {
     "/admin-setores.html",
     "/admin-totens.html",
     "/admin-usuarios.html",
+    "/admin-atalhos.html",
     "/totem.html",
     "/install.html",
     "/acompanhar.html"

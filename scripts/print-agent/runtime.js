@@ -74,11 +74,40 @@ class AgentLogger {
 
   write(level, message, details) {
     rotateFile(this.file);
-    const suffix = details ? ` ${safeJson(details)}` : "";
-    const line = `${new Date().toISOString()} ${level} ${message}${suffix}`;
+    const safeMessage = redactText(message);
+    const suffix = details ? ` ${safeJson(redactDetails(details))}` : "";
+    const line = `${new Date().toISOString()} ${level} ${safeMessage}${suffix}`;
     process[level === "ERROR" ? "stderr" : "stdout"].write(`${line}\n`);
     fs.appendFileSync(this.file, `${line}\n`, { encoding: "utf8", mode: 0o600 });
   }
+}
+
+function redactText(value) {
+  let text = String(value ?? "");
+  for (const secret of [
+    process.env.PRINT_AGENT_TOKEN,
+    process.env.PRINT_DEVICE_LOCAL_TOKEN,
+    process.env.PRINT_ENROLLMENT_CODE,
+    process.env.SUPABASE_PUBLISHABLE_KEY,
+    process.env.SUPABASE_ANON_KEY,
+    process.env.PRINT_REALTIME_KEY
+  ]) {
+    if (secret && secret.length >= 4) text = text.split(secret).join("[REDACTED]");
+  }
+  return text;
+}
+
+function redactDetails(value) {
+  if (Array.isArray(value)) return value.map(redactDetails);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      /(token|secret|password|authorization|supabasekey|enrollmentcode)/i.test(key)
+        ? "[REDACTED]"
+        : redactDetails(item)
+    ]));
+  }
+  return typeof value === "string" ? redactText(value) : value;
 }
 
 class PrintedJobJournal {
@@ -159,5 +188,7 @@ module.exports = {
   AgentLogger,
   PrintedJobJournal,
   loadAgentEnvironment,
-  readAgentConfiguration
+  readAgentConfiguration,
+  redactText,
+  redactDetails
 };

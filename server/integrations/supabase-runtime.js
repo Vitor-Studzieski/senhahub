@@ -29,6 +29,15 @@ const {
   passwordPolicyError
 } = require("../auth/password-policy");
 const {
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_FAILURE_WINDOW_MS,
+  LOGIN_IP_BURST_LIMIT,
+  LOGIN_IP_BURST_WINDOW_SECONDS,
+  LOGIN_IP_RATE_LIMIT,
+  LOGIN_IP_RATE_WINDOW_SECONDS,
+  loginAccountAttemptKey
+} = require("../auth/login-security");
+const {
   createRequestContext,
   dispatchObservabilityAlert,
   durationMs,
@@ -43,6 +52,15 @@ const { fetchCurrentWeather } = require("./weather");
 const { fetchInstagramVideo } = require("./instagram-video");
 const { sanitizeDisplayState } = require("../display-state");
 const { transcodeSupabaseVideo } = require("./tv-media-transcoder");
+const {
+  PAPER_ROLL_CAPACITY,
+  PAPER_ROLL_MAX_INITIAL_COUNT,
+  PAPER_ROLL_URGENT_AT,
+  PAPER_ROLL_WARNING_AT,
+  buildPrinterPaperStatus,
+  parsePrinterPaperKey,
+  printerPaperKey
+} = require("../kiosk/paper-roll");
 
 const requestContextStorage = new AsyncLocalStorage();
 
@@ -61,6 +79,7 @@ const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
   "print_job_attempts",
   "print_jobs",
   "print_kiosks",
+  "print_paper_roll_events",
   "print_signal_failures",
   "profile_sector_permissions",
   "profiles",
@@ -94,6 +113,7 @@ const SERVICE_ROLE_RPC_ALLOWLIST = new Set([
   "issue_physical_ticket_bundle",
   "issue_verified_ticket",
   "provision_print_device_v2",
+  "record_login_failure",
   "record_print_device_session_v2",
   "recover_print_execution_v2",
   "release_maintenance_lease",
@@ -170,8 +190,6 @@ const PRIORITY_CATEGORIES = new Set([
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
-const LOGIN_IP_RATE_LIMIT = 60;
-const LOGIN_IP_RATE_WINDOW_SECONDS = 60;
 const LOGIN_ACCOUNT_RATE_LIMIT = 12;
 const LOGIN_ACCOUNT_RATE_WINDOW_SECONDS = 15 * 60;
 const SCHEDULED_JOBS_MIN_INTERVAL_MS = 15000;
@@ -306,6 +324,8 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "GET" && url.pathname === "/api/staff/state") return staffState(request);
     if (request.method === "GET" && url.pathname === "/api/display/state") return displayState(request);
     if (request.method === "GET" && url.pathname === "/api/metrics") return metrics(request);
+    if (request.method === "GET" && url.pathname === "/api/printer-paper-rolls") return printerPaperRolls(request);
+    if (request.method === "POST" && url.pathname === "/api/printer-paper-rolls") return updatePrinterPaperRoll(request);
     if (request.method === "POST" && url.pathname === "/api/tickets/history/reset") return resetTicketHistoryRoute(request);
     if (request.method === "POST" && url.pathname === "/api/tickets") return createTicketRoute(request);
     if (request.method === "POST" && url.pathname === "/api/ratings") return rating(request);
@@ -390,12 +410,18 @@ async function login(request) {
   const requestIp = clientIp(request);
   if (isKnownClientIp(requestIp)) {
     const ipRate = await consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS);
-    if (ipRate !== true) {
+    const burstRate = await consumeSecurityRateLimit("login:ip:burst", requestIp, LOGIN_IP_BURST_LIMIT, LOGIN_IP_BURST_WINDOW_SECONDS);
+    if (ipRate !== true || burstRate !== true) {
+      const rateLimited = ipRate === false || burstRate === false;
       return json(
-        { error: ipRate === false ? "Muitas tentativas. Aguarde um minuto." : "Login temporariamente indisponivel." },
-        ipRate === false ? 429 : 503
+        { error: rateLimited ? "Muitas tentativas. Aguarde alguns minutos." : "Login temporariamente indisponivel." },
+        rateLimited ? 429 : 503
       );
     }
+  }
+  const accountAttemptKey = loginAccountAttemptKey(email);
+  if (accountAttemptKey && await isLoginLocked(accountAttemptKey)) {
+    return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
     method: "POST",
@@ -404,6 +430,7 @@ async function login(request) {
     body: { email, password }
   });
   if (auth.error || !auth.user?.id) {
+    if (accountAttemptKey) await recordAccountLoginFailureIfKnown(email, accountAttemptKey);
     return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
 
@@ -416,6 +443,7 @@ async function login(request) {
     }
     return json({ error: AUTH_CREDENTIALS_ERROR }, 401);
   }
+  if (accountAttemptKey) await clearLoginFailures(accountAttemptKey);
 
   // A credencial do Supabase só é necessária para validar a senha; o app usa
   // a própria sessão, então encerra a sessão GoTrue que não será entregue ao cliente.
@@ -492,6 +520,8 @@ async function changePassword(request) {
   }
   await revokeAuthSessionsForUser(auth.user.id);
   await clearLoginFailures(attemptKey);
+  const accountAttemptKey = loginAccountAttemptKey(email);
+  if (accountAttemptKey) await clearLoginFailures(accountAttemptKey);
   return json({ ok: true, message: "Senha alterada com sucesso. Entre usando a nova senha." });
 }
 
@@ -548,6 +578,8 @@ async function resetPassword(request) {
   if (updated?.error) return json({ error: "Nao foi possivel redefinir a senha agora." }, 400);
 
   await revokeAuthSessionsForUser(authUser.id);
+  const accountAttemptKey = loginAccountAttemptKey(authUser.email);
+  if (accountAttemptKey) await clearLoginFailures(accountAttemptKey);
   return json({ ok: true, message: "Senha redefinida com sucesso. Entre usando a nova senha." });
 }
 
@@ -1881,6 +1913,135 @@ async function metrics(request) {
   const value = await getMetrics(requestedDate);
   metricsCache = { date: requestedDate, value, expiresAt: Date.now() + METRICS_CACHE_TTL_MS };
   return json(value);
+}
+
+async function printerPaperRolls(request) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+
+  const printers = await select("print_kiosks", "select=id,name,printer_name,active,sector_id&order=printer_name.asc&limit=1000");
+  const sectorIds = [...new Set(printers.map((printer) => printer.sector_id).filter(Boolean))];
+  const sectors = sectorIds.length
+    ? await select("sectors", `select=id,name&id=in.(${sectorIds.map((id) => encodeURIComponent(id)).join(",")})`)
+    : [];
+  const sectorNames = new Map(sectors.map((sector) => [sector.id, sector.name]));
+  const printersWithSectors = printers.map((printer) => ({
+    ...printer,
+    sector_name: printer.sector_id ? sectorNames.get(printer.sector_id) || null : null
+  }));
+  const events = (await Promise.all(printers.map(async (printer) => (
+    (await select(
+      "print_paper_roll_events",
+      `select=printer_key,printer_name,event_type,baseline_count,actor_name,created_at&printer_key=eq.${encodeURIComponent(printerPaperKey(printer.id))}&order=created_at.desc&limit=1`
+    ))[0] || null
+  )))).filter(Boolean);
+  const earliestEvent = events
+    .map((event) => event.created_at)
+    .sort((left, right) => new Date(left) - new Date(right))[0];
+  const [printedJobs, reviewJobs] = await Promise.all([
+    earliestEvent ? listPrintedJobsSince(earliestEvent) : Promise.resolve([]),
+    select("print_jobs", "select=kiosk_id&status=eq.needs_review&limit=1000")
+  ]);
+
+  return json({
+    capacity: PAPER_ROLL_CAPACITY,
+    warningAt: PAPER_ROLL_WARNING_AT,
+    urgentAt: PAPER_ROLL_URGENT_AT,
+    printers: buildPrinterPaperStatus({ printers: printersWithSectors, events, printedJobs, reviewJobs }),
+    generatedAt: isoNow()
+  }, 200, { "cache-control": "no-store" });
+}
+
+async function listPrintedJobsSince(timestamp) {
+  const rows = [];
+  const encodedTimestamp = encodeURIComponent(timestamp);
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await select(
+      "print_jobs",
+      `select=kiosk_id,payload,updated_at&status=eq.printed&updated_at=gte.${encodedTimestamp}&order=updated_at.asc&limit=${pageSize}&offset=${offset}`
+    );
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function updatePrinterPaperRoll(request) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) {
+    return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
+  }
+
+  const body = await readJson(request);
+  const action = String(body?.action || "");
+  const printerKey = String(body?.printerKey || "");
+  const kioskId = parsePrinterPaperKey(printerKey);
+  const requestId = String(body?.requestId || "");
+  if (!kioskId || !isUuid(requestId) || !["initialize", "replace"].includes(action)) {
+    return json({ error: "Dados para registrar a bobina inválidos." }, 400);
+  }
+
+  let baselineCount = 0;
+  if (action === "initialize") {
+    const rawCount = body?.initialCount;
+    baselineCount = Number(rawCount);
+    if (rawCount === undefined || rawCount === null || String(rawCount).trim() === ""
+      || !Number.isInteger(baselineCount) || baselineCount < 0 || baselineCount > PAPER_ROLL_MAX_INITIAL_COUNT) {
+      return json({ error: `Informe uma estimativa entre 0 e ${PAPER_ROLL_MAX_INITIAL_COUNT} senhas.` }, 400);
+    }
+  }
+
+  const duplicate = (await select(
+    "print_paper_roll_events",
+    `select=printer_key,event_type,actor_id,request_id&request_id=eq.${encodeURIComponent(requestId)}&limit=1`
+  ))[0];
+  if (duplicate) {
+    const sameAction = duplicate.printer_key === printerKey
+      && duplicate.event_type === (action === "initialize" ? "initialized" : "replaced")
+      && duplicate.actor_id === String(user.id);
+    return sameAction
+      ? json({ ok: true, repeated: true })
+      : json({ error: "Este pedido já foi usado para outra operação." }, 409);
+  }
+
+  const printer = (await select(
+    "print_kiosks",
+    `select=id,printer_name&id=eq.${encodeURIComponent(kioskId)}&limit=1`
+  ))[0];
+  if (!printer) return json({ error: "Impressora não encontrada." }, 404);
+
+  const latestEvent = (await select(
+    "print_paper_roll_events",
+    `select=event_type,created_at&printer_key=eq.${encodeURIComponent(printerKey)}&order=created_at.desc&limit=1`
+  ))[0] || null;
+  if ((action === "initialize" && latestEvent) || (action === "replace" && !latestEvent)) {
+    return json({ error: action === "initialize"
+      ? "O contador desta impressora já foi iniciado. Atualize a dashboard."
+      : "Inicie o contador antes de registrar uma troca." }, 409);
+  }
+
+  const uncertainJob = (await select(
+    "print_jobs",
+    `select=id&kiosk_id=eq.${encodeURIComponent(kioskId)}&status=eq.needs_review&limit=1`
+  ))[0];
+  if (uncertainJob) {
+    return json({ error: "Resolva as impressões em conferência antes de iniciar ou trocar a bobina." }, 409);
+  }
+
+  await insert("print_paper_roll_events", {
+    id: crypto.randomUUID(),
+    printer_key: printerKey,
+    printer_name: printer.printer_name || "Impressora",
+    event_type: action === "initialize" ? "initialized" : "replaced",
+    baseline_count: baselineCount,
+    actor_id: String(user.id),
+    actor_name: String(user.name || user.full_name || user.email || "Gerente").slice(0, 160),
+    request_id: requestId,
+    created_at: isoNow()
+  }, false);
+  return json({ ok: true }, 201, { "cache-control": "no-store" });
 }
 
 async function resetTicketHistoryRoute(request) {
@@ -3419,8 +3580,52 @@ function createSupabasePushRepository() {
 
 async function isLoginLocked(key) {
   if (!shouldApplyLoginLock(key)) return false;
-  const entry = (await select("login_attempts", `attempt_key=eq.${encodeURIComponent(key)}&limit=1`))[0];
-  return Boolean(entry && Number(entry.locked_until) > Date.now());
+  try {
+    const result = await supabaseFetch(
+      `/rest/v1/login_attempts?attempt_key=eq.${encodeURIComponent(key)}&select=locked_until&limit=1`
+    );
+    if (result?.error || !Array.isArray(result)) {
+      logStructured("error", "auth.login_lockout_check_failed", {
+        status: Number(result?.status) || null
+      });
+      return true;
+    }
+    return Boolean(result[0] && Number(result[0].locked_until) > Date.now());
+  } catch (error) {
+    logStructured("error", "auth.login_lockout_check_failed", { error: errorDetails(error) });
+    return true;
+  }
+}
+
+async function recordAccountLoginFailureIfKnown(email, attemptKey) {
+  try {
+    const profiles = await supabaseFetch(
+      `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id&limit=1`
+    );
+    if (profiles?.error) {
+      logStructured("error", "auth.login_lockout_profile_check_failed", {
+        status: Number(profiles.status) || null
+      });
+      return;
+    }
+    if (!Array.isArray(profiles) || !profiles.length) return;
+
+    const result = await rpc("record_login_failure", {
+      p_attempt_key: attemptKey,
+      p_attempt_limit: LOGIN_FAILURE_LIMIT,
+      p_window_seconds: Math.floor(LOGIN_FAILURE_WINDOW_MS / 1000),
+      p_base_lock_seconds: 15 * 60,
+      p_max_lock_seconds: 60 * 60,
+      p_lockout_reset_seconds: 24 * 60 * 60
+    });
+    if (result?.error) {
+      logStructured("error", "auth.login_lockout_record_failed", {
+        status: Number(result.status) || null
+      });
+    }
+  } catch (error) {
+    logStructured("error", "auth.login_lockout_record_failed", { error: errorDetails(error) });
+  }
 }
 
 async function registerLoginFailure(key) {

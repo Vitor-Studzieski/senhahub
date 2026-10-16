@@ -1,16 +1,23 @@
 :root {
-  --vr-orange-primary: #FF7200;
-  --vr-orange-secondary: #FF9E01;
-  --vr-orange-cta: #FF7400;
-  --vr-orange-strong: #FF5D00;
-  --vr-orange-action: #FF6600;
-  --vr-orange-light: #FFD899;
-  --vr-amber: #FCBD0F;
-  --vr-amber-light: #FFD44B;
-  --vr-terracotta: #D27229;
-  /* Allowed VR variant, reserved for the legibility gradient on the home artwork. */
-  --vr-terracotta-deep: #823500;
-  --vr-heading: #02021E;
+  --pompeia-blue: #003692;
+  --pompeia-blue-deep: #00245D;
+  --pompeia-blue-soft: #E8F0FC;
+  --pompeia-yellow: #FDC102;
+  --pompeia-yellow-light: #FFE06A;
+  --pompeia-yellow-pale: #FFF3C5;
+  --pompeia-yellow-dark: #D9A500;
+  /* Compatibility aliases for existing components, now using Pompeia colors. */
+  --vr-orange-primary: var(--pompeia-blue);
+  --vr-orange-secondary: var(--pompeia-blue-soft);
+  --vr-orange-cta: var(--pompeia-yellow);
+  --vr-orange-strong: var(--pompeia-yellow-dark);
+  --vr-orange-action: var(--pompeia-yellow-dark);
+  --vr-orange-light: var(--pompeia-blue-soft);
+  --vr-amber: var(--pompeia-yellow);
+  --vr-amber-light: var(--pompeia-yellow-light);
+  --vr-terracotta: var(--pompeia-blue);
+  --vr-terracotta-deep: var(--pompeia-blue-deep);
+  --vr-heading: var(--pompeia-blue-deep);
   --vr-text: #4E4E62;
   --vr-text-dark: #4D4D4D;
   --vr-surface: #FFFFFF;
@@ -25,7 +32,7 @@
   --line: var(--vr-border);
   --success: #237a35;
   --danger: #b42318;
-  --focus-ring: 0 0 0 2px var(--vr-heading), 0 0 0 5px var(--vr-orange-primary);
+  --focus-ring: 0 0 0 2px var(--vr-heading), 0 0 0 5px var(--pompeia-yellow);
 }
 
 * {
@@ -491,35 +498,25 @@ p {
 .welcome-market-logo {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  width: 76px;
-  height: 82px;
+  width: 124px;
+  height: 52px;
   overflow: hidden;
   border: 2px solid var(--vr-orange-primary);
-  border-radius: 18px;
+  border-radius: 14px;
   background: white;
   box-sizing: border-box;
-  padding: 6px 5px;
+  padding: 4px;
   box-shadow: 0 10px 24px color-mix(in srgb, var(--vr-heading) 22%, transparent);
 }
 
 .welcome-market-logo img {
   width: 100%;
-  height: 46px;
-  flex: 0 0 46px;
+  height: auto;
+  max-height: 42px;
+  flex: 0 1 auto;
   object-fit: contain;
-}
-
-.welcome-brand-name {
-  color: var(--vr-text-dark);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.015em;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .welcome-status {
@@ -3171,68 +3168,6 @@ textarea:focus {
   }
 }
 
-.senhahub-auth-stage .captcha-field {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  min-height: 76px;
-}
-
-.senhahub-auth-stage .captcha-field[hidden],
-.senhahub-auth-stage .mfa-enrollment[hidden] {
-  display: none;
-}
-
-.senhahub-auth-stage .captcha-slot {
-  min-height: 65px;
-}
-
-.senhahub-auth-stage .captcha-status {
-  min-height: 16px;
-  margin: 0;
-  color: var(--vr-text);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.senhahub-auth-stage .mfa-enrollment {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--vr-border);
-  border-radius: 12px;
-  background: var(--vr-surface-muted);
-  color: var(--vr-text);
-  text-align: center;
-}
-
-.senhahub-auth-stage .mfa-enrollment p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.senhahub-auth-stage #mfaQrCode {
-  width: 196px;
-  height: 196px;
-  padding: 8px;
-  border-radius: 8px;
-  background: white;
-}
-
-.senhahub-auth-stage .mfa-manual-key-label {
-  font-weight: 700;
-}
-
-.senhahub-auth-stage #mfaSecret {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  color: var(--vr-heading);
-  font-size: 13px;
-  user-select: all;
-}
-
 /* Sprint 1.4: destaque temporario da ultima senha chamada e tipo da senha. */
 .attendant-page .ops-call-panel.call-highlight {
   border-color: var(--vr-orange-primary);
@@ -3305,7 +3240,7 @@ textarea:focus {
 
 .ops-header.attendant-header {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) auto;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
   align-items: start;
   gap: 16px;
   margin-bottom: 26px;
@@ -3315,27 +3250,21 @@ textarea:focus {
 
 .ops-header.attendant-header .ops-header-brand {
   display: inline-flex;
-  flex: 0 0 78px;
-  flex-direction: column;
+  flex: 0 0 150px;
   align-items: center;
-  gap: 4px;
-  min-width: 78px;
+  justify-content: flex-start;
+  min-width: 150px;
 }
 
 .ops-header.attendant-header .ops-header-brand img {
   display: block;
-  width: 62px;
-  height: 38px;
+  width: 142px;
+  height: 48px;
   flex: 0 0 auto;
   object-fit: contain;
-}
-
-.ops-header.attendant-header .ops-header-brand strong {
-  color: var(--vr-text-dark);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
+  border-radius: 8px;
+  background: #fff;
+  padding: 3px;
 }
 
 .ops-header.attendant-header .ops-header-copy {
@@ -3766,7 +3695,7 @@ textarea:focus {
 
 .tv-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.04fr) minmax(420px, .96fr);
+  grid-template-columns: minmax(0, .45fr) minmax(0, .55fr);
   flex: 1;
   min-height: 0;
 }
@@ -3912,6 +3841,7 @@ textarea:focus {
   display: flex;
   flex: 1;
   min-height: clamp(190px, 22vh, 280px);
+  container-type: inline-size;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -3921,8 +3851,10 @@ textarea:focus {
 }
 
 .tv-current-ticket-content strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: #000;
-  font-size: clamp(72px, 6vw, 120px);
+  font-size: clamp(42px, 27cqw, 120px);
   font-weight: 950;
   letter-spacing: .02em;
   line-height: .86;
@@ -4365,7 +4297,6 @@ textarea:focus {
   color: var(--tv-navy);
 }
 
-
 .tv-screen.tv-dedicated-media .tv-content {
   grid-template-columns: minmax(0, .42fr) minmax(0, .58fr);
 }
@@ -4397,6 +4328,12 @@ textarea:focus {
   display: none;
 }
 
+@media (max-width: 1050px) {
+  .tv-screen.tv-dedicated-media .tv-content {
+    grid-template-columns: 1fr;
+  }
+}
+
 .tv-call-alert[hidden] {
   display: none;
 }
@@ -4418,7 +4355,10 @@ textarea:focus {
 .tv-call-alert-card {
   display: grid;
   justify-items: center;
-  width: min(92vw, 920px);
+  align-content: center;
+  box-sizing: border-box;
+  width: min(92vw, 1300px);
+  min-height: min(62vh, 650px);
   border: 4px solid var(--vr-amber);
   border-radius: clamp(18px, 2vw, 34px);
   padding: clamp(28px, 6vw, 88px) clamp(24px, 5vw, 70px);
@@ -4437,12 +4377,14 @@ textarea:focus {
 }
 
 .tv-call-alert-card strong {
+  max-width: 100%;
   margin: clamp(10px, 1.5vw, 20px) 0;
   color: var(--vr-on-brand);
-  font-size: clamp(110px, 24vw, 320px);
+  font-size: clamp(72px, 14vw, 260px);
   font-weight: 950;
-  letter-spacing: .02em;
+  letter-spacing: 0;
   line-height: .82;
+  white-space: nowrap;
 }
 
 .tv-call-alert-card span {
@@ -4771,7 +4713,7 @@ textarea:focus {
   min-width: 0;
   gap: clamp(14px, 1.25vw, 24px);
   overflow: hidden;
-  padding: clamp(20px, 2.3vw, 46px) clamp(20px, 2.4vw, 48px) clamp(18px, 2vw, 38px);
+  padding: clamp(12px, 1.6vw, 28px) clamp(20px, 2.4vw, 48px);
   border-left: 1px solid var(--vr-border);
   background: var(--vr-surface-muted);
   color: var(--tv-navy);
@@ -4829,6 +4771,22 @@ textarea:focus {
   border-radius: clamp(14px, 1vw, 22px);
   background: var(--vr-orange-primary);
   box-shadow: 0 12px 26px color-mix(in srgb, var(--vr-heading) 10%, transparent);
+}
+
+.tv-video-backdrop-canvas {
+  position: absolute;
+  z-index: 0;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(28px) brightness(.58);
+  transform: scale(1.08);
+  pointer-events: none;
+}
+
+.tv-video-backdrop-canvas[hidden] {
+  display: none;
 }
 
 .tv-video-stage video,
@@ -4915,6 +4873,7 @@ textarea:focus {
 
 .tv-video-overlay {
   position: absolute;
+  z-index: 2;
   right: 0;
   bottom: 0;
   left: 0;
@@ -4924,7 +4883,7 @@ textarea:focus {
   gap: 12px;
   padding: 10px 14px;
   color: var(--vr-on-brand);
-  background: linear-gradient(transparent, color-mix(in srgb, var(--vr-orange-primary) 80%, transparent));
+  background: linear-gradient(transparent, var(--vr-orange-primary));
   font-size: clamp(9px, .68vw, 13px);
   font-weight: 800;
 }
@@ -5068,6 +5027,7 @@ textarea:focus {
 /* Digital ticket tablet */
 .tablet-stage {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--vr-surface-muted);
   color: var(--vr-heading);
 }
@@ -5101,8 +5061,6 @@ textarea:focus {
 .tablet-connection > span { width: 9px; height: 9px; border-radius: 50%; background: var(--vr-amber); }
 .tablet-connection[data-state="online"] > span { background: #31c66b; }
 .tablet-connection[data-state="offline"] > span { background: #e5484d; }
-.tablet-logout { border: 1px solid color-mix(in srgb, var(--vr-border) 42%, transparent); border-radius: 8px; padding: 9px 14px; background: transparent; color: var(--vr-on-brand); font: inherit; font-weight: 800; cursor: pointer; }
-
 .tablet-loading,
 .tablet-error,
 .tablet-operation,
@@ -7453,38 +7411,32 @@ textarea:focus {
 
 .senhahub-auth-brand {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(88px, 0.7fr);
   align-items: center;
   gap: 14px;
 }
 
-.senhahub-auth-vr-logo {
+.senhahub-auth-logo {
   display: grid;
-  width: 88px;
-  height: 88px;
+  width: 100%;
+  max-width: 214px;
+  aspect-ratio: 3 / 1;
   align-content: center;
   justify-items: center;
-  gap: 3px;
-  padding: 8px 6px 7px;
+  padding: 5px;
   border: 2px solid var(--vr-orange-primary);
   border-radius: 16px;
-  background: var(--vr-surface);
+  background: #fff;
   box-shadow: 0 12px 28px color-mix(in srgb, var(--vr-heading) 18%, transparent);
+  box-sizing: border-box;
 }
 
-.senhahub-auth-vr-logo img {
+.senhahub-auth-logo img {
   display: block;
-  width: 66px;
-  height: 40px;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
   object-fit: contain;
-}
-
-.senhahub-auth-vr-logo span {
-  color: var(--vr-text-dark);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.015em;
-  line-height: 1;
 }
 
 .senhahub-auth-title {
@@ -7828,15 +7780,9 @@ textarea:focus {
     font-size: clamp(24px, 7vw, 32px);
   }
 
-  .senhahub-auth-vr-logo {
-    width: 76px;
-    height: 76px;
+  .senhahub-auth-logo {
+    max-width: 184px;
     border-radius: 14px;
-  }
-
-  .senhahub-auth-vr-logo img {
-    width: 58px;
-    height: 35px;
   }
 
 }
@@ -7848,19 +7794,13 @@ textarea:focus {
   }
 
   .senhahub-auth-brand {
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: minmax(0, 1.35fr) minmax(76px, 0.75fr);
+    gap: 8px;
   }
 
-  .senhahub-auth-vr-logo {
-    width: 76px;
-    height: 76px;
+  .senhahub-auth-logo {
+    max-width: 154px;
     border-radius: 13px;
-  }
-
-  .senhahub-auth-vr-logo img {
-    width: 58px;
-    height: 35px;
   }
 
   .senhahub-auth-title strong {
@@ -8415,19 +8355,21 @@ textarea:focus {
   color: var(--vr-heading);
 }
 
-.manager-bar-row i {
+.manager-bar-row .manager-bar-meter {
   grid-column: 1 / -1;
+  display: block;
+  width: 100%;
   height: 8px;
   overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
   border-radius: 999px;
   background: var(--vr-surface-muted);
 }
 
-.manager-bar-row em {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--vr-orange-primary), var(--vr-orange-primary));
+.manager-bar-meter {
+  --manager-progress-fill: linear-gradient(90deg, var(--vr-orange-primary), var(--vr-orange-primary));
 }
 
 .manager-sector-grid {
@@ -8479,11 +8421,39 @@ textarea:focus {
   background: var(--vr-surface-muted);
 }
 
-.manager-progress span {
+.manager-progress progress {
+  --manager-progress-fill: linear-gradient(90deg, var(--vr-orange-primary), var(--vr-orange-primary));
   display: block;
+  width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+}
+
+.manager-progress progress::-webkit-progress-bar,
+.manager-bar-meter::-webkit-progress-bar {
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--vr-orange-primary), var(--vr-orange-primary));
+  background: transparent;
+}
+
+.manager-bar-meter::-webkit-progress-bar {
+  background: var(--vr-surface-muted);
+}
+
+.manager-progress progress::-webkit-progress-value,
+.manager-bar-meter::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--manager-progress-fill);
+}
+
+.manager-progress progress::-moz-progress-bar,
+.manager-bar-meter::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--manager-progress-fill);
 }
 
 .manager-form {
@@ -8720,6 +8690,221 @@ textarea:focus {
 .manager-alert-good .manager-alert-mark {
   background: var(--vr-surface-muted);
   color: #237a35;
+}
+
+.printer-paper-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+  margin: 14px 0 22px;
+}
+
+.printer-paper-card,
+.printer-paper-empty,
+.printer-paper-message {
+  border: 1px solid var(--vr-border);
+  border-radius: 10px;
+  background: var(--vr-surface);
+}
+
+.printer-paper-card {
+  display: grid;
+  align-content: start;
+  gap: 15px;
+  min-width: 0;
+  padding: 18px;
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--vr-heading) 7%, transparent);
+}
+
+.printer-paper-card.tone-attention {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--vr-border));
+}
+
+.printer-paper-card.tone-warning {
+  border-color: color-mix(in srgb, var(--vr-orange-primary) 45%, var(--vr-border));
+}
+
+.printer-paper-card-head,
+.printer-paper-reading,
+.printer-paper-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.printer-paper-card-head h3 {
+  margin: 0 0 4px;
+  color: var(--vr-heading);
+  font-size: 17px;
+}
+
+.printer-paper-card-head div > span,
+.printer-paper-capacity,
+.printer-paper-meta,
+.printer-paper-intro,
+.printer-paper-initial small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.printer-paper-card-head div > .printer-paper-location {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 7px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vr-orange-primary) 14%, var(--vr-surface));
+  color: var(--vr-orange-primary);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.printer-paper-capacity {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--vr-surface-muted);
+  font-weight: 800;
+}
+
+.printer-paper-reading {
+  align-items: center;
+}
+
+.printer-paper-reading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.printer-paper-reading strong {
+  color: var(--vr-heading);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.printer-paper-reading > div span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.printer-paper-status {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.printer-paper-status.warning {
+  background: #fff2cc;
+  color: #8a5200;
+}
+
+.printer-paper-status.attention {
+  background: #ffe7e3;
+  color: #ae2012;
+}
+
+.printer-paper-status.neutral {
+  background: var(--vr-surface-muted);
+  color: var(--muted);
+}
+
+.printer-paper-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--vr-surface-muted);
+}
+
+.printer-paper-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #29833c;
+  transition: width 180ms ease;
+}
+
+.printer-paper-track > span.warning {
+  background: var(--vr-orange-primary);
+}
+
+.printer-paper-track > span.attention {
+  background: var(--danger);
+}
+
+.printer-paper-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.printer-paper-review,
+.printer-paper-message {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border-color: color-mix(in srgb, var(--vr-orange-primary) 42%, var(--vr-border));
+  background: var(--vr-surface-muted);
+  color: var(--vr-heading);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.printer-paper-review a {
+  color: var(--vr-heading);
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.printer-paper-intro {
+  margin: 0;
+}
+
+.printer-paper-initial {
+  display: grid;
+  gap: 6px;
+  color: var(--vr-heading);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.printer-paper-initial input {
+  width: min(220px, 100%);
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--vr-border);
+  border-radius: 8px;
+  background: var(--vr-surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.printer-paper-initial small {
+  font-weight: 500;
+}
+
+.printer-paper-empty {
+  grid-column: 1 / -1;
+  padding: 18px;
+  color: var(--muted);
+}
+
+.printer-paper-empty p {
+  margin: 5px 0 12px;
+}
+
+.printer-paper-empty strong {
+  color: var(--vr-heading);
+}
+
+.printer-paper-message {
+  grid-column: 1 / -1;
 }
 
 .manager-alert strong,
@@ -9182,9 +9367,9 @@ textarea:focus {
   background: var(--vr-surface-muted);
 }
 
-.manager-progress span,
-.manager-bar-row em {
-  background: linear-gradient(90deg, var(--manager-primary), var(--vr-orange-primary));
+.manager-progress progress,
+.manager-bar-meter {
+  --manager-progress-fill: linear-gradient(90deg, var(--manager-primary), var(--vr-orange-primary));
 }
 
 .manager-sector-load b,
@@ -11908,9 +12093,9 @@ textarea:focus-visible,
   background: color-mix(in srgb, var(--sector-accent) 12%, var(--vr-surface));
 }
 
-.manager-page .manager-sector-card[data-sector-tone] .manager-progress span,
-.manager-page .manager-bar-row[data-sector-tone] em {
-  background: linear-gradient(90deg, var(--sector-accent), var(--sector-accent-end));
+.manager-page .manager-sector-card[data-sector-tone] .manager-progress progress,
+.manager-page .manager-bar-row[data-sector-tone] .manager-bar-meter {
+  --manager-progress-fill: linear-gradient(90deg, var(--sector-accent), var(--sector-accent-end));
 }
 
 .manager-page .manager-bar-row[data-sector-tone] {
@@ -12866,6 +13051,44 @@ textarea:focus-visible,
   display: none;
 }
 
+.manager-page .agent-pairing-result {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--vr-orange-primary) 35%, var(--vr-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--vr-orange-light) 12%, var(--vr-surface));
+}
+
+.manager-page .agent-pairing-result[hidden] {
+  display: none;
+}
+
+.manager-page .agent-pairing-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.manager-page .agent-pairing-code-row input {
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vr-border) 82%, var(--vr-orange-light));
+  border-radius: 10px;
+  background: var(--vr-surface);
+  color: var(--vr-heading);
+  font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+.manager-page #agentPairingFeedback,
+.manager-page #agentPairingExpiry {
+  margin: 0;
+  color: var(--vr-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 1080px) {
   .manager-page .manager-main {
     padding: 22px;
@@ -12972,6 +13195,10 @@ textarea:focus-visible,
 }
 
 .manager-page .manager-main {
+  display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  gap: clamp(20px, 2vw, 28px);
   height: 100vh;
   height: 100dvh;
   min-height: 0;
@@ -12980,16 +13207,23 @@ textarea:focus-visible,
   overscroll-behavior-y: contain;
 }
 
+.manager-page .manager-main > * {
+  margin-block: 0;
+}
+
 .manager-page .manager-brand-mark {
   display: none;
 }
 
 .manager-page .manager-brand-logo {
   display: block;
-  width: 60px;
-  height: 36px;
+  width: 132px;
+  height: 44px;
   flex: 0 0 auto;
   object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  padding: 4px;
 }
 
 @media (max-width: 1080px) {
@@ -13013,8 +13247,14 @@ textarea:focus-visible,
 
 @media (max-width: 480px) {
   .manager-page .manager-brand-logo {
-    width: 50px;
-    height: 30px;
+    width: 112px;
+    height: 38px;
+  }
+}
+
+@media (max-width: 720px) {
+  .manager-page .manager-main {
+    gap: 18px;
   }
 }
 
@@ -13289,5 +13529,805 @@ textarea:focus-visible,
   .totem-operation[data-totem-step="type"] .totem-install-qr {
     width: 96px;
     height: 96px;
+  }
+}
+
+/* Identidade visual do Supermercado Pompeia. */
+.appbar {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.appbar .icon-button,
+.call-notification-icon,
+.notify-icon,
+.presence-panel button.checked,
+.presence-panel button.checked:hover,
+.blue-action,
+.blue-action:hover,
+.blue-action:active,
+.install-guide li > span,
+.totem-sector.selected .totem-sector-arrow {
+  border-color: var(--pompeia-blue);
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.blue-action:hover,
+.blue-action:active {
+  border-color: var(--pompeia-blue-deep);
+  background: var(--pompeia-blue-deep);
+}
+
+.login-showcase {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pompeia-blue) 18%, transparent), color-mix(in srgb, var(--pompeia-blue-deep) 90%, transparent)),
+    linear-gradient(90deg, color-mix(in srgb, var(--pompeia-blue) 84%, transparent), color-mix(in srgb, var(--pompeia-blue) 22%, transparent)),
+    url("assets/supermercado-atendimento.jpg") center/cover;
+}
+
+.login-showcase-copy p {
+  border-color: var(--pompeia-yellow);
+  background: var(--pompeia-yellow);
+  color: var(--pompeia-blue-deep);
+}
+
+.login-proof-grid article {
+  background: color-mix(in srgb, var(--pompeia-blue-deep) 82%, transparent);
+}
+
+.tv-screen {
+  --tv-primary: var(--pompeia-blue);
+  --tv-highlight: var(--pompeia-yellow);
+  --tv-navy: var(--pompeia-blue-deep);
+  --tv-navy-deep: var(--pompeia-blue-deep);
+}
+
+.tv-call-alert-card {
+  border-color: var(--pompeia-yellow);
+  background: linear-gradient(145deg, var(--pompeia-blue), var(--pompeia-blue-deep));
+}
+
+.tv-video-placeholder {
+  background:
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--pompeia-yellow) 20%, transparent), transparent 42%),
+    var(--pompeia-blue);
+}
+
+.tv-video-overlay {
+  background: linear-gradient(transparent, var(--pompeia-blue-deep));
+}
+
+.tablet-header,
+.totem-header,
+.tracking-header {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.totem-header .totem-brand span,
+.totem-header .totem-connection,
+.tracking-header,
+.tracking-back {
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-sidebar {
+  background: linear-gradient(180deg, var(--pompeia-blue-deep), var(--pompeia-blue));
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-brand {
+  border-bottom-color: color-mix(in srgb, var(--vr-on-brand) 24%, transparent);
+}
+
+.manager-page .manager-brand span,
+.manager-page .manager-nav a,
+.manager-page .manager-nav a small,
+.manager-page .manager-sidebar-note {
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-nav-icon {
+  color: var(--pompeia-yellow);
+}
+
+.manager-page .manager-nav a:hover:not(.active) {
+  border-left-color: var(--pompeia-yellow);
+  background: color-mix(in srgb, var(--vr-on-brand) 12%, transparent);
+}
+
+.manager-page .manager-nav a.active {
+  border-left-color: var(--pompeia-yellow);
+  background: var(--pompeia-yellow);
+  color: var(--pompeia-blue-deep);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--pompeia-blue-deep) 30%, transparent);
+}
+
+.manager-page .manager-nav a.active > span,
+.manager-page .manager-nav a.active > small,
+.manager-page .manager-nav a.active .manager-nav-icon {
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page .manager-sidebar-note {
+  border-color: color-mix(in srgb, var(--vr-on-brand) 30%, transparent);
+  background: color-mix(in srgb, var(--pompeia-blue-deep) 55%, transparent);
+}
+
+.manager-page .manager-hero-panel {
+  border-color: color-mix(in srgb, var(--pompeia-yellow) 70%, transparent);
+  background:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--pompeia-yellow) 28%, transparent), transparent 36%),
+    linear-gradient(125deg, var(--pompeia-blue) 0%, var(--pompeia-blue-deep) 100%);
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-hero-panel h2,
+.manager-page .manager-hero-panel .manager-eyebrow,
+.manager-page .manager-hero-panel p:not(.manager-eyebrow) {
+  color: var(--vr-on-brand) !important;
+}
+
+.manager-page .manager-hero-strip span {
+  border-color: color-mix(in srgb, var(--vr-on-brand) 32%, transparent);
+  background: color-mix(in srgb, var(--vr-on-brand) 92%, transparent);
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page .manager-kpi:nth-child(1) {
+  --kpi-accent: var(--pompeia-blue);
+  --kpi-tint: color-mix(in srgb, var(--pompeia-blue) 9%, var(--vr-surface));
+}
+
+.manager-page .manager-kpi:nth-child(2) {
+  --kpi-accent: var(--pompeia-yellow-dark);
+  --kpi-tint: color-mix(in srgb, var(--pompeia-yellow) 15%, var(--vr-surface));
+}
+
+.manager-page .manager-kpi:nth-child(3) {
+  --kpi-accent: #5685D0;
+  --kpi-tint: color-mix(in srgb, #5685D0 10%, var(--vr-surface));
+}
+
+.manager-page .manager-kpi:nth-child(4) {
+  --kpi-accent: var(--pompeia-blue-deep);
+  --kpi-tint: color-mix(in srgb, var(--pompeia-blue-deep) 8%, var(--vr-surface));
+}
+
+.manager-page .manager-kpi:nth-child(5) {
+  --kpi-accent: var(--pompeia-yellow);
+  --kpi-tint: color-mix(in srgb, var(--pompeia-yellow) 15%, var(--vr-surface));
+}
+
+.manager-page [data-sector-tone="0"] {
+  --sector-accent: var(--pompeia-blue);
+  --sector-accent-end: var(--pompeia-blue-deep);
+  --sector-tint: color-mix(in srgb, var(--pompeia-blue) 10%, var(--vr-surface));
+}
+
+.manager-page [data-sector-tone="1"] {
+  --sector-accent: var(--pompeia-yellow-dark);
+  --sector-accent-end: var(--pompeia-yellow);
+  --sector-tint: color-mix(in srgb, var(--pompeia-yellow) 14%, var(--vr-surface));
+}
+
+.manager-page [data-sector-tone="2"] {
+  --sector-accent: #5685D0;
+  --sector-accent-end: var(--pompeia-blue);
+  --sector-tint: color-mix(in srgb, #5685D0 10%, var(--vr-surface));
+}
+
+.manager-page [data-sector-tone="3"] {
+  --sector-accent: var(--pompeia-blue-deep);
+  --sector-accent-end: var(--pompeia-blue);
+  --sector-tint: color-mix(in srgb, var(--pompeia-blue-deep) 9%, var(--vr-surface));
+}
+
+.manager-page [data-sector-tone="4"] {
+  --sector-accent: #E7B000;
+  --sector-accent-end: var(--pompeia-yellow-dark);
+  --sector-tint: color-mix(in srgb, #E7B000 13%, var(--vr-surface));
+}
+
+/* Blue is the main brand color; yellow is reserved for actions and highlights. */
+.appbar .icon-button {
+  border-color: color-mix(in srgb, var(--vr-on-brand) 24%, transparent);
+  background: color-mix(in srgb, var(--pompeia-blue-deep) 48%, transparent);
+  color: var(--vr-on-brand);
+}
+
+.senhahub-auth-hero {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--pompeia-blue) 86%, transparent) 0%, color-mix(in srgb, var(--pompeia-blue-deep) 96%, transparent) 100%),
+    url("/assets/supermercado-atendimento.jpg") center/cover;
+  color: var(--vr-on-brand);
+}
+
+.senhahub-auth-title span,
+.senhahub-auth-title strong,
+.senhahub-auth-copy h1 {
+  color: var(--vr-on-brand);
+}
+
+.senhahub-auth-logo {
+  border-color: var(--pompeia-yellow);
+}
+
+.senhahub-auth-stage .yellow-action {
+  border-color: var(--pompeia-yellow);
+  background: linear-gradient(105deg, var(--pompeia-yellow-light), var(--pompeia-yellow));
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-stage .yellow-action:hover {
+  background: var(--pompeia-yellow-dark);
+}
+
+.login-tabs button.active {
+  background: var(--pompeia-yellow);
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-login-tabs.login-tabs button.active::after,
+.senhahub-auth-tabs.login-tabs button.active::after {
+  background: var(--pompeia-blue);
+}
+
+.welcome-primary-icon {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.attendant-page .ops-call-button {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.attendant-page .ops-call-button:hover:not(:disabled) {
+  background: var(--vr-orange-strong);
+  color: var(--pompeia-blue-deep);
+}
+
+.attendant-page .ops-call-button:disabled {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.tablet-priority-step .tablet-secondary {
+  border-color: var(--pompeia-blue);
+  background: var(--pompeia-blue-soft);
+  color: var(--pompeia-blue-deep);
+}
+
+.tablet-sector-prefix {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.totem-choice-marker,
+.totem-choice:hover .totem-choice-arrow,
+.totem-choice:focus-visible .totem-choice-arrow,
+.totem-sector-letter {
+  background: var(--pompeia-blue);
+  color: var(--vr-on-brand);
+}
+
+.printer-paper-track > span.warning {
+  background: var(--pompeia-yellow);
+  color: var(--pompeia-blue-deep);
+}
+
+.tracking-status-dot[data-state="done"] {
+  background: var(--success);
+}
+
+.manager-page .manager-topbar .manager-eyebrow {
+  color: var(--pompeia-blue);
+}
+
+.manager-page .manager-button:not(.secondary):not(.warning),
+.manager-page .manager-button.warning {
+  border-color: color-mix(in srgb, var(--pompeia-yellow-dark) 48%, transparent);
+  background: linear-gradient(115deg, var(--pompeia-yellow-light), var(--pompeia-yellow));
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page .manager-button:not(.secondary):not(.warning):hover,
+.manager-page .manager-button.warning:hover {
+  background: var(--pompeia-yellow-dark);
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page .manager-future-icon {
+  background: linear-gradient(145deg, var(--pompeia-blue), var(--pompeia-blue-deep));
+  color: var(--vr-on-brand);
+}
+
+.tabbar {
+  border-color: color-mix(in srgb, var(--pompeia-blue) 36%, var(--vr-surface));
+  background: linear-gradient(110deg, var(--pompeia-blue-deep), var(--pompeia-blue));
+}
+
+.tabbar-indicator {
+  border-color: var(--pompeia-yellow);
+  background: linear-gradient(140deg, var(--pompeia-yellow-light), var(--pompeia-yellow));
+}
+
+.tabbar button,
+.tabbar button:hover {
+  color: var(--vr-on-brand);
+}
+
+.tabbar button.on,
+.tabbar button.on:hover {
+  color: var(--pompeia-blue-deep);
+}
+
+/* SenhaHub color hierarchy: blue carries structure; yellow marks one focal action. */
+.senhahub-auth-stage {
+  background: #F4F7FB;
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-hero {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--pompeia-blue) 62%, transparent), color-mix(in srgb, var(--pompeia-blue-deep) 82%, transparent)),
+    url("/assets/supermercado-atendimento.jpg") center/cover;
+  color: var(--vr-on-brand);
+}
+
+.senhahub-auth-logo {
+  border-color: color-mix(in srgb, var(--pompeia-blue) 28%, var(--vr-border));
+}
+
+.senhahub-auth-secure {
+  border-color: color-mix(in srgb, var(--pompeia-blue) 14%, var(--vr-border));
+  background: var(--pompeia-blue-soft);
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-secure::before {
+  background: var(--pompeia-blue);
+}
+
+.senhahub-auth-tabs.login-tabs button {
+  color: var(--vr-muted);
+}
+
+.senhahub-auth-tabs.login-tabs button.active {
+  background: var(--pompeia-blue-soft);
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-tabs.login-tabs button.active::after {
+  background: var(--pompeia-yellow);
+}
+
+.senhahub-auth-stage .login-panel input:focus {
+  border-color: var(--pompeia-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pompeia-blue) 16%, transparent);
+}
+
+.senhahub-auth-stage .yellow-action {
+  border-color: var(--pompeia-yellow);
+  background: linear-gradient(105deg, var(--pompeia-yellow-light), var(--pompeia-yellow));
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-stage .yellow-action:hover {
+  border-color: var(--pompeia-yellow-dark);
+  background: var(--pompeia-yellow-dark);
+  color: var(--pompeia-blue-deep);
+}
+
+.senhahub-auth-stage .yellow-action:focus-visible {
+  outline-color: color-mix(in srgb, var(--pompeia-blue) 48%, transparent);
+}
+
+.senhahub-auth-link:hover {
+  color: var(--pompeia-blue);
+}
+
+.manager-page .manager-brand-mark {
+  background: var(--pompeia-yellow);
+  color: var(--pompeia-blue-deep);
+  box-shadow: 0 8px 16px color-mix(in srgb, var(--pompeia-blue) 14%, transparent);
+}
+
+.manager-page .manager-nav-icon {
+  color: color-mix(in srgb, var(--vr-on-brand) 72%, transparent);
+}
+
+.manager-page .manager-nav a:hover:not(.active) {
+  border-left-color: color-mix(in srgb, var(--vr-on-brand) 34%, transparent);
+  background: color-mix(in srgb, var(--vr-on-brand) 9%, transparent);
+}
+
+.manager-page .manager-nav a.active {
+  border-left-color: var(--pompeia-yellow);
+  background: color-mix(in srgb, var(--pompeia-blue) 72%, var(--pompeia-blue-deep));
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-nav a.active > span,
+.manager-page .manager-nav a.active > small {
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-nav a.active .manager-nav-icon {
+  color: var(--pompeia-yellow);
+}
+
+.manager-page .manager-topbar {
+  border-bottom-color: var(--vr-border);
+}
+
+.manager-page .manager-eyebrow {
+  color: var(--pompeia-blue);
+}
+
+.manager-page .manager-eyebrow::before {
+  background: var(--pompeia-blue);
+}
+
+.manager-page .manager-topbar .manager-eyebrow::before,
+.manager-page .manager-hero-panel .manager-eyebrow::before {
+  background: var(--pompeia-yellow);
+}
+
+.manager-page .manager-hero-panel {
+  border-color: color-mix(in srgb, var(--vr-on-brand) 24%, transparent);
+  background:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--pompeia-yellow) 9%, transparent), transparent 36%),
+    linear-gradient(125deg, var(--pompeia-blue) 0%, var(--pompeia-blue-deep) 100%);
+}
+
+.manager-page .manager-hero-panel .manager-eyebrow {
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-button:not(.secondary):not(.warning) {
+  border-color: var(--pompeia-blue);
+  background: linear-gradient(115deg, var(--pompeia-blue), var(--pompeia-blue-deep));
+  color: var(--vr-on-brand);
+}
+
+.manager-page .manager-button:not(.secondary):not(.warning):hover:not(:disabled) {
+  border-color: var(--pompeia-blue-deep);
+  background: var(--pompeia-blue-deep);
+  color: var(--vr-on-brand);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--pompeia-blue) 22%, transparent);
+}
+
+.manager-page .manager-button.secondary,
+.manager-page #logoutButton {
+  border-color: var(--vr-border);
+  background: var(--vr-surface);
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page #logoutButton {
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--pompeia-blue) 18%, transparent);
+}
+
+.manager-page .manager-button.secondary:hover:not(:disabled),
+.manager-page #logoutButton:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--pompeia-blue) 38%, var(--vr-border));
+  background: var(--pompeia-blue-soft);
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page #logoutButton:hover:not(:disabled) {
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--pompeia-blue) 22%, transparent);
+}
+
+.manager-page .manager-button.warning:not(#resetTicketHistoryButton):not(#logoutButton) {
+  border-color: color-mix(in srgb, var(--pompeia-yellow-dark) 48%, transparent);
+  background: linear-gradient(115deg, var(--pompeia-yellow-pale), var(--pompeia-yellow-light));
+  color: var(--pompeia-blue-deep);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--pompeia-yellow) 18%, transparent);
+}
+
+.manager-page .manager-button.warning:not(#resetTicketHistoryButton):not(#logoutButton):hover:not(:disabled) {
+  border-color: var(--pompeia-yellow-dark);
+  background: color-mix(in srgb, var(--pompeia-yellow) 38%, var(--vr-surface));
+  color: var(--pompeia-blue-deep);
+}
+
+.manager-page #resetTicketHistoryButton {
+  border-color: color-mix(in srgb, var(--pompeia-yellow-dark) 48%, transparent);
+  background: linear-gradient(115deg, var(--pompeia-yellow-pale), var(--pompeia-yellow-light));
+  color: var(--pompeia-blue-deep);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--pompeia-yellow) 18%, transparent);
+}
+
+.manager-page #resetTicketHistoryButton:hover:not(:disabled) {
+  border-color: var(--pompeia-yellow-dark);
+  background: var(--pompeia-yellow-dark);
+  color: var(--pompeia-blue-deep);
+}
+
+.attendant-page .ops-call-button:hover:not(:disabled) {
+  background: var(--pompeia-blue-deep);
+  color: var(--vr-on-brand);
+}
+
+.tabbar {
+  border-color: color-mix(in srgb, var(--vr-on-brand) 18%, transparent);
+  background: linear-gradient(110deg, var(--pompeia-blue-deep), var(--pompeia-blue));
+}
+
+.tabbar-indicator {
+  border-color: color-mix(in srgb, var(--pompeia-yellow) 62%, transparent);
+  background: color-mix(in srgb, var(--vr-on-brand) 12%, transparent);
+}
+
+.tabbar button.on,
+.tabbar button.on:hover {
+  color: var(--vr-on-brand);
+}
+.account-shortcuts {
+  min-height: 100vh;
+  padding: clamp(20px, 5vw, 56px) 18px;
+  background:
+    radial-gradient(circle at 86% 9%, color-mix(in srgb, var(--pompeia-yellow) 18%, transparent), transparent 28rem),
+    linear-gradient(145deg, var(--pompeia-blue-deep), var(--pompeia-blue) 65%, #0847a8);
+  color: var(--vr-on-brand);
+}
+
+.account-shortcuts__container {
+  width: min(1080px, 100%);
+  margin-inline: auto;
+}
+
+.account-shortcuts__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: clamp(36px, 6vw, 64px);
+}
+
+.account-shortcuts__logo {
+  display: block;
+  width: min(220px, 48vw);
+  height: auto;
+  border-radius: 10px;
+  background: var(--vr-surface);
+  object-fit: contain;
+}
+
+.account-shortcuts__home {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid color-mix(in srgb, var(--vr-on-brand) 40%, transparent);
+  border-radius: 11px;
+  color: var(--vr-on-brand);
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.account-shortcuts__home span {
+  color: var(--pompeia-yellow);
+  font-size: 20px;
+}
+
+.account-shortcuts__home:hover {
+  border-color: var(--pompeia-yellow);
+  background: color-mix(in srgb, var(--vr-on-brand) 10%, transparent);
+}
+
+.account-shortcuts__intro {
+  margin-bottom: 28px;
+}
+
+.account-shortcuts__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+  color: var(--pompeia-yellow);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.account-shortcuts__eyebrow::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pompeia-yellow);
+  content: "";
+}
+
+.account-shortcuts__intro h1 {
+  margin: 0 0 8px;
+  color: var(--vr-on-brand);
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 850;
+  letter-spacing: -0.045em;
+}
+
+.account-shortcuts__intro p {
+  margin-bottom: 14px;
+  color: color-mix(in srgb, var(--vr-on-brand) 82%, transparent);
+  font-size: 15px;
+}
+
+.account-shortcuts__account {
+  display: inline-block;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--pompeia-yellow) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pompeia-yellow) 12%, transparent);
+  color: var(--vr-on-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-shortcuts__groups {
+  display: grid;
+  gap: 16px;
+}
+
+.account-shortcuts__group {
+  padding: clamp(18px, 3vw, 26px);
+  border: 1px solid color-mix(in srgb, var(--vr-on-brand) 76%, transparent);
+  border-radius: 18px;
+  background: var(--vr-surface);
+  color: var(--vr-heading);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--pompeia-blue-deep) 24%, transparent);
+}
+
+.account-shortcuts__group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.account-shortcuts__group-heading h2 {
+  margin: 0 0 5px;
+  color: var(--pompeia-blue);
+  font-size: 20px;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+}
+
+.account-shortcuts__group-heading p {
+  margin: 0;
+  color: var(--vr-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-shortcuts__group-heading > span {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--pompeia-yellow-pale);
+  color: var(--pompeia-blue-deep);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.account-shortcuts__links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+  gap: 10px;
+}
+
+.account-shortcuts__link {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--pompeia-blue) 15%, var(--vr-border));
+  border-left: 4px solid var(--pompeia-yellow);
+  border-radius: 12px;
+  background: var(--vr-surface);
+  color: var(--vr-heading);
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.account-shortcuts__link:hover {
+  border-color: var(--pompeia-blue);
+  border-left-color: var(--pompeia-yellow);
+  background: var(--pompeia-blue-soft);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--pompeia-blue) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+.account-shortcuts__link:focus-visible,
+.account-shortcuts__home:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.account-shortcuts__link-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.account-shortcuts__link-copy strong {
+  color: var(--pompeia-blue-deep);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.account-shortcuts__link-copy small {
+  color: var(--vr-text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.account-shortcuts__arrow {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--pompeia-blue);
+  color: var(--pompeia-yellow);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.account-shortcuts__note {
+  margin: 18px 2px 0;
+  color: color-mix(in srgb, var(--vr-on-brand) 78%, transparent);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.manager-page .manager-shortcuts-groups {
+  gap: clamp(14px, 1.6vw, 20px);
+}
+
+.manager-page .manager-shortcuts-groups .account-shortcuts__group {
+  padding: clamp(16px, 2vw, 24px);
+  border-color: var(--vr-border);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--pompeia-blue-deep) 8%, transparent);
+}
+
+.manager-page .manager-shortcuts-note {
+  margin: -4px 2px 0;
+  color: var(--vr-text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 560px) {
+  .account-shortcuts {
+    padding-inline: 14px;
+  }
+
+  .account-shortcuts__header {
+    align-items: flex-start;
+  }
+
+  .account-shortcuts__home {
+    min-height: 38px;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  .account-shortcuts__group-heading p {
+    max-width: 38ch;
   }
 }

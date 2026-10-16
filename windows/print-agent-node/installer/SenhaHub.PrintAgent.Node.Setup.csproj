@@ -40,6 +40,15 @@
     <EmbeddedResource Include="pairing-code.txt">
       <LogicalName>pairing-code.txt</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="driver\bematech-usbcom.inf">
+      <LogicalName>bematech-usbcom.inf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="driver\bematech-usbcom.cat">
+      <LogicalName>bematech-usbcom.cat</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="driver\bematech-usbcom.sys">
+      <LogicalName>bematech-usbcom.sys</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

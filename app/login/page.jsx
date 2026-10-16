@@ -4,7 +4,7 @@ export default function LoginPage() {
   return (
     <>
       <HtmlTemplate fileName="login.html" />
-      <script src="/login.js?v=20260924.security3" />
+      <script src="/login.js?v=20261015.admin-shell-shortcuts" />
     </>
   );
 }

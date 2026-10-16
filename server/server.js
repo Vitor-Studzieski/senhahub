@@ -35,6 +35,16 @@ const {
   passwordPolicyError
 } = require("./auth/password-policy");
 const {
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_FAILURE_WINDOW_MS,
+  LOGIN_IP_BURST_LIMIT,
+  LOGIN_IP_BURST_WINDOW_SECONDS,
+  LOGIN_IP_RATE_LIMIT,
+  LOGIN_IP_RATE_WINDOW_SECONDS,
+  calculateAccountLoginFailure,
+  loginAccountAttemptKey
+} = require("./auth/login-security");
+const {
   createRequestContext,
   dispatchObservabilityAlert,
   durationMs,
@@ -47,6 +57,14 @@ const { healthResponse, validateProductionEnvironment } = require("./platform/pr
 const { fetchCurrentWeather } = require("./integrations/weather");
 const { fetchInstagramVideo } = require("./integrations/instagram-video");
 const { sanitizeDisplayState } = require("./display-state");
+const {
+  PAPER_ROLL_CAPACITY,
+  PAPER_ROLL_MAX_INITIAL_COUNT,
+  PAPER_ROLL_URGENT_AT,
+  PAPER_ROLL_WARNING_AT,
+  buildPrinterPaperStatus,
+  parsePrinterPaperKey
+} = require("./kiosk/paper-roll");
 
 const ROOT = path.resolve(__dirname, "..");
 loadEnvFile(path.join(ROOT, ".env.local"));
@@ -64,6 +82,8 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["GET /api/local-postgres/events", "app/api/local-postgres/events/route.js"],
   ["GET /api/local-postgres/history", "app/api/local-postgres/history/route.js"],
   ["GET /api/local-postgres/metrics", "app/api/local-postgres/metrics/route.js"],
+  ["GET /api/local-postgres/printer-paper-rolls", "app/api/local-postgres/printer-paper-rolls/route.js"],
+  ["POST /api/local-postgres/printer-paper-rolls", "app/api/local-postgres/printer-paper-rolls/route.js"],
   ["POST /api/local-postgres/ratings", "app/api/local-postgres/ratings/route.js"],
   ["GET /api/local-postgres/users", "app/api/local-postgres/users/route.js"],
   ["POST /api/local-postgres/users", "app/api/local-postgres/users/route.js"],
@@ -111,6 +131,8 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["GET /api/events", "app/api/local-postgres/events/route.js"],
   ["GET /api/history", "app/api/local-postgres/history/route.js"],
   ["GET /api/metrics", "app/api/local-postgres/metrics/route.js"],
+  ["GET /api/printer-paper-rolls", "app/api/local-postgres/printer-paper-rolls/route.js"],
+  ["POST /api/printer-paper-rolls", "app/api/local-postgres/printer-paper-rolls/route.js"],
   ["POST /api/ratings", "app/api/local-postgres/ratings/route.js"],
   ["GET /api/users", "app/api/local-postgres/users/route.js"],
   ["POST /api/users", "app/api/local-postgres/users/route.js"],
@@ -200,8 +222,6 @@ const PRIORITY_CATEGORIES = new Set([
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
-const LOGIN_IP_RATE_LIMIT = 60;
-const LOGIN_IP_RATE_WINDOW_SECONDS = 60;
 const LOGIN_ACCOUNT_RATE_LIMIT = 12;
 const LOGIN_ACCOUNT_RATE_WINDOW_SECONDS = 15 * 60;
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
@@ -607,6 +627,28 @@ function bootstrap() {
       FOREIGN KEY (kiosk_id) REFERENCES print_kiosks(id)
     );
 
+    CREATE TABLE IF NOT EXISTS print_paper_roll_events (
+      id TEXT PRIMARY KEY,
+      printer_key TEXT NOT NULL,
+      printer_name TEXT NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('initialized', 'replaced')),
+      baseline_count INTEGER NOT NULL CHECK (baseline_count BETWEEN 0 AND 10000),
+      actor_id TEXT NOT NULL,
+      actor_name TEXT NOT NULL,
+      request_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      CHECK (event_type <> 'replaced' OR baseline_count = 0)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_print_paper_roll_events_latest
+      ON print_paper_roll_events (printer_key, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_confirmed_for_paper_roll
+      ON print_jobs (updated_at, kiosk_id) WHERE status = 'printed';
+
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_review_for_paper_roll
+      ON print_jobs (kiosk_id) WHERE status = 'needs_review';
+
     CREATE TABLE IF NOT EXISTS cron_executions (
       id TEXT PRIMARY KEY,
       job_name TEXT NOT NULL,
@@ -657,6 +699,8 @@ function bootstrap() {
       count INTEGER NOT NULL,
       first_attempt_at INTEGER NOT NULL,
       locked_until INTEGER NOT NULL DEFAULT 0,
+      lockout_level INTEGER NOT NULL DEFAULT 0,
+      last_failure_at INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
 
@@ -725,6 +769,14 @@ function migrateSchema() {
   const sessionColumns = db.prepare("PRAGMA table_info(auth_sessions)").all().map((column) => column.name);
   if (!sessionColumns.includes("csrf_token")) {
     db.exec("ALTER TABLE auth_sessions ADD COLUMN csrf_token TEXT");
+  }
+
+  const loginAttemptColumns = db.prepare("PRAGMA table_info(login_attempts)").all().map((column) => column.name);
+  if (!loginAttemptColumns.includes("lockout_level")) {
+    db.exec("ALTER TABLE login_attempts ADD COLUMN lockout_level INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!loginAttemptColumns.includes("last_failure_at")) {
+    db.exec("ALTER TABLE login_attempts ADD COLUMN last_failure_at INTEGER NOT NULL DEFAULT 0");
   }
 
   const kioskColumns = db.prepare("PRAGMA table_info(print_kiosks)").all().map((column) => column.name);
@@ -1307,6 +1359,31 @@ async function handleApiInternal(req, res, url) {
     if (!requireAuth(req, res, ADMIN_ROLES)) return;
     syncQueueState();
     sendJson(res, 200, getMetrics(metricsDateFromQuery(url.searchParams.get("date"))));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/printer-paper-rolls") {
+    if (!requireAuth(req, res, ADMIN_ROLES)) return;
+    try {
+      sendJson(res, 200, getPrinterPaperRollData(), { "cache-control": "no-store" });
+    } catch (error) {
+      logStructured("error", "printer_paper_rolls.read_failed", { error: errorDetails(error) });
+      sendJson(res, 500, { error: "Não foi possível consultar o contador das bobinas." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/printer-paper-rolls") {
+    const user = requireAuth(req, res, ADMIN_ROLES);
+    if (!user || !verifyCsrf(req, res, user)) return;
+    try {
+      const result = recordPrinterPaperRollEvent(await readBody(req), user);
+      const { status, ...payload } = result;
+      sendJson(res, status || (result.repeated ? 200 : 201), payload, { "cache-control": "no-store" });
+    } catch (error) {
+      logStructured("error", "printer_paper_rolls.write_failed", { error: errorDetails(error) });
+      sendJson(res, 500, { error: "Não foi possível registrar a troca da bobina." });
+    }
     return;
   }
 
@@ -2064,6 +2141,45 @@ function isLoginLocked(key) {
   return false;
 }
 
+function isAccountLoginLocked(key) {
+  if (!key) return false;
+  const entry = db.prepare("SELECT locked_until FROM login_attempts WHERE attempt_key = ?").get(key);
+  return Boolean(entry && Number(entry.locked_until) > Date.now());
+}
+
+function registerAccountLoginFailure(key) {
+  if (!key) return;
+  const previous = db.prepare("SELECT * FROM login_attempts WHERE attempt_key = ?").get(key);
+  const state = calculateAccountLoginFailure(previous);
+  db.prepare(`
+    INSERT INTO login_attempts (
+      attempt_key, count, first_attempt_at, locked_until, lockout_level, last_failure_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(attempt_key) DO UPDATE SET
+      count = excluded.count,
+      first_attempt_at = excluded.first_attempt_at,
+      locked_until = excluded.locked_until,
+      lockout_level = excluded.lockout_level,
+      last_failure_at = excluded.last_failure_at,
+      updated_at = excluded.updated_at
+  `).run(
+    key,
+    state.count,
+    state.firstAttemptAt,
+    state.lockedUntil,
+    state.lockoutLevel,
+    state.lastFailureAt,
+    isoNow()
+  );
+}
+
+function consumeLoginIpRateLimit(scope, requestIp) {
+  if (requestIp === "unknown") return true;
+  return consumeSecurityRateLimit(`${scope}:ip`, requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)
+    && consumeSecurityRateLimit(`${scope}:ip:burst`, requestIp, LOGIN_IP_BURST_LIMIT, LOGIN_IP_BURST_WINDOW_SECONDS);
+}
+
 function registerLoginFailure(key) {
   const now = Date.now();
   const entry = db.prepare("SELECT * FROM login_attempts WHERE attempt_key = ?").get(key);
@@ -2089,6 +2205,37 @@ function shouldApplyLoginLock(key) {
 
 function clearLoginFailures(key) {
   db.prepare("DELETE FROM login_attempts WHERE attempt_key = ?").run(key);
+}
+
+async function isSupabaseAccountLoginLocked(attemptKey) {
+  const rows = await supabaseFetch(`/rest/v1/login_attempts?attempt_key=eq.${encodeURIComponent(attemptKey)}&select=locked_until&limit=1`);
+  if (rows?.error) {
+    console.error("login_lockout_check_failed", safeAuthProviderErrorCode(rows.error));
+    return true;
+  }
+  return Boolean(Array.isArray(rows) && rows[0] && Number(rows[0].locked_until) > Date.now());
+}
+
+async function recordSupabaseAccountLoginFailure(email, attemptKey) {
+  const profiles = await supabaseFetch(`/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id&limit=1`);
+  if (profiles?.error || !Array.isArray(profiles) || !profiles.length) return;
+  const result = await supabaseFetch("/rest/v1/rpc/record_login_failure", {
+    method: "POST",
+    body: {
+      p_attempt_key: attemptKey,
+      p_attempt_limit: LOGIN_FAILURE_LIMIT,
+      p_window_seconds: Math.floor(LOGIN_FAILURE_WINDOW_MS / 1000),
+      p_base_lock_seconds: 15 * 60,
+      p_max_lock_seconds: 60 * 60,
+      p_lockout_reset_seconds: 24 * 60 * 60
+    }
+  });
+  if (result?.error) console.error("login_lockout_record_failed", safeAuthProviderErrorCode(result.error));
+}
+
+async function clearSupabaseAccountLoginFailures(attemptKey) {
+  const result = await supabaseFetch(`/rest/v1/login_attempts?attempt_key=eq.${encodeURIComponent(attemptKey)}`, { method: "DELETE" });
+  if (result?.error) console.error("login_lockout_clear_failed", safeAuthProviderErrorCode(result.error));
 }
 
 async function loginUser(body, req) {
@@ -2149,6 +2296,8 @@ async function resetPassword(body, req) {
   });
   if (updated?.error) return { error: "Nao foi possivel redefinir a senha agora." };
   await revokeSupabaseAuthSessions(authUser.id);
+  const accountAttemptKey = loginAccountAttemptKey(authUser.email);
+  if (accountAttemptKey) await clearSupabaseAccountLoginFailures(accountAttemptKey);
   return { ok: true, message: "Senha redefinida com sucesso. Entre usando a nova senha." };
 }
 
@@ -2203,13 +2352,20 @@ function loginLocalUser(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const requestIp = clientIp(req);
-  if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
-    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
-  }
+  if (!consumeLoginIpRateLimit("login", requestIp)) return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = ?").get(email, "active");
-  if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
+  const accountAttemptKey = loginAccountAttemptKey(email);
+  if (!user) {
     return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
+  if (isAccountLoginLocked(accountAttemptKey)) {
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
+  }
+  if (!verifyPassword(password, user.password_salt, user.password_hash)) {
+    registerAccountLoginFailure(accountAttemptKey);
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
+  }
+  clearLoginFailures(accountAttemptKey);
 
   const sessionId = `auth-${crypto.randomUUID()}`;
   const csrfToken = crypto.randomBytes(32).toString("hex");
@@ -2264,6 +2420,8 @@ async function changeLocalPassword(body, req) {
   db.prepare("UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?").run(hash, salt, isoNow(), user.id);
   db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(user.id);
   clearLoginFailures(attemptKey);
+  const accountAttemptKey = loginAccountAttemptKey(user.email);
+  if (accountAttemptKey) clearLoginFailures(accountAttemptKey);
   registerEvent("senha_alterada", "user", user.id, null, null, { email: user.email });
   return { ok: true, message: "Senha alterada com sucesso. Entre usando a nova senha." };
 }
@@ -2272,8 +2430,10 @@ async function loginSupabaseUser(body, req) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const requestIp = clientIp(req);
-  if (requestIp !== "unknown" && !consumeSecurityRateLimit("login:ip", requestIp, LOGIN_IP_RATE_LIMIT, LOGIN_IP_RATE_WINDOW_SECONDS)) {
-    return { error: "Muitas tentativas. Aguarde um minuto e tente novamente." };
+  if (!consumeLoginIpRateLimit("login", requestIp)) return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
+  const accountAttemptKey = loginAccountAttemptKey(email);
+  if (accountAttemptKey && await isSupabaseAccountLoginLocked(accountAttemptKey)) {
+    return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
 
   const auth = await supabaseFetch("/auth/v1/token?grant_type=password", {
@@ -2284,6 +2444,7 @@ async function loginSupabaseUser(body, req) {
   });
 
   if (auth.error || !auth.user?.id) {
+    if (accountAttemptKey) await recordSupabaseAccountLoginFailure(email, accountAttemptKey);
     return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
 
@@ -2294,6 +2455,8 @@ async function loginSupabaseUser(body, req) {
     }
     return { error: "Não foi possível concluir a autenticação. Verifique os dados informados ou entre em contato com o suporte." };
   }
+
+  if (accountAttemptKey) await clearSupabaseAccountLoginFailures(accountAttemptKey);
 
   const csrfToken = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 1000 * SESSION_TTL_SECONDS).toISOString();
@@ -2353,6 +2516,8 @@ async function changeSupabasePassword(body, req) {
 
   await revokeSupabaseAuthSessions(auth.user.id);
   clearLoginFailures(attemptKey);
+  const accountAttemptKey = loginAccountAttemptKey(email);
+  if (accountAttemptKey) await clearSupabaseAccountLoginFailures(accountAttemptKey);
   return { ok: true, message: "Senha alterada com sucesso. Entre usando a nova senha." };
 }
 
@@ -3043,7 +3208,7 @@ function applySecurityHeaders(req, res) {
   res.setHeader("content-security-policy", [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    "style-src 'self' https://fonts.googleapis.com",
+    `style-src 'self' https://fonts.googleapis.com${dev ? " 'unsafe-inline'" : ""}`,
     "img-src 'self' data: https://source.unsplash.com https://images.unsplash.com https://*.supabase.co",
     `connect-src ${connectSrc}`,
     "font-src 'self' https://fonts.gstatic.com",
@@ -4069,6 +4234,138 @@ function getCustomerHistory(customerId) {
   `).all(customerId, ...ACTIVE_STATUSES).map(ticketDto);
   const ratings = db.prepare("SELECT * FROM ratings WHERE customer_id = ? ORDER BY created_at DESC LIMIT 30").all(customerId);
   return { tickets, ratings };
+}
+
+function getPrinterPaperRollData() {
+  const printers = db.prepare(`
+    SELECT kiosk.id, kiosk.name, kiosk.printer_name, kiosk.active, kiosk.sector_id,
+           sector.name AS sector_name
+    FROM print_kiosks AS kiosk
+    LEFT JOIN sectors AS sector ON sector.id = kiosk.sector_id
+    ORDER BY kiosk.printer_name, kiosk.id
+  `).all();
+  const events = db.prepare(`
+    SELECT printer_key, printer_name, event_type, baseline_count, actor_name, created_at
+    FROM print_paper_roll_events
+    ORDER BY created_at DESC, id DESC
+  `).all();
+  const earliestEvent = events
+    .map((event) => event.created_at)
+    .sort((left, right) => new Date(left) - new Date(right))[0];
+  const printedJobs = earliestEvent
+    ? db.prepare(`
+        SELECT kiosk_id, payload, updated_at
+        FROM print_jobs
+        WHERE status = 'printed' AND updated_at >= ?
+        ORDER BY updated_at, id
+      `).all(earliestEvent)
+    : [];
+  const reviewJobs = db.prepare("SELECT kiosk_id FROM print_jobs WHERE status = 'needs_review'").all();
+
+  return {
+    source: "sqlite",
+    capacity: PAPER_ROLL_CAPACITY,
+    warningAt: PAPER_ROLL_WARNING_AT,
+    urgentAt: PAPER_ROLL_URGENT_AT,
+    printers: buildPrinterPaperStatus({ printers, events, printedJobs, reviewJobs }),
+    generatedAt: isoNow()
+  };
+}
+
+function recordPrinterPaperRollEvent(body, user) {
+  const action = String(body?.action || "");
+  const printerKey = String(body?.printerKey || "");
+  const kioskId = parsePrinterPaperKey(printerKey);
+  const requestId = String(body?.requestId || "");
+  if (!kioskId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)
+    || !["initialize", "replace"].includes(action)) {
+    return { status: 400, error: "Dados para registrar a bobina inválidos." };
+  }
+
+  let baselineCount = 0;
+  if (action === "initialize") {
+    const rawCount = body?.initialCount;
+    baselineCount = Number(rawCount);
+    if (rawCount === undefined || rawCount === null || String(rawCount).trim() === ""
+      || !Number.isInteger(baselineCount) || baselineCount < 0 || baselineCount > PAPER_ROLL_MAX_INITIAL_COUNT) {
+      return { status: 400, error: `Informe uma estimativa entre 0 e ${PAPER_ROLL_MAX_INITIAL_COUNT} senhas.` };
+    }
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const duplicate = db.prepare(`
+      SELECT printer_key, event_type, actor_id
+      FROM print_paper_roll_events
+      WHERE request_id = ?
+      LIMIT 1
+    `).get(requestId);
+    if (duplicate) {
+      const repeated = duplicate.printer_key === printerKey
+        && duplicate.event_type === (action === "initialize" ? "initialized" : "replaced")
+        && duplicate.actor_id === String(user.id);
+      const result = repeated
+        ? { ok: true, repeated: true }
+        : { status: 409, error: "Este pedido já foi usado para outra operação." };
+      db.exec("COMMIT");
+      return result;
+    }
+
+    const printer = db.prepare("SELECT id, printer_name FROM print_kiosks WHERE id = ?").get(kioskId);
+    if (!printer) {
+      db.exec("COMMIT");
+      return { status: 404, error: "Impressora não encontrada." };
+    }
+
+    const latestEvent = db.prepare(`
+      SELECT event_type
+      FROM print_paper_roll_events
+      WHERE printer_key = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(printerKey);
+    if ((action === "initialize" && latestEvent) || (action === "replace" && !latestEvent)) {
+      db.exec("COMMIT");
+      return {
+        status: 409,
+        error: action === "initialize"
+          ? "O contador desta impressora já foi iniciado. Atualize a dashboard."
+          : "Inicie o contador antes de registrar uma troca."
+      };
+    }
+
+    const uncertainJob = db.prepare(`
+      SELECT id FROM print_jobs
+      WHERE kiosk_id = ? AND status = 'needs_review'
+      LIMIT 1
+    `).get(kioskId);
+    if (uncertainJob) {
+      db.exec("COMMIT");
+      return { status: 409, error: "Resolva as impressões em conferência antes de iniciar ou trocar a bobina." };
+    }
+
+    db.prepare(`
+      INSERT INTO print_paper_roll_events (
+        id, printer_key, printer_name, event_type, baseline_count,
+        actor_id, actor_name, request_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      crypto.randomUUID(),
+      printerKey,
+      printer.printer_name || "Impressora",
+      action === "initialize" ? "initialized" : "replaced",
+      baselineCount,
+      String(user.id),
+      String(user.name || user.email || "Gerente").slice(0, 160),
+      requestId,
+      isoNow()
+    );
+    db.exec("COMMIT");
+    return { ok: true };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function getMetrics(metricsDate = businessDateFor()) {

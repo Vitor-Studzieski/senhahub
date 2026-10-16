@@ -27,6 +27,8 @@ class SqlitePrintQueue {
     CREATE UNIQUE INDEX print_jobs_one_writer ON print_jobs(printer_id) WHERE protocol_version=2 AND status IN ('leased','printing','needs_review');
     CREATE INDEX print_jobs_eligible_v2 ON print_jobs(kiosk_id,next_attempt_at,created_at) WHERE status IN ('pending','retry_wait');
     CREATE INDEX print_jobs_leases_v2 ON print_jobs(lease_expires_at) WHERE status IN ('leased','printing');
+    CREATE INDEX idx_print_jobs_confirmed_for_paper_roll ON print_jobs(updated_at,kiosk_id) WHERE status='printed';
+    CREATE INDEX idx_print_jobs_review_for_paper_roll ON print_jobs(kiosk_id) WHERE status='needs_review';
     ALTER TABLE print_kiosks ADD COLUMN protocol_version INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE print_kiosks ADD COLUMN printer_id TEXT;
     CREATE UNIQUE INDEX print_kiosks_one_printer ON print_kiosks(printer_id);

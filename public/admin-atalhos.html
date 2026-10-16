@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Central de atalhos - SenhaHub</title>
+    <link rel="stylesheet" href="styles.css?v=20261014.pompeia-color-balance-v2" />
+  </head>
+  <body class="manager-page">
+    <div class="manager-shell">
+      <aside class="manager-sidebar">
+        <div class="manager-brand">
+          <img class="manager-brand-logo" src="/assets/senhahub-pompeia-logo.png" alt="SenhaHub" width="132" height="44" />
+          <div><span>Painel do gestor</span></div>
+        </div>
+        <nav class="manager-nav" aria-label="Navegação principal do painel">
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
+        </nav>
+        <div class="manager-sidebar-note">Acesse as páginas do sistema sem sair do painel de gestão.</div>
+      </aside>
+
+      <main class="manager-main">
+        <header class="manager-topbar">
+          <div>
+            <p class="manager-eyebrow">Acesso exclusivo</p>
+            <h1>Central de atalhos</h1>
+            <p>Abra as páginas do SenhaHub mantendo a navegação do painel do gestor.</p>
+          </div>
+          <div class="manager-actions">
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>vitorstudzieski@superpompeia.com</span></span>
+            <a class="manager-button secondary" href="/admin">Visão geral</a>
+            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
+          </div>
+        </header>
+
+        <div class="account-shortcuts__groups manager-shortcuts-groups">
+          <section class="account-shortcuts__group" aria-label="Conta">
+            <div class="account-shortcuts__group-heading"><div><h2>Conta</h2><p>Acesso e manutenção da conta.</p></div><span aria-hidden="true">01</span></div>
+            <div class="account-shortcuts__links">
+              <a class="account-shortcuts__link" href="/login"><span class="account-shortcuts__link-copy"><strong>Acesso e senha</strong><small>Entrar, criar conta ou alterar senha</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+            </div>
+          </section>
+
+          <section class="account-shortcuts__group" aria-label="Cliente">
+            <div class="account-shortcuts__group-heading"><div><h2>Cliente</h2><p>Fila digital e acompanhamento das suas senhas.</p></div><span aria-hidden="true">02</span></div>
+            <div class="account-shortcuts__links">
+              <a class="account-shortcuts__link" href="/"><span class="account-shortcuts__link-copy"><strong>Fila e emissão de senha</strong><small>Página principal do cliente</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/?view=status"><span class="account-shortcuts__link-copy"><strong>Minhas senhas</strong><small>Acompanhar senhas ativas</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/instalar"><span class="account-shortcuts__link-copy"><strong>Instalar aplicativo</strong><small>Instruções para celular e computador</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+            </div>
+          </section>
+
+          <section class="account-shortcuts__group" aria-label="Atendimento">
+            <div class="account-shortcuts__group-heading"><div><h2>Atendimento</h2><p>Telas usadas nos balcões e nos pontos de atendimento.</p></div><span aria-hidden="true">03</span></div>
+            <div class="account-shortcuts__links">
+              <a class="account-shortcuts__link" href="/attendant"><span class="account-shortcuts__link-copy"><strong>Painel do atendente</strong><small>Chamadas e controle da fila</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/tablet"><span class="account-shortcuts__link-copy"><strong>Tablet de atendimento</strong><small>Emissão de senhas no tablet</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/totem"><span class="account-shortcuts__link-copy"><strong>Totem de senhas</strong><small>Emissão de senhas físicas</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/tv/acougue"><span class="account-shortcuts__link-copy"><strong>TV do açougue</strong><small>Chamadas e conteúdo exibido na loja</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+            </div>
+          </section>
+
+          <section class="account-shortcuts__group" aria-label="Gestão">
+            <div class="account-shortcuts__group-heading"><div><h2>Gestão</h2><p>Configurações, operação, setores e usuários.</p></div><span aria-hidden="true">04</span></div>
+            <div class="account-shortcuts__links">
+              <a class="account-shortcuts__link" href="/admin"><span class="account-shortcuts__link-copy"><strong>Visão geral</strong><small>Indicadores e panorama da operação</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/admin/operacao"><span class="account-shortcuts__link-copy"><strong>Operação</strong><small>Filas e atendimentos em andamento</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/admin/setores"><span class="account-shortcuts__link-copy"><strong>Setores</strong><small>Configurar setores de atendimento</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/admin/totens"><span class="account-shortcuts__link-copy"><strong>Totens e impressão</strong><small>Gerenciar equipamentos e impressão</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+              <a class="account-shortcuts__link" href="/admin/usuarios"><span class="account-shortcuts__link-copy"><strong>Usuários</strong><small>Contas e permissões do sistema</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+            </div>
+          </section>
+
+          <section class="account-shortcuts__group" aria-label="Conteúdo da loja">
+            <div class="account-shortcuts__group-heading"><div><h2>Conteúdo da loja</h2><p>Gerencie o material exibido nas TVs.</p></div><span aria-hidden="true">05</span></div>
+            <div class="account-shortcuts__links">
+              <a class="account-shortcuts__link" href="/marketing/conteudos-tv"><span class="account-shortcuts__link-copy"><strong>Conteúdos da TV</strong><small>Vídeos e imagens da loja</small></span><span class="account-shortcuts__arrow" aria-hidden="true">→</span></a>
+            </div>
+          </section>
+        </div>
+
+        <p class="manager-shortcuts-note">Os atalhos mantêm as permissões atuais da conta em cada página.</p>
+      </main>
+    </div>
+  </body>
+</html>
