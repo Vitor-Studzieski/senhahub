@@ -3,14 +3,14 @@
   "loop": true,
   "items": [
     {
-      "id": "instagram-db-p7ybiepq",
-      "title": "Conteúdo do Instagram",
-      "src": "https://www.instagram.com/p/Db_p7Ybiepq/",
-      "type": "instagram",
+      "id": "3c04e4f3-b1fe-4147-83ed-9ee5cce0de4d",
+      "title": "Jornada do cliente SenhaHub",
+      "src": "/media/senhahub-jornada-cliente-v4.mp4",
+      "type": "video",
       "active": true,
-      "order": 1,
-      "orientation": "portrait",
-      "durationSeconds": 30
+      "order": 0,
+      "orientation": "landscape",
+      "durationSeconds": 125
     }
   ]
 }
