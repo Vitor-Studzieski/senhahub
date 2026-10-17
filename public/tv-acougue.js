@@ -4,8 +4,6 @@
   const CALL_ALERT_SOUND_INTERVAL_MS = 360;
   const CALL_ALERT_SOUND_PULSE_MS = 260;
   const CALL_ALERT_SOUND_GAIN = 1.25;
-  const AUTISM_QUEUE_HALF_VOLUME_THRESHOLD = 5;
-  const AUTISM_MINIMUM_VOLUME = 0.1;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
   const PITCHDAY_TV_EMAIL = "pitchday.tv@superpompeia.com";
@@ -58,7 +56,6 @@
     callAlertAudioStopTimer: null,
     callAlertAudioNodes: [],
     callAlertAudioMaster: null,
-    autisticQueueCount: 0,
     hasAvailableTicket: false,
     timer: null,
     requestInFlight: false,
@@ -115,6 +112,8 @@
   elements.callActionButtons.forEach((button) => {
     button.addEventListener("click", () => executeCallAction(button.dataset.tvCallAction));
   });
+  window.addEventListener("pointerdown", unlockCallAlertAudio, true);
+  window.addEventListener("keydown", unlockCallAlertAudio, true);
   window.addEventListener("keydown", handlePresenterKeydown);
   window.setInterval(updateClock, 1000);
   loadState();
@@ -277,12 +276,6 @@
         ? ["aguardando", "proximo"].includes(ticket.status)
         : ["aguardando", "proximo", "standby"].includes(ticket.status)
     ));
-    state.autisticQueueCount = IS_PITCHDAY
-      ? (sector.tickets || []).filter((ticket) =>
-        ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)
-        && isAutisticTicket(ticket)
-      ).length
-      : 0;
     const recentCalls = [];
     const seenPitchdayTickets = new Set();
     for (const call of sector.recentCalls || []) {
@@ -352,12 +345,6 @@
     return reason === "tea" || reason.includes("autismo");
   }
 
-  function callAlertVolumeScale() {
-    if (state.autisticQueueCount >= AUTISM_QUEUE_HALF_VOLUME_THRESHOLD) return 0.5;
-    if (state.autisticQueueCount > 0) return AUTISM_MINIMUM_VOLUME;
-    return 1;
-  }
-
   function latestActivity(ticket) {
     return new Date(ticket.serviceStartedAt || ticket.calledAt || ticket.updatedAt || ticket.createdAt || 0).getTime() || 0;
   }
@@ -374,7 +361,7 @@
     const autisticCall = IS_PITCHDAY && (options.autistic === true || isAutisticTicket(call));
     elements.callAlert.dataset.autistic = autisticCall ? "true" : "false";
     if (autisticCall) stopCallAlertSound();
-    else playCallAlertSound(callAlertVolumeScale());
+    else playCallAlertSound();
     state.callAlertTimer = window.setTimeout(hideCallAlert, CALL_ALERT_DURATION_MS);
   }
 
@@ -465,6 +452,16 @@
       // O navegador pode bloquear áudio sem interação; o destaque visual continua ativo.
       return null;
     }
+  }
+
+  function unlockCallAlertAudio() {
+    const context = ensureCallAlertAudio();
+    if (!context) return;
+    context.resume().then(() => {
+      if (context.state !== "running") return;
+      window.removeEventListener("pointerdown", unlockCallAlertAudio, true);
+      window.removeEventListener("keydown", unlockCallAlertAudio, true);
+    }).catch(() => {});
   }
 
   function callRow(call, sector, latest) {
