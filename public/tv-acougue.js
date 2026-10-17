@@ -80,6 +80,7 @@
     weatherCondition: document.querySelector("#tvWeatherCondition"),
     connection: document.querySelector("#tvConnection"),
     queueTitle: document.querySelector("#tvQueueTitle"),
+    queueWaitingCount: document.querySelector("#tvQueueWaitingCount"),
     recentCalls: document.querySelector("#tvRecentCalls"),
     currentTicket: document.querySelector("#tvCurrentTicket"),
     currentTicketCard: document.querySelector(".tv-current-ticket-card"),
@@ -268,6 +269,9 @@
 
   function renderQueue(sector) {
     const sectorLabel = displaySectorName(sector.name || sector.id);
+    const waitingTickets = (sector.tickets || []).filter((ticket) => (
+      ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)
+    ));
     state.hasAvailableTicket = (sector.tickets || []).some((ticket) => (
       IS_PITCHDAY
         ? ["aguardando", "proximo"].includes(ticket.status)
@@ -317,6 +321,7 @@
 
     if (latestCallSignature) state.lastCallSignature = latestCallSignature;
     if (elements.queueTitle) elements.queueTitle.textContent = sectorLabel;
+    if (elements.queueWaitingCount) elements.queueWaitingCount.textContent = String(waitingTickets.length);
     if (elements.currentTicket) elements.currentTicket.textContent = formatTicket(currentTicket, sector.prefix);
     elements.currentTicketCard?.classList.toggle("is-autistic-current", autisticCurrent);
     if (elements.currentStatus) elements.currentStatus.textContent = active

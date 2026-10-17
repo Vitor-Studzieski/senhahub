@@ -3729,6 +3729,31 @@ textarea:focus {
   line-height: 1;
 }
 
+.tv-queue-waiting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--tv-navy) 12%, transparent);
+  border-radius: 14px;
+  background: var(--vr-surface-muted);
+  color: var(--tv-navy);
+}
+
+.tv-queue-waiting span {
+  font-size: clamp(12px, .9vw, 17px);
+  font-weight: 800;
+}
+
+.tv-queue-waiting strong {
+  min-width: 1.5em;
+  color: var(--tv-red);
+  font-size: clamp(24px, 2vw, 38px);
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+}
+
 .tv-queue-columns {
   display: grid;
   grid-template-columns: 1.05fr .95fr;
