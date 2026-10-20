@@ -1,5 +1,9 @@
 import HtmlTemplate from "../components/shared/HtmlTemplate";
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 export default function LoginPage() {
   return (
     <>

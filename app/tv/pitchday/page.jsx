@@ -6,6 +6,10 @@ export const metadata = {
   description: "Chamadas de senha e conteúdos do atendimento Pitch Day."
 };
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 export default function PitchdayDisplayPage() {
   return (
     <>

@@ -6,6 +6,10 @@ export const metadata = {
   description: "Chamadas de senha e conteúdos da loja do Supermercado Pompeia."
 };
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 export default function ButcherDisplayPage() {
   return (
     <>

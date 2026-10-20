@@ -2,6 +2,10 @@ import Script from "next/script";
 import { cookies } from "next/headers";
 import HtmlTemplate from "./components/shared/HtmlTemplate";
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 export default async function CustomerPage({ searchParams }) {
   const query = await searchParams;
   const cookieStore = await cookies();

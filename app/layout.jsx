@@ -16,10 +16,11 @@ export const metadata = {
   icons: {
     icon: [
       { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/senhahub-192.png", sizes: "192x192", type: "image/png" }
+      { url: "/icons/vr-software-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/vr-software-512.png", sizes: "512x512", type: "image/png" }
     ],
     apple: [
-      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+      { url: "/icons/vr-software-180.png", sizes: "180x180", type: "image/png" }
     ]
   },
   appleWebApp: {
@@ -50,7 +51,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-        <link rel="stylesheet" href="/styles.css?v=20261019.six-views-v2" />
+        <link rel="stylesheet" href="/styles.css?v=20261020.vr-login-refine" />
         <link rel="stylesheet" href="/pwa.css?v=20261014.pompeia-theme" />
       </head>
       <body>

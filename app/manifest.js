@@ -9,30 +9,30 @@ export default function manifest() {
     display: "standalone",
     orientation: "portrait-primary",
     background_color: "#F3F3F3",
-    theme_color: "#003692",
+    theme_color: "#FF7200",
     lang: "pt-BR",
     categories: ["productivity", "utilities"],
     icons: [
       {
-        src: "/icons/senhahub-192.png",
+        src: "/icons/vr-software-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any"
       },
       {
-        src: "/icons/senhahub-512.png",
+        src: "/icons/vr-software-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any"
       },
       {
-        src: "/icons/senhahub-maskable-192.png",
+        src: "/icons/vr-software-maskable-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable"
       },
       {
-        src: "/icons/senhahub-maskable-512.png",
+        src: "/icons/vr-software-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable"
@@ -46,7 +46,7 @@ export default function manifest() {
         url: "/?view=status",
         icons: [
           {
-            src: "/icons/senhahub-192.png",
+            src: "/icons/vr-software-192.png",
             sizes: "192x192",
             type: "image/png"
           }

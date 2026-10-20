@@ -1,6 +1,10 @@
 import Script from "next/script";
 import HtmlTemplate from "../../components/shared/HtmlTemplate";
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 const TRACKING_ASSET_VERSION = "2026.09.25.1";
 
 export const metadata = {
