@@ -11,7 +11,9 @@ export async function POST(request) {
   }
   const { session } = await authenticateLocalRequest(request);
   if (!session) return Response.json({ error: "Sessão não encontrada." }, { status: 401 });
-  if (!["tv", "attendant", "manager", "admin"].includes(session.user.role)) {
+  const isPitchdayTvAccount = String(session.user?.email || "").trim().toLowerCase() === "pitchday@superpompeia.com"
+    && session.user?.role === "tablet";
+  if (!["tv", "attendant", "manager", "admin"].includes(session.user.role) && !isPitchdayTvAccount) {
     return Response.json({ error: "Acesso negado." }, { status: 403 });
   }
   if (!hasValidCsrf(request, session)) {
@@ -24,9 +26,16 @@ export async function POST(request) {
   } catch {
     body = {};
   }
+  if (isPitchdayTvAccount && (body?.sectorId !== "pitch-day" || body?.action !== "next"
+    || !(session.user.sectorIds || []).includes("pitch-day"))) {
+    return Response.json({ error: "Esta conta só pode chamar a próxima senha do setor Pitch Day." }, { status: 403 });
+  }
 
   try {
-    const result = await callControlLocalTicket(body?.sectorId, body?.action, session.user);
+    const callUser = isPitchdayTvAccount
+      ? { ...session.user, role: "tv", sectorIds: ["pitch-day"] }
+      : session.user;
+    const result = await callControlLocalTicket(body?.sectorId, body?.action, callUser);
     if (result.ticket?.customerId) {
       void dispatchLocalPushEvent({
         type: body?.action === "next" && Number(result.ticket.absenceCount || 0) === 0 ? "queue_called" : "queue_recalled",

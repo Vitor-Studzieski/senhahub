@@ -53,6 +53,9 @@ function isPitchdayAllowedApiRequest(method, pathname) {
   if (method === "GET" && normalizedPath === "/api/tablet/status") return true;
   if (method === "POST" && normalizedPath === "/api/tablet/tickets") return true;
   if (method === "GET" && normalizedPath === "/api/tablet/print-job") return true;
+  if (method === "GET" && ["/api/display/state", "/api/tv/media"].includes(normalizedPath)) return true;
+  if (["GET", "HEAD"].includes(method) && /^\/api\/tv\/media\/[0-9a-f-]{36}\/stream$/i.test(normalizedPath)) return true;
+  if (method === "POST" && normalizedPath === "/api/sectors/pitch-day/call-control") return true;
   return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(normalizedPath);
 }
 

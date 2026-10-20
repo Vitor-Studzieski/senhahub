@@ -21,7 +21,8 @@ initAdmin();
 
 async function initAdmin() {
   currentUser = await requireSession(["manager", "admin"]);
-  addShortcutsNavigationLink();
+  if (typeof setupManagerDashboards === "function") setupManagerDashboards(currentUser);
+  else addShortcutsNavigationLink();
   document.querySelector("#logoutButton")?.addEventListener("click", logout);
   document.querySelector("#resetTicketHistoryButton")?.addEventListener("click", resetTicketHistory);
   document.querySelectorAll(".manager-nav a").forEach((link) => {
@@ -102,14 +103,6 @@ function addShortcutsNavigationLink() {
     link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Atalhos</span><small>06</small>`;
     nav.append(link);
   }
-
-  if (!nav.querySelector('[data-ticket-qr-display-link="true"]')) {
-    const link = document.createElement("a");
-    link.href = "/acompanhar/demo?demo=1&atual=025&cliente=017";
-    link.dataset.ticketQrDisplayLink = "true";
-    link.innerHTML = `<svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4zM15 15h2v2h-2zM18 15h2M18 18v2M15 20h2"/><path d="M12 4v3M12 12h3M4 12h3"/></svg><span>Tela do QR da senha</span><small>07</small>`;
-    nav.append(link);
-  }
 }
 
 async function refreshDashboard() {
@@ -138,11 +131,11 @@ function startAdminPolling() {
 }
 
 function needsAdminState() {
-  return Boolean(document.querySelector("#dashboardKpis, #queueTable, #adminSectors"));
+  return Boolean(document.querySelector("#dashboardKpis, #dashboardAnalytics, #queueTable, #adminSectors, #sectorAnalytics, #decisionKpis"));
 }
 
 function needsAdminMetrics() {
-  return Boolean(document.querySelector("#dashboardKpis, #dashboardOperations, #adminSectors"));
+  return Boolean(document.querySelector("#dashboardKpis, #dashboardAnalytics, #dashboardOperations, #adminSectors, #sectorAnalytics, #decisionKpis"));
 }
 
 async function loadPrinterPaperRolls() {
@@ -415,8 +408,7 @@ function renderAdmin() {
           <div><span>Tempo médio</span><strong class="${averageClass.trim()}"${Number(metric.serviceSamples || 0) > 0 ? "" : ' title="Sem atendimentos concluídos na data consultada"'}>${escapeHtml(serviceAverageLabel(metric))}</strong></div>
         </div>
         <div class="manager-progress"><progress max="100" value="${escapeHtml(snapshot.load)}" aria-label="${escapeHtml(snapshot.load)}% da capacidade ocupada"></progress></div>
-        <div class="manager-sector-load"><span>${escapeHtml(snapshot.load)}% da capacidade definida</span><b>${escapeHtml(snapshot.waiting.length)} aguardando</b></div>
-        <p class="manager-sector-current">${escapeHtml(snapshot.currentTicket ? `${displayCustomerName(snapshot.currentTicket)} · ${ticketStatus(snapshot.currentTicket)}` : "Nenhum atendimento ativo")}</p>
+        <div class="manager-sector-load"><span>${escapeHtml(snapshot.load)}% da capacidade</span></div>
         <details class="manager-sector-settings">
           <summary>Ajustar setor</summary>
           <form class="manager-form" data-sector-form="${escapeHtml(sector.id)}" data-online-required>
@@ -547,8 +539,17 @@ function priorityBadgeMarkup(extraClass = "") {
 function renderDashboard() {
   const dashboardKpis = document.querySelector("#dashboardKpis");
   const dashboardOperations = document.querySelector("#dashboardOperations");
-  if (!dashboardKpis && !dashboardOperations) return;
+  const sectorOverview = document.querySelector("#sectorOverview");
+  const sectorAnalytics = document.querySelector("#sectorAnalytics");
+  const executiveAnalytics = document.querySelector("#dashboardAnalytics");
+  const decisionKpis = document.querySelector("#decisionKpis");
+  const decisionAlerts = document.querySelector("#decisionAlerts");
+  if (!dashboardKpis && !dashboardOperations && !sectorOverview && !sectorAnalytics && !executiveAnalytics && !decisionKpis && !decisionAlerts) return;
   const summary = dashboardSummary();
+  if (typeof renderManagerViews === "function") renderManagerViews(adminState, adminMetrics, summary);
+  renderSectorOverview();
+  renderSectorAnalytics();
+  renderExecutiveAnalytics();
   const health = dashboardHealth(summary);
   const openSectors = adminState.sectors.filter((sector) => sector.status === "open").length;
 
@@ -578,12 +579,25 @@ function renderDashboard() {
       dashboardKpi("Em atendimento", summary.called, "chamadas ativas", summary.called ? "em andamento" : "sem chamadas"),
       dashboardKpi("Senhas emitidas", summary.issued, "total na data selecionada", adminMetrics.date || "hoje"),
       dashboardKpi("Tempo médio", summary.serviceSamples ? formatMinutesSeconds(summary.avgServiceSeconds) : "Sem dados", summary.serviceSamples ? "duração dos atendimentos" : "sem atendimentos concluídos", "no período"),
-      dashboardKpi("Avaliação média", satisfactionValue(), `${adminMetrics.satisfaction.count || 0} respostas`, "satisfação")
+      dashboardKpi("Avaliação média", satisfactionValue(), `${adminMetrics.satisfaction.count || 0} respostas`, "satisfação"),
+      dashboardKpi("Acessibilidade", "Sem medição", "recursos não registrados", "dados")
     ].join("");
   }
 
   const dashboardAlerts = document.querySelector("#dashboardAlerts");
   if (dashboardAlerts) dashboardAlerts.innerHTML = operationalAlerts(summary);
+  if (decisionAlerts) decisionAlerts.innerHTML = operationalAlerts(summary);
+  if (decisionKpis) {
+    const alertCount = summary.overloaded.length + adminState.sectors.filter((sector) => sector.status !== "open").length;
+    decisionKpis.innerHTML = [
+      dashboardKpi("Alertas ativos", alertCount, "gerados pela fila ao vivo", "agora"),
+      dashboardKpi("Setores em atenção", summary.overloaded.length, summary.overloaded.length ? "acima da capacidade configurada" : "nenhum acima da capacidade", "ao vivo"),
+      dashboardKpi("Oportunidades do Pitch Day", 3, "ações identificadas no relatório", "17 out 2026"),
+      dashboardKpi("Ações concluídas", "Sem medição", "não há registro de execução", "histórico"),
+      dashboardKpi("Risco de abandono", "Indefinido", "motivos de cancelamento não separados", "dados"),
+      dashboardKpi("Economia potencial", "Sem dados", "custos por atendimento ausentes", "dados")
+    ].join("");
+  }
 
   if (dashboardOperations) {
     const sectorRows = adminState.sectors.map(sectorSnapshot).sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length);
@@ -593,16 +607,92 @@ function renderDashboard() {
   }
 }
 
+function renderExecutiveAnalytics() {
+  const container = document.querySelector("#dashboardAnalytics");
+  if (!container) return;
+  const sectorMetrics = (adminMetrics.sectors || []).slice();
+  const maxIssued = Math.max(1, ...sectorMetrics.map((sector) => Number(sector.issued || 0)));
+  const volumeContent = sectorMetrics.length
+    ? `<div class="manager-volume-legend"><span><i class="issued"></i>Emitidas</span><span><i class="finished"></i>Concluídas</span><span><i class="closed"></i>Canceladas/expiradas</span></div><div class="manager-volume-chart">${sectorMetrics.map((sector) => {
+      const issued = Number(sector.issued || 0);
+      const finished = Number(sector.finished || 0);
+      const closed = Number(sector.abandoned || 0);
+      const bars = [
+        issued ? `<i class="issued" style="--width:${Math.round(issued / maxIssued * 100)}%" title="${issued} emitidas"></i>` : "",
+        finished ? `<i class="finished" style="--width:${Math.round(finished / maxIssued * 100)}%" title="${finished} concluídas"></i>` : "",
+        closed ? `<i class="closed" style="--width:${Math.round(closed / maxIssued * 100)}%" title="${closed} canceladas ou expiradas"></i>` : ""
+      ].join("");
+      return `<div class="manager-volume-row"><strong title="${escapeHtml(sector.name)}">${escapeHtml(sector.name)}</strong><div class="manager-volume-bars">${bars}</div><b>${issued}</b></div>`;
+    }).join("")}</div>`
+    : `<p class="manager-empty">Nenhum setor está configurado para esta data.</p>`;
+  const sampleCount = sectorMetrics.reduce((total, sector) => total + Number(sector.serviceSamples || 0), 0);
+  const ratingCount = Number(adminMetrics.satisfaction?.count || 0);
+  const qualityContent = `<div class="manager-quality-grid"><div><span>Atendimentos concluídos</span><strong>${sectorMetrics.reduce((total, sector) => total + Number(sector.finished || 0), 0)}</strong></div><div><span>Tempo médio de serviço</span><strong>${sampleCount ? formatMinutesSeconds(dashboardSummary().avgServiceSeconds) : "Sem dados"}</strong></div><div><span>Avaliações recebidas</span><strong>${ratingCount}</strong></div><div><span>Cumprimento de SLA</span><strong>Sem meta</strong></div></div><p class="manager-chart-caption">Canceladas e expiradas aparecem juntas no histórico. O sistema não separa motivo de cancelamento nesta visão.</p>`;
+  container.innerHTML = `<article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">${escapeHtml(adminMetrics.date || "Data selecionada")}</p><h3>Volume por setor</h3></div><a class="manager-inline-link" href="/admin/setores">Ver setores →</a></div><div class="manager-panel-body">${volumeContent}</div></article><article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">Qualidade do serviço</p><h3>Experiência e conclusão</h3></div></div><div class="manager-panel-body">${qualityContent}</div></article>`;
+}
+
+function renderSectorOverview() {
+  const overview = document.querySelector("#sectorOverview");
+  if (!overview) return;
+  const sectors = adminState.sectors.map(sectorSnapshot);
+  const open = sectors.filter((sector) => sector.status === "open").length;
+  const waiting = sectors.reduce((total, sector) => total + sector.waiting.length, 0);
+  const active = sectors.filter((sector) => sector.status === "open").length;
+  const critical = [...sectors].sort((left, right) => right.waiting.length - left.waiting.length)[0];
+  const samples = sectors.reduce((total, sector) => total + Number(sector.metric.serviceSamples || 0), 0);
+  const serviceSeconds = samples
+    ? Math.round(sectors.reduce((total, sector) => total + Number(sector.metric.avgServiceSeconds || 0) * Number(sector.metric.serviceSamples || 0), 0) / samples)
+    : null;
+  const capacity = sectors.reduce((total, sector) => total + sector.capacity, 0);
+  const utilization = capacity ? Math.round((waiting / capacity) * 100) : 0;
+  overview.innerHTML = [
+    dashboardKpi("Setores monitorados", sectors.length, "áreas cadastradas", "ao vivo"),
+    dashboardKpi("Setores ativos", active, "recebendo senhas", "agora"),
+    dashboardKpi("Fila mais longa", critical?.waiting.length || 0, critical?.name || "sem senhas", "agora"),
+    dashboardKpi("Senhas aguardando", waiting, "em todos os setores", "ao vivo"),
+    dashboardKpi("Capacidade utilizada", `${utilization}%`, `${waiting} de ${capacity} posições configuradas`, "agora"),
+    dashboardKpi("Tempo de atendimento", serviceSeconds === null ? "Sem dados" : formatMinutesSeconds(serviceSeconds), `${samples} atendimento(s) medido(s)`, "selecionado")
+  ].join("");
+}
+
+function renderSectorAnalytics() {
+  const container = document.querySelector("#sectorAnalytics");
+  if (!container) return;
+  const sectors = adminState.sectors.map(sectorSnapshot)
+    .sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length);
+  if (!sectors.length) {
+    container.innerHTML = `<article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">Carga ao vivo</p><h3>Fila x capacidade</h3></div></div><div class="manager-panel-body"><p class="manager-empty">Nenhum setor cadastrado.</p></div></article><article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">Atendimento</p><h3>Indicadores por setor</h3></div></div><div class="manager-panel-body"><p class="manager-empty">Sem dados para comparar.</p></div></article>`;
+    return;
+  }
+  const maxWaiting = Math.max(1, ...sectors.map((sector) => sector.waiting.length));
+  const capacityPanel = `
+    <article class="manager-panel">
+      <div class="manager-panel-header"><div><p class="manager-eyebrow">Carga ao vivo</p><h3>Fila x capacidade</h3></div><span class="manager-badge neutral">${sectors.length} setores</span></div>
+      <div class="manager-panel-body manager-sector-load-list">${sectors.map((sector) => {
+        const waitingWidth = Math.round((sector.waiting.length / maxWaiting) * 100);
+        return `<div class="manager-sector-load-row" data-sector-tone="${sectorToneIndex(sector)}"><div><strong>${escapeHtml(sector.name)}</strong><span>${escapeHtml(sector.waiting.length)} aguardando · limite ${escapeHtml(sector.capacity)}</span></div><div class="manager-sector-load-track" role="img" aria-label="${escapeHtml(sector.name)}: ${escapeHtml(sector.load)} por cento da capacidade"><i style="--load:${waitingWidth}%"></i></div><b>${escapeHtml(sector.load)}%</b></div>`;
+      }).join("")}</div>
+    </article>`;
+  const servicePanel = `
+    <article class="manager-panel">
+      <div class="manager-panel-header"><div><p class="manager-eyebrow">Atendimento</p><h3>Indicadores por setor</h3></div><a class="manager-inline-link" href="/admin/operacao">Fila →</a></div>
+      <div class="manager-table-wrap manager-sector-table-wrap"><table class="manager-table manager-sector-table"><thead><tr><th>Setor</th><th>Fila</th><th>Em atendimento</th><th>Tempo médio</th><th>Situação</th></tr></thead><tbody>${sectors.map((sector) => `<tr><td><strong>${escapeHtml(sector.name)}</strong></td><td>${escapeHtml(sector.waiting.length)} / ${escapeHtml(sector.capacity)}</td><td>${escapeHtml(sector.called.length)}</td><td>${escapeHtml(serviceAverageLabel(sector.metric))}</td><td><span class="manager-badge ${sector.status === "open" ? sector.load >= 100 ? "danger" : "success" : "warn"}">${escapeHtml(sector.load >= 100 && sector.status === "open" ? "Atenção" : statusLabel(sector.status))}</span></td></tr>`).join("")}</tbody></table></div>
+      <p class="manager-chart-caption">O sistema mede atendimento concluído. Espera por cliente e comparativo entre lojas não estão disponíveis.</p>
+    </article>`;
+  container.innerHTML = `${capacityPanel}${servicePanel}`;
+}
+
 function dashboardSummary() {
   const activeTickets = adminState.sectors.flatMap((sector) => sector.tickets || []);
   const waiting = activeTickets.filter((ticket) => ["aguardando", "proximo", "espera_inteligente", "standby"].includes(ticket.status)).length;
   const called = activeTickets.filter((ticket) => ["chamado", "em_atendimento"].includes(ticket.status)).length;
   const issued = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.issued || 0), 0);
   const finished = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.finished || 0), 0);
-  const abandoned = adminMetrics.sectors.reduce((sum, sector) => sum + Number(sector.abandoned || 0), 0);
   const sectorsWithSamples = adminMetrics.sectors.filter((sector) => Number(sector.serviceSamples || 0) > 0);
   const serviceSamples = sectorsWithSamples.reduce((sum, sector) => sum + Number(sector.serviceSamples || 0), 0);
-  const avgServiceSeconds = averageNumber(sectorsWithSamples.map((sector) => Number(sector.avgServiceSeconds || 0)));
+  const avgServiceSeconds = serviceSamples
+    ? Math.round(sectorsWithSamples.reduce((sum, sector) => sum + Number(sector.avgServiceSeconds || 0) * Number(sector.serviceSamples || 0), 0) / serviceSamples)
+    : 0;
   const sectors = adminState.sectors.map(sectorSnapshot);
   const overloaded = sectors.filter((sector) => sector.load >= 100 || (sector.status === "open" && sector.waiting.length > 8));
   const critical = [...sectors].sort((left, right) => right.load - left.load || right.waiting.length - left.waiting.length)[0];
@@ -611,7 +701,6 @@ function dashboardSummary() {
     called,
     issued,
     finished,
-    abandoned,
     avgServiceSeconds,
     serviceSamples,
     overloaded,
@@ -691,7 +780,7 @@ function sectorSnapshot(sector) {
   const currentTicket = called.find((ticket) => ticket.status === "em_atendimento") || called[0] || null;
   const metric = adminMetrics.sectors.find((item) => item.id === sector.id) || {};
   const capacity = Math.max(1, Number(sector.capacity || 1));
-  const load = Math.min(100, Math.round((waiting.length / capacity) * 100));
+  const load = Math.round((waiting.length / capacity) * 100);
   return { ...sector, tickets, waiting, called, currentTicket, metric, capacity, load };
 }
 

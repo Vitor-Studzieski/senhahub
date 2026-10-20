@@ -13,7 +13,8 @@ const pageRoles = {
   "/admin/usuarios": ["manager", "admin"],
   "/marketing/conteudos-tv": ["marketing", "manager", "admin"],
   "/tablet": ["tablet", "attendant"],
-  "/tv/acougue": ["tv", "attendant", "manager", "admin"]
+  "/tv/acougue": ["tv", "attendant", "manager", "admin"],
+  "/tv/pitchday": ["tablet"]
 };
 const legacyPageRedirects = {
   "/index.html": "/",
@@ -27,6 +28,7 @@ const legacyPageRedirects = {
   "/admin-atalhos.html": "/admin/atalhos",
   "/totem.html": "/totem",
   "/tv-acougue.html": "/tv/acougue",
+  "/tv-pitchday.html": "/tv/pitchday",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
 };
@@ -42,7 +44,13 @@ export async function proxy(request) {
 
   if (request.cookies.get("senhahub_auth")?.value || request.cookies.get("senhahub_local_auth")?.value) {
     const user = await loadCurrentUser(request);
-    if (normalizeEmail(user?.email) === PITCHDAY_LIMITED_EMAIL && pathname !== "/tablet") {
+    const isPitchdayTvAccount = normalizeEmail(user?.email) === PITCHDAY_LIMITED_EMAIL;
+    if (isPitchdayTvAccount && pathname === "/tv/acougue") {
+      const target = request.nextUrl.clone();
+      target.pathname = "/tv/pitchday";
+      return NextResponse.redirect(target);
+    }
+    if (isPitchdayTvAccount && pathname !== "/tablet" && pathname !== "/tv/pitchday") {
       return NextResponse.redirect(new URL("/tablet", request.url));
     }
   }
@@ -80,7 +88,11 @@ export async function proxy(request) {
   // the next long-lived cookie refresh.
   const user = await loadCurrentUser(request);
   const canOpenTargetedTv = pathname === "/tv/acougue" && user?.tvDisplayAccess === true;
-  if (user && (roles.includes(normalizeRole(user.role)) || canOpenTargetedTv)) return allowPage(request);
+  const isPitchdayTvAccount = pathname === "/tv/pitchday"
+    && normalizeEmail(user?.email) === PITCHDAY_LIMITED_EMAIL
+    && normalizeRole(user?.role) === "tablet";
+  const hasRouteRole = pathname !== "/tv/pitchday" && roles.includes(normalizeRole(user?.role));
+  if (user && (hasRouteRole || canOpenTargetedTv || isPitchdayTvAccount)) return allowPage(request);
   if (user) {
     if (pathname === "/tablet") return redirectToLogin(request, pathname);
     return NextResponse.redirect(new URL(roleHome(user), request.url));
@@ -94,6 +106,7 @@ function rolesForPath(pathname) {
   if (pathname === "/attendant" || pathname.startsWith("/attendant/")) return ["attendant", "manager", "admin"];
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return ["manager", "admin"];
   if (pathname === "/tv/acougue") return ["tv", "attendant", "manager", "admin"];
+  if (pathname === "/tv/pitchday") return ["tablet"];
   if (pathname === "/marketing/conteudos-tv") return ["marketing", "manager", "admin"];
   if (pathname === "/") return pageRoles["/"];
   return null;
@@ -277,6 +290,7 @@ export const config = {
     "/marketing/conteudos-tv",
     "/tablet/:path*",
     "/tv/acougue",
+    "/tv/pitchday",
     "/login",
     "/login/:path*",
     "/instalar",

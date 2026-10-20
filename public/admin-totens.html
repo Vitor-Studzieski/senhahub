@@ -3,79 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Totens e impressão - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20261016.accessibility-pitchday" />
+    <title>Canais, totens e impressão - SenhaHub</title>
+    <link rel="stylesheet" href="styles.css?v=20261019.manager-ux-v4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
         <div class="manager-brand"><img class="manager-brand-logo" src="/assets/senhahub-logo.png" alt="SenhaHub" width="132" height="44" /><div><span>Painel do gestor</span></div></div>
         <nav class="manager-nav" aria-label="Navegação principal do painel">
-          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
-          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
-          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
-          <a class="active" href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão executiva</span><small>01</small></a>
+          <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a class="active" href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
-        <div class="manager-sidebar-note">Consulte a disponibilidade dos totens e a situação das impressões.</div>
+        <div class="manager-sidebar-note">Acompanhe as origens de emissão informadas e administre os dispositivos e a impressão.</div>
       </aside>
-
       <main class="manager-main">
         <header class="manager-topbar">
-          <div><p class="manager-eyebrow">Dispositivos</p><h1>Totens e impressão</h1><p>Acompanhe os pontos de emissão de senhas e a integridade das impressões.</p></div>
-          <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Consulta sob demanda</span></span>
-            <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
-          </div>
+          <div><p class="manager-eyebrow">Jornada do cliente e canais</p><h1>Totens e impressão</h1><p>Origem das senhas no Pitch Day e operação dos equipamentos.</p></div>
+          <div class="manager-actions"><span class="manager-live-state"><span class="manager-status-dot"></span><span>Dispositivos consultados sob demanda</span></span><a class="manager-button secondary" href="/admin">Visão executiva</a><button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button></div>
         </header>
-        <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Infraestrutura de atendimento</p><h2>Dispositivos e impressão</h2><p>Informações organizadas para facilitar o suporte aos equipamentos da loja.</p></div>
+
+        <section class="manager-section-title manager-page-heading"><div><p class="manager-eyebrow">Pitch Day · 17/10/2026</p><h2>Origem das senhas</h2></div><a class="manager-inline-link" href="/admin#pitchdayReport">Ver análise do evento →</a></section>
+        <section class="manager-kpis manager-channel-kpis" aria-label="Indicadores de canais do Pitch Day">
+          <article class="manager-kpi manager-kpi-blue"><div><span>Senhas emitidas</span><em>TOTAL</em></div><strong>131</strong><small>Registro do evento</small></article>
+          <article class="manager-kpi manager-kpi-sky"><div><span>Totem</span><em>69,5%</em></div><strong>91</strong><small>84 normais · 7 preferenciais</small></article>
+          <article class="manager-kpi manager-kpi-yellow"><div><span>Digital · QR/app</span><em>30,5%</em></div><strong>40</strong><small>39 normais · 1 preferencial</small></article>
+          <article class="manager-kpi manager-kpi-green"><div><span>Normais</span><em>94%</em></div><strong>123</strong><small>Somando os dois canais</small></article>
+          <article class="manager-kpi manager-kpi-gold"><div><span>Preferenciais</span><em>6%</em></div><strong>8</strong><small>Classificadas por motivo</small></article>
+          <article class="manager-kpi manager-kpi-red"><div><span>Conversão digital</span><em>FUNIL</em></div><strong>—</strong><small>Sem dados de acesso ou retorno</small></article>
         </section>
-        <section class="manager-content-grid manager-future-grid">
-          <article class="manager-panel manager-future-card"><div class="manager-future-icon" aria-hidden="true">T</div><div><h3>Totens de atendimento</h3><p>Gerencie dispositivos, setores vinculados e disponibilidade em cada balcão.</p><span class="manager-badge neutral">Em desenvolvimento</span></div></article>
-          <article class="manager-panel manager-future-card"><div class="manager-future-icon" aria-hidden="true">P</div><div><h3>Impressão de senhas</h3><p>Acompanhe trabalhos pendentes, concluídos e ocorrências que exigem revisão.</p><span class="manager-badge neutral">Em desenvolvimento</span></div></article>
-        </section>
-        <section class="manager-panel" aria-labelledby="agentPairingHeading">
-          <div class="manager-panel-header">
-            <div><p class="manager-eyebrow">Instalação Windows x64</p><h2 id="agentPairingHeading">Código de pareamento do agente</h2><p>Emita um código temporário para o Totem Supermercado Pompeia e a impressora Bematech.</p></div>
-          </div>
-          <div class="manager-panel-body manager-form">
-            <p class="manager-empty">O código é de uso único e expira em 30 minutos. Cada emissão registra uma nova identidade de agente; gere-o somente quando estiver pronto para instalar.</p>
-            <label for="agentPairingName">Nome do agente</label>
-            <input id="agentPairingName" maxlength="100" value="Agente Node - Totem Pompeia" autocomplete="off" />
-            <button class="manager-button" id="generateAgentPairingCode" type="button">Gerar código de pareamento</button>
-            <div id="agentPairingResult" class="agent-pairing-result" hidden>
-              <label for="agentPairingCode">Código para o instalador original</label>
-              <div class="agent-pairing-code-row">
-                <input id="agentPairingCode" type="text" readonly autocomplete="off" spellcheck="false" />
-                <button class="manager-button secondary" id="copyAgentPairingCode" type="button">Copiar</button>
-              </div>
-              <p id="agentPairingExpiry" role="status" aria-live="polite"></p>
+        <section class="manager-analytics-grid manager-channel-analytics" aria-label="Distribuição das emissões por canal">
+          <article class="manager-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Participação por canal</p><h3>Totem e origem digital</h3></div><span class="manager-badge neutral">131 senhas</span></div>
+            <div class="manager-panel-body manager-channel-chart">
+              <div class="manager-channel-donut" role="img" aria-label="69,5 por cento das senhas pelo totem e 30,5 por cento pela origem digital QR ou aplicativo"><div><strong>131</strong><span>emitidas</span></div></div>
+              <div class="manager-channel-legend"><div><i class="manager-channel-dot physical"></i><span>Totem</span><strong>91 <small>69,5%</small></strong></div><div><i class="manager-channel-dot digital"></i><span>Digital · QR/app</span><strong>40 <small>30,5%</small></strong></div><p>O registro agrupa QR Code e aplicativo na mesma origem.</p></div>
             </div>
-            <p id="agentPairingFeedback" role="status" aria-live="polite"></p>
-          </div>
+          </article>
+          <article class="manager-panel manager-coverage-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Jornada digital</p><h3>Etapas ainda não medidas</h3></div></div>
+            <div class="manager-panel-body manager-coverage-list">
+              <div><span>Escaneamentos confirmados</span><strong>Sem medição</strong></div>
+              <div><span>Downloads e sessões do app</span><strong>Sem medição</strong></div>
+              <div><span>Emissão → comparecimento</span><strong>Sem medição</strong></div>
+              <div><span>Retorno por canal</span><strong>Sem medição</strong></div>
+            </div>
+            <p class="manager-chart-caption">40 senhas foram registradas como digitais; isso não confirma a leitura individual do QR Code.</p>
+          </article>
         </section>
-        <section class="manager-panel" aria-labelledby="printerPaperRollHeading">
-          <div class="manager-panel-header">
-            <div><p class="manager-eyebrow">Controle de papel</p><h2 id="printerPaperRollHeading">Contador de bobinas</h2><p>Informe a quantidade já impressa ao iniciar o controle e registre cada troca. A estimativa média é de 420 senhas por bobina.</p></div>
-            <button class="manager-button secondary" id="refreshPrinterPaperRollsButton" type="button">Atualizar contadores</button>
-          </div>
-          <div class="manager-panel-body">
-            <section class="printer-paper-panel" id="printerPaperRolls" aria-live="polite" aria-busy="true">
-              <p class="manager-empty" role="status">Consultando as impressoras…</p>
-            </section>
-          </div>
+
+        <section class="manager-section-title"><div><p class="manager-eyebrow">Equipamentos</p><h2>Impressão</h2></div></section>
+        <section class="manager-device-grid" aria-label="Impressoras e agentes">
+        <section class="manager-panel manager-device-pairing" aria-labelledby="agentPairingHeading">
+          <div class="manager-panel-header"><div><p class="manager-eyebrow">Windows x64</p><h3 id="agentPairingHeading">Parear agente</h3></div></div>
+          <div class="manager-panel-body manager-form"><p class="manager-inline-note">Código de uso único · expira em 30 min.</p><label for="agentPairingName">Nome do agente</label><input id="agentPairingName" maxlength="100" value="Agente Node - Totem Pompeia" autocomplete="off" /><button class="manager-button" id="generateAgentPairingCode" type="button">Gerar código</button><div id="agentPairingResult" class="agent-pairing-result" hidden><label for="agentPairingCode">Código</label><div class="agent-pairing-code-row"><input id="agentPairingCode" type="text" readonly autocomplete="off" spellcheck="false" /><button class="manager-button secondary" id="copyAgentPairingCode" type="button">Copiar</button></div><p id="agentPairingExpiry" role="status" aria-live="polite"></p></div><p id="agentPairingFeedback" role="status" aria-live="polite"></p></div>
         </section>
-        <section class="manager-panel" aria-labelledby="printReviewHeading">
-          <div class="manager-panel-header">
-            <div><p class="manager-eyebrow">Revisão segura</p><h2 id="printReviewHeading">Ocorrências de impressão</h2><p>Confira o estado da impressora antes de autorizar uma nova tentativa.</p></div>
-            <button class="manager-button secondary" id="refreshPrintReview" type="button">Atualizar lista</button>
-          </div>
+        <section class="manager-panel manager-device-paper" aria-labelledby="printerPaperRollHeading">
+          <div class="manager-panel-header"><div><p class="manager-eyebrow">Papel</p><h3 id="printerPaperRollHeading">Bobinas</h3><p>Referência: 420 senhas por bobina.</p></div><button class="manager-button secondary" id="refreshPrinterPaperRollsButton" type="button">Atualizar</button></div>
+          <div class="manager-panel-body"><section class="printer-paper-panel" id="printerPaperRolls" aria-live="polite" aria-busy="true"><p class="manager-empty" role="status">Consultando as impressoras…</p></section></div>
+        </section>
+        <section class="manager-panel manager-device-review" aria-labelledby="printReviewHeading">
+          <div class="manager-panel-header"><div><p class="manager-eyebrow">Revisão</p><h3 id="printReviewHeading">Ocorrências</h3></div><button class="manager-button secondary" id="refreshPrintReview" type="button">Atualizar</button></div>
           <div class="manager-panel-body"><div id="printReviewList" role="status" aria-live="polite"><p class="manager-empty">Consultando ocorrências de impressão…</p></div></div>
+        </section>
         </section>
       </main>
     </div>
-    <script src="admin.js?v=20261016.ticket-tracking-view"></script>
+    <script src="admin.js?v=20261019.manager-nav-v5"></script>
   </body>
 </html>

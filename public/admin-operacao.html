@@ -3,86 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Operação - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20261016.accessibility-pitchday" />
+    <title>Operação e equipe - SenhaHub</title>
+    <link rel="stylesheet" href="styles.css?v=20261019.manager-ux-v4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
-        <div class="manager-brand">
-          <img class="manager-brand-logo" src="/assets/senhahub-logo.png" alt="SenhaHub" width="132" height="44" />
-          <div><span>Painel do gestor</span></div>
-        </div>
+        <div class="manager-brand"><img class="manager-brand-logo" src="/assets/senhahub-logo.png" alt="SenhaHub" width="132" height="44" /><div><span>Painel do gestor</span></div></div>
         <nav class="manager-nav" aria-label="Navegação principal do painel">
-          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
-          <a class="active" href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
-          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
-          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
-          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão executiva</span><small>01</small></a>
+          <a class="active" href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
+          <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
+          <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
+          <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
-        <div class="manager-sidebar-note">Acompanhe o andamento das senhas e a capacidade de cada setor.</div>
+        <div class="manager-sidebar-note">Acompanhe as senhas em andamento e consulte o contexto disponível para a equipe.</div>
       </aside>
 
       <main class="manager-main">
         <header class="manager-topbar">
-          <div>
-            <p class="manager-eyebrow">Monitoramento em tempo real</p>
-            <h1>Operação</h1>
-            <p>Consulte as senhas ativas, as chamadas e a disponibilidade dos setores.</p>
-          </div>
-          <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
-            <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
-            <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
-          </div>
+          <div><p class="manager-eyebrow">Equipe, produtividade e SLA</p><h1>Operação</h1><p>Ritmo do Pitch Day e fila em andamento.</p></div>
+          <div class="manager-actions"><span class="manager-live-state"><span class="manager-status-dot"></span><span>Ao vivo</span></span><button class="manager-button warning" id="logoutButton" type="button">Sair</button></div>
         </header>
 
-        <section class="manager-section-title">
-          <div>
-            <p class="manager-eyebrow">Acompanhamento da fila</p>
-            <h2>Atendimentos em andamento</h2>
-            <p>Localize rapidamente uma senha por setor ou situação.</p>
-          </div>
+        <section class="manager-section-title manager-page-heading">
+          <div><p class="manager-eyebrow">Pitch Day · 17/10/2026</p><h2>Ritmo das chamadas</h2></div>
+          <a class="manager-inline-link" href="/admin#pitchdayReport">Ver relatório executivo →</a>
+        </section>
+        <section class="manager-kpis manager-pitchday-ops-kpis" aria-label="Indicadores de chamadas do Pitch Day">
+          <article class="manager-kpi manager-kpi-blue"><div><span>Senhas com chamada</span><em>EVENTO</em></div><strong>105</strong><small>Fluxo de chamadas confirmado</small></article>
+          <article class="manager-kpi manager-kpi-green"><div><span>Intervalos medidos</span><em>AMOSTRA</em></div><strong>103</strong><small>Entre chamadas consecutivas</small></article>
+          <article class="manager-kpi manager-kpi-yellow"><div><span>Mediana</span><em>INTERVALO</em></div><strong>47 s</strong><small>Valor central</small></article>
+          <article class="manager-kpi manager-kpi-sky"><div><span>Média</span><em>INTERVALO</em></div><strong>1 min 53 s</strong><small>Por intervalo medido</small></article>
+          <article class="manager-kpi manager-kpi-gold"><div><span>Percentil 90</span><em>90%</em></div><strong>2 min 43 s</strong><small>90% dos intervalos até aqui</small></article>
+          <article class="manager-kpi manager-kpi-red"><div><span>Maior intervalo</span><em>PICO</em></div><strong>32 min 24 s</strong><small>Maior pausa entre chamadas</small></article>
+        </section>
+        <section class="manager-analytics-grid manager-ops-analytics">
+          <article class="manager-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Distribuição dos pontos de referência</p><h3>Intervalos entre chamadas</h3></div><span class="manager-badge neutral">17 out 2026</span></div>
+            <div class="manager-panel-body">
+              <div class="manager-interval-scale" role="img" aria-label="Mediana de 47 segundos, média de 1 minuto e 53 segundos, percentil 90 de 2 minutos e 43 segundos e máximo de 32 minutos e 24 segundos">
+                <div><span>Mediana</span><strong>47 s</strong><i style="--value:3%"></i></div>
+                <div><span>Média</span><strong>1:53</strong><i style="--value:6%"></i></div>
+                <div><span>P90</span><strong>2:43</strong><i style="--value:9%"></i></div>
+                <div class="manager-interval-outlier"><span>Máximo</span><strong>32:24</strong><i style="--value:100%"></i></div>
+              </div>
+              <p class="manager-chart-caption">Escala linear até o maior intervalo. A próxima chamada encerra o atendimento anterior; isto não mede a espera individual na fila.</p>
+            </div>
+          </article>
+          <article class="manager-panel manager-coverage-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Cobertura dos indicadores</p><h3>Equipe e SLA</h3></div></div>
+            <div class="manager-panel-body manager-coverage-list">
+              <div><span>Atendentes ativos</span><strong>Sem identificação</strong></div>
+              <div><span>Produtividade individual</span><strong>Sem medição</strong></div>
+              <div><span>Meta de SLA</span><strong>Não definida</strong></div>
+              <div><span>Retornos e ociosidade</span><strong>Sem medição</strong></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="manager-section-title manager-page-heading">
+          <div><p class="manager-eyebrow">Ao vivo</p><h2>Fila agora</h2></div>
           <div class="manager-toolbar">
-            <label>Setor
-              <select id="sectorFilter" aria-label="Filtrar por setor"><option value="">Todos os setores</option></select>
-            </label>
-            <label>Situação
-              <select id="statusFilter" aria-label="Filtrar por situação">
-                <option value="">Todas as situações</option>
-                <option value="aguardando">Aguardando</option>
-                <option value="proximo">Próximo</option>
-                <option value="chamado">Chamado</option>
-                <option value="em_atendimento">Em atendimento</option>
-                <option value="standby">Em espera</option>
-                <option value="espera_inteligente">Espera inteligente</option>
-              </select>
-            </label>
+            <label>Setor<select id="sectorFilter" aria-label="Filtrar por setor"><option value="">Todos os setores</option></select></label>
+            <label>Situação<select id="statusFilter" aria-label="Filtrar por situação"><option value="">Todas as situações</option><option value="aguardando">Aguardando</option><option value="proximo">Próximo</option><option value="chamado">Chamado</option><option value="em_atendimento">Em atendimento</option><option value="standby">Em espera</option><option value="espera_inteligente">Espera inteligente</option></select></label>
           </div>
         </section>
 
-        <section class="manager-content-grid">
-          <article class="manager-panel">
-            <div class="manager-panel-header">
-              <div><h3>Senhas na fila</h3><p>Aguardando, chamadas e atendimentos ativos.</p></div>
-              <span class="manager-badge neutral" id="queueCount">0 senhas</span>
-            </div>
-            <div class="manager-table-wrap">
-              <table class="manager-table">
-                <thead><tr><th>Cliente</th><th>Setor</th><th>Senha</th><th>Situação</th><th>Prioridade</th><th>Posição</th></tr></thead>
-                <tbody id="queueTable"><tr><td colspan="6" class="manager-empty-cell">Carregando a fila de atendimento…</td></tr></tbody>
-              </table>
-            </div>
-          </article>
-          <article class="manager-panel">
-            <div class="manager-panel-header">
-              <div><h3>Resumo por setor</h3><p>Volume da fila e tempo médio de atendimento em cada área.</p></div>
-            </div>
-            <div class="manager-panel-body" id="dashboardOperations"><p class="manager-empty" role="status">Carregando o resumo dos setores…</p></div>
-          </article>
+        <section class="manager-panel manager-queue-panel" aria-labelledby="queueHeading">
+          <div class="manager-panel-header"><div><h3 id="queueHeading">Senhas</h3></div><span class="manager-badge neutral" id="queueCount">0</span></div>
+          <div class="manager-table-wrap"><table class="manager-table"><thead><tr><th>Cliente</th><th>Setor</th><th>Senha</th><th>Situação</th><th>Prioridade</th><th>Posição</th></tr></thead><tbody id="queueTable"><tr><td colspan="6" class="manager-empty-cell">Carregando a fila de atendimento…</td></tr></tbody></table></div>
         </section>
+
       </main>
     </div>
-    <script src="admin.js?v=20261016.ticket-tracking-view"></script>
+    <script src="admin.js?v=20261019.manager-nav-v5"></script>
   </body>
 </html>

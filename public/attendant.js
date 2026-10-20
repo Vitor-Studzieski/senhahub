@@ -5,6 +5,8 @@ let staffPollingTimer = null;
 let staffRealtimeRetryTimer = null;
 let staffLoadInFlight = null;
 let pendingSkipTicketId = null;
+let staffPresenceStatus = "available";
+let staffPresenceHeartbeatTimer = null;
 const callNextInFlight = new Set();
 const callNextFeedback = new Map();
 const STAFF_POLL_INTERVAL_MS = 5000;
@@ -15,7 +17,8 @@ initAttendant();
 
 async function initAttendant() {
   currentUser = await requireSession(["attendant", "manager"]);
-  document.querySelector("#logoutButton").addEventListener("click", logout);
+  document.querySelector("#logoutButton").addEventListener("click", logoutWithPresence);
+  document.querySelector("#presenceButton")?.addEventListener("click", togglePresence);
   document.querySelector("#skipCancel").addEventListener("click", closeSkipModal);
   document.querySelector("#skipForm").addEventListener("submit", submitSkipTicket);
   document.addEventListener("visibilitychange", () => {
@@ -24,7 +27,36 @@ async function initAttendant() {
     if (!staffSource) connectStaffRealtime();
   });
   await loadStaffState();
+  await setStaffPresence("available");
+  staffPresenceHeartbeatTimer = setInterval(() => {
+    if (!document.hidden) void setStaffPresence(staffPresenceStatus, true);
+  }, 60_000);
   connectStaffRealtime();
+}
+
+async function setStaffPresence(status, quiet = false) {
+  try {
+    await api("/api/staff/presence", { method: "POST", body: { status } });
+    staffPresenceStatus = status;
+    const button = document.querySelector("#presenceButton");
+    if (button) {
+      button.textContent = status === "break" ? "Voltar ao atendimento" : "Disponível";
+      button.setAttribute("aria-pressed", String(status === "break"));
+      button.title = status === "break" ? "Sua pausa está registrada" : "Sua disponibilidade está registrada";
+    }
+  } catch (error) {
+    if (!quiet) callNextFeedback.set("presence", error.message || "Não foi possível registrar sua presença.");
+  }
+}
+
+async function togglePresence() {
+  await setStaffPresence(staffPresenceStatus === "available" ? "break" : "available");
+}
+
+async function logoutWithPresence() {
+  clearInterval(staffPresenceHeartbeatTimer);
+  await setStaffPresence("offline", true);
+  logout();
 }
 
 async function loadStaffState() {
@@ -139,6 +171,7 @@ function renderAttendant() {
             </div>
           </div>
         </div>
+        ${activeTicket ? accessibilityCapture(activeTicket) : ""}
         <button class="blue-action ops-call-button" data-call-next="${escapeHtml(sector.id)}" data-online-required ${canCallNext ? "" : "disabled"}>${callNextLabel}</button>
         <div class="ops-feedback-slot">${feedback ? `<p class="ops-action-feedback" role="alert">${escapeHtml(feedback)}</p>` : ""}</div>
         ${ticketSection("Fila", waiting, "ops-queue-section")}
@@ -153,7 +186,63 @@ function renderAttendant() {
   document.querySelectorAll("[data-skip-ticket]").forEach((button) => {
     button.addEventListener("click", () => openSkipModal(button.dataset.skipTicket));
   });
+  document.querySelectorAll("[data-accessibility-ticket]").forEach((form) => {
+    form.addEventListener("submit", submitAccessibilityCapture);
+  });
   scheduleCallHighlightExpiry();
+}
+
+function accessibilityCapture(ticket) {
+  const options = [
+    ["libras", "Libras"],
+    ["texto_visual", "Texto ou apoio visual"],
+    ["modo_silencioso", "Modo silencioso"],
+    ["audio", "Apoio por áudio"],
+    ["mobilidade", "Apoio de mobilidade"],
+    ["outro", "Outro recurso"]
+  ];
+  return `
+    <details class="ops-accessibility-capture">
+      <summary>Registrar recurso acessível usado</summary>
+      <form data-accessibility-ticket="${escapeHtml(ticket.id)}">
+        <label class="ops-accessibility-action">Situação
+          <select name="action">
+            <option value="provided">Utilizado no atendimento</option>
+            <option value="requested">Solicitado pelo cliente</option>
+            <option value="unavailable">Não disponível</option>
+          </select>
+        </label>
+        <div>${options.map(([value, label]) => `<label><input type="checkbox" value="${value}"> ${label}</label>`).join("")}</div>
+        <button type="submit" class="soft-action">Salvar recursos</button>
+        <small aria-live="polite"></small>
+      </form>
+    </details>
+  `;
+}
+
+async function submitAccessibilityCapture(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const supports = [...form.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+  const button = form.querySelector('button[type="submit"]');
+  const feedback = form.querySelector("small");
+  if (!supports.length || button?.disabled) {
+    if (feedback) feedback.textContent = "Selecione os recursos utilizados.";
+    return;
+  }
+  button.disabled = true;
+  try {
+    const result = await api("/api/tickets/accessibility", {
+      method: "POST",
+      body: { ticketId: form.dataset.accessibilityTicket, supports, action: form.elements.action.value }
+    });
+    if (feedback) feedback.textContent = result.recorded ? "Recursos registrados." : "Esses recursos já foram registrados.";
+    form.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = false; });
+  } catch (error) {
+    if (feedback) feedback.textContent = error.message || "Não foi possível salvar.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function ticketSection(title, tickets, extraClass = "") {

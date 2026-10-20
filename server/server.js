@@ -97,6 +97,7 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["POST /api/local-postgres/auth/register", "app/api/local-postgres/auth/register/route.js"],
   ["POST /api/local-postgres/sessions", "app/api/local-postgres/sessions/route.js"],
   ["GET /api/local-postgres/staff/state", "app/api/local-postgres/staff/state/route.js"],
+  ["POST /api/local-postgres/staff/presence", "app/api/local-postgres/staff/presence/route.js"],
   ["GET /api/local-postgres/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/local-postgres/staff/call-next", "app/api/local-postgres/staff/call-next/route.js"],
   ["POST /api/local-postgres/staff/call-control", "app/api/local-postgres/staff/call-control/route.js"],
@@ -106,6 +107,7 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["POST /api/local-postgres/tickets/confirm", "app/api/local-postgres/tickets/confirm/route.js"],
   ["POST /api/local-postgres/tickets/finish", "app/api/local-postgres/tickets/finish/route.js"],
   ["POST /api/local-postgres/tickets/skip", "app/api/local-postgres/tickets/skip/route.js"],
+  ["POST /api/local-postgres/tickets/accessibility", "app/api/local-postgres/tickets/accessibility/route.js"],
   ["POST /api/local-postgres/tickets/history/reset", "app/api/local-postgres/tickets/history/reset/route.js"],
   ["GET /api/local-postgres/kiosk/status", "app/api/local-postgres/kiosk/status/route.js"],
   ["POST /api/local-postgres/kiosk/pair", "app/api/local-postgres/kiosk/pair/route.js"],
@@ -123,7 +125,9 @@ const LOCAL_POSTGRES_ROUTE_FILES = new Map([
   ["POST /api/local-postgres/push/subscribe", "app/api/local-postgres/push/subscribe/route.js"],
   ["DELETE /api/local-postgres/push/unsubscribe", "app/api/local-postgres/push/unsubscribe/route.js"],
   ["PATCH /api/local-postgres/push/preferences", "app/api/local-postgres/push/preferences/route.js"],
-  ["POST /api/local-postgres/push/test", "app/api/local-postgres/push/test/route.js"]
+  ["POST /api/local-postgres/push/test", "app/api/local-postgres/push/test/route.js"],
+  ["POST /api/local-postgres/push/click", "app/api/local-postgres/push/click/route.js"],
+  ["POST /api/local-postgres/analytics/events", "app/api/local-postgres/analytics/events/route.js"]
 ]);
 const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["POST /api/auth/login", "app/api/local-postgres/auth/login/route.js"],
@@ -144,8 +148,10 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["GET /api/users", "app/api/local-postgres/users/route.js"],
   ["POST /api/users", "app/api/local-postgres/users/route.js"],
   ["GET /api/staff/state", "app/api/local-postgres/staff/state/route.js"],
+  ["POST /api/staff/presence", "app/api/local-postgres/staff/presence/route.js"],
   ["GET /api/display/state", "app/api/local-postgres/display/state/route.js"],
   ["POST /api/tickets", "app/api/local-postgres/tickets/route.js"],
+  ["POST /api/tickets/accessibility", "app/api/local-postgres/tickets/accessibility/route.js"],
   ["POST /api/tickets/history/reset", "app/api/local-postgres/tickets/history/reset/route.js"],
   ["GET /api/kiosk/status", "app/api/local-postgres/kiosk/status/route.js"],
   ["POST /api/kiosk/pair", "app/api/local-postgres/kiosk/pair/route.js"],
@@ -161,7 +167,9 @@ const LOCAL_POSTGRES_APP_ALIAS_FILES = new Map([
   ["POST /api/push/subscribe", "app/api/local-postgres/push/subscribe/route.js"],
   ["DELETE /api/push/unsubscribe", "app/api/local-postgres/push/unsubscribe/route.js"],
   ["PATCH /api/push/preferences", "app/api/local-postgres/push/preferences/route.js"],
-  ["POST /api/push/test", "app/api/local-postgres/push/test/route.js"]
+  ["POST /api/push/test", "app/api/local-postgres/push/test/route.js"],
+  ["POST /api/push/click", "app/api/local-postgres/push/click/route.js"],
+  ["POST /api/analytics/events", "app/api/local-postgres/analytics/events/route.js"]
 ]);
 const localPostgresRouteModules = new Map();
 
@@ -425,6 +433,7 @@ function bootstrap() {
       queue_size INTEGER NOT NULL,
       average_service_seconds INTEGER NOT NULL,
       capacity INTEGER NOT NULL DEFAULT 1,
+      store_code TEXT NOT NULL DEFAULT 'loja-1',
       status TEXT NOT NULL DEFAULT 'open',
       updated_at TEXT NOT NULL
     );
@@ -461,6 +470,8 @@ function bootstrap() {
       qr_verified INTEGER NOT NULL DEFAULT 0,
       absence_count INTEGER NOT NULL DEFAULT 0,
       source TEXT NOT NULL DEFAULT 'digital',
+      origin_channel TEXT NOT NULL DEFAULT 'unknown',
+      cancellation_reason TEXT,
       kiosk_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -473,6 +484,7 @@ function bootstrap() {
       ticket_id TEXT NOT NULL,
       sector_id TEXT NOT NULL,
       action TEXT NOT NULL,
+      actor_id TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id)
     );
@@ -482,6 +494,7 @@ function bootstrap() {
       ticket_id TEXT NOT NULL,
       sector_id TEXT NOT NULL,
       customer_id TEXT NOT NULL,
+      attendant_id TEXT,
       started_at TEXT NOT NULL,
       finished_at TEXT,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id)
@@ -503,6 +516,10 @@ function bootstrap() {
       entity_id TEXT NOT NULL,
       customer_id TEXT,
       sector_id TEXT,
+      store_code TEXT,
+      origin_channel TEXT,
+      actor_id TEXT,
+      idempotency_key TEXT,
       payload TEXT,
       created_at TEXT NOT NULL
     );
@@ -587,12 +604,116 @@ function bootstrap() {
       attempts INTEGER NOT NULL DEFAULT 0,
       failure_reason TEXT,
       sent_at TEXT,
+      clicked_at TEXT,
       failed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL
     );
+
+    CREATE TABLE IF NOT EXISTS stores (
+      store_code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS staff_presence (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      store_code TEXT NOT NULL,
+      sector_id TEXT,
+      status TEXT NOT NULL CHECK (status IN ('available', 'break')),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      last_seen_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (profile_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (store_code) REFERENCES stores(store_code),
+      FOREIGN KEY (sector_id) REFERENCES sectors(id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_presence_one_open_period
+      ON staff_presence(profile_id) WHERE ended_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_staff_presence_store_live
+      ON staff_presence(store_code, status, last_seen_at DESC) WHERE ended_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS service_accessibility_events (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT,
+      service_id TEXT,
+      sector_id TEXT,
+      actor_id TEXT,
+      support_code TEXT NOT NULL CHECK (support_code IN ('libras', 'texto_visual', 'modo_silencioso', 'audio', 'mobilidade', 'outro')),
+      action TEXT NOT NULL CHECK (action IN ('requested', 'provided', 'unavailable')),
+      occurred_at TEXT NOT NULL,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL,
+      FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL,
+      FOREIGN KEY (sector_id) REFERENCES sectors(id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_service_accessibility_event_once
+      ON service_accessibility_events(ticket_id, support_code, action) WHERE ticket_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_service_accessibility_sector_time
+      ON service_accessibility_events(sector_id, occurred_at DESC);
+
+    CREATE TABLE IF NOT EXISTS service_sla_targets (
+      id TEXT PRIMARY KEY,
+      store_code TEXT NOT NULL,
+      sector_id TEXT,
+      target_wait_seconds INTEGER,
+      target_service_seconds INTEGER,
+      active INTEGER NOT NULL DEFAULT 1,
+      updated_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK ((target_wait_seconds IS NULL OR target_wait_seconds > 0)
+        AND (target_service_seconds IS NULL OR target_service_seconds > 0)
+        AND (target_wait_seconds IS NOT NULL OR target_service_seconds IS NOT NULL)),
+      FOREIGN KEY (store_code) REFERENCES stores(store_code),
+      FOREIGN KEY (sector_id) REFERENCES sectors(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_service_sla_targets_scope
+      ON service_sla_targets(store_code, COALESCE(sector_id, '*')) WHERE active = 1;
+
+    CREATE TABLE IF NOT EXISTS store_operating_costs (
+      id TEXT PRIMARY KEY,
+      store_code TEXT NOT NULL,
+      attendant_hourly_cost REAL NOT NULL CHECK (attendant_hourly_cost > 0),
+      valid_from TEXT NOT NULL,
+      valid_until TEXT,
+      updated_by TEXT,
+      created_at TEXT NOT NULL,
+      CHECK (valid_until IS NULL OR valid_until >= valid_from),
+      FOREIGN KEY (store_code) REFERENCES stores(store_code)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_store_operating_costs_current
+      ON store_operating_costs(store_code) WHERE valid_until IS NULL;
+
+    CREATE TABLE IF NOT EXISTS manager_actions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 160),
+      description TEXT,
+      recommendation_code TEXT,
+      status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'done', 'dismissed')),
+      priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+      store_code TEXT,
+      sector_id TEXT,
+      assigned_to TEXT,
+      due_at TEXT,
+      created_by TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (store_code) REFERENCES stores(store_code) ON DELETE SET NULL,
+      FOREIGN KEY (sector_id) REFERENCES sectors(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_manager_actions_status_due
+      ON manager_actions(status, due_at, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_manager_actions_store_sector
+      ON manager_actions(store_code, sector_id, status);
 
     CREATE TABLE IF NOT EXISTS push_rate_limits (
       rate_key TEXT PRIMARY KEY,
@@ -725,6 +846,7 @@ function bootstrap() {
   `);
 
   migrateSchema();
+  seedManagerAnalyticsStores();
   seedPrintKiosk();
 
   const existing = db.prepare("SELECT COUNT(*) AS count FROM sectors").get().count;
@@ -768,6 +890,8 @@ function migrateSchema() {
     ["standby_started_at", "ALTER TABLE tickets ADD COLUMN standby_started_at TEXT"],
     ["standby_expires_at", "ALTER TABLE tickets ADD COLUMN standby_expires_at TEXT"],
     ["source", "ALTER TABLE tickets ADD COLUMN source TEXT NOT NULL DEFAULT 'digital'"],
+    ["origin_channel", "ALTER TABLE tickets ADD COLUMN origin_channel TEXT NOT NULL DEFAULT 'unknown'"],
+    ["cancellation_reason", "ALTER TABLE tickets ADD COLUMN cancellation_reason TEXT"],
     ["kiosk_id", "ALTER TABLE tickets ADD COLUMN kiosk_id TEXT"]
   ];
   migrations.forEach(([column, sql]) => {
@@ -800,6 +924,39 @@ function migrateSchema() {
   if (!counterColumns.includes("preferential_streak")) {
     db.exec("ALTER TABLE ticket_counters ADD COLUMN preferential_streak INTEGER NOT NULL DEFAULT 0");
   }
+
+  const tableMigrations = {
+    sectors: [["store_code", "ALTER TABLE sectors ADD COLUMN store_code TEXT NOT NULL DEFAULT 'loja-1'"]],
+    calls: [["actor_id", "ALTER TABLE calls ADD COLUMN actor_id TEXT"]],
+    services: [["attendant_id", "ALTER TABLE services ADD COLUMN attendant_id TEXT"]],
+    events: [
+      ["store_code", "ALTER TABLE events ADD COLUMN store_code TEXT"],
+      ["origin_channel", "ALTER TABLE events ADD COLUMN origin_channel TEXT"],
+      ["actor_id", "ALTER TABLE events ADD COLUMN actor_id TEXT"],
+      ["idempotency_key", "ALTER TABLE events ADD COLUMN idempotency_key TEXT"]
+    ],
+    push_notification_events: [["clicked_at", "ALTER TABLE push_notification_events ADD COLUMN clicked_at TEXT"]]
+  };
+  for (const [table, changes] of Object.entries(tableMigrations)) {
+    const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+    for (const [column, sql] of changes) {
+      if (!existing.has(column)) db.exec(sql);
+    }
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_idempotency_key ON events(idempotency_key) WHERE idempotency_key IS NOT NULL");
+}
+
+function seedManagerAnalyticsStores() {
+  const now = isoNow();
+  const insert = db.prepare(`
+    INSERT INTO stores (store_code, name, active, created_at, updated_at)
+    VALUES (?, ?, 1, ?, ?)
+    ON CONFLICT(store_code) DO NOTHING
+  `);
+  insert.run("loja-1", "Loja 1", now, now);
+  insert.run("loja-2", "Loja 2", now, now);
+  db.prepare("UPDATE events SET store_code = (SELECT store_code FROM sectors WHERE sectors.id = events.sector_id) WHERE store_code IS NULL AND sector_id IS NOT NULL").run();
+  db.prepare("UPDATE events SET origin_channel = (SELECT origin_channel FROM tickets WHERE tickets.id = events.entity_id) WHERE origin_channel IS NULL AND entity_type = 'ticket'").run();
 }
 
 function seedPrintKiosk() {
@@ -1580,10 +1737,22 @@ async function handleApiInternal(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/display/state") {
-    const user = requireAuth(req, res, DISPLAY_ROLES);
+    const currentUser = getAuthUser(req);
+    const isPitchdayTvAccount = String(currentUser?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL
+      && currentUser?.role === "tablet";
+    const user = requireAuth(req, res, isPitchdayTvAccount ? ["tablet"] : DISPLAY_ROLES);
     if (!user) return;
+    if (isPitchdayTvAccount && !canAccessSector(user, "pitch-day")) {
+      sendJson(res, 403, { error: "Esta conta não está vinculada ao setor Pitch Day." });
+      return;
+    }
     syncQueueState();
-    sendJson(res, 200, { source: "sqlite", ...sanitizeDisplayState(getStaffState(user)) }, { "cache-control": "no-store" });
+    const displayUser = isPitchdayTvAccount ? { ...user, sectorIds: ["pitch-day"] } : user;
+    const displayState = getStaffState(displayUser);
+    const sectors = isPitchdayTvAccount
+      ? displayState.sectors.filter((sector) => sector.id === "pitch-day")
+      : displayState.sectors;
+    sendJson(res, 200, { source: "sqlite", ...sanitizeDisplayState({ ...displayState, sectors }) }, { "cache-control": "no-store" });
     return;
   }
 
@@ -1684,14 +1853,29 @@ async function handleApiInternal(req, res, url) {
 
   const callControl = url.pathname.match(/^\/api\/sectors\/([^/]+)\/call-control$/);
   if (req.method === "POST" && callControl) {
-    const user = requireAuth(req, res, CALL_CONTROL_ROLES);
+    const currentUser = getAuthUser(req);
+    const isPitchdayTvAccount = String(currentUser?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL
+      && currentUser?.role === "tablet";
+    const user = requireAuth(req, res, [...CALL_CONTROL_ROLES, "tablet"]);
     if (!user) return;
+    if (!CALL_CONTROL_ROLES.includes(user.role) && !isPitchdayTvAccount) {
+      sendJson(res, 403, { error: "Acesso negado." });
+      return;
+    }
+    if (isPitchdayTvAccount && callControl[1] !== "pitch-day") {
+      sendJson(res, 403, { error: "Esta conta só pode controlar o setor Pitch Day." });
+      return;
+    }
     if (!verifyCsrf(req, res, user)) return;
     if (!canAccessSector(user, callControl[1])) {
       sendJson(res, 403, { error: "Usuário sem permissão para este setor." });
       return;
     }
     const body = await readBody(req);
+    if (isPitchdayTvAccount && body.action !== "next") {
+      sendJson(res, 403, { error: "Esta conta só pode chamar a próxima senha." });
+      return;
+    }
     const result = callControlTicket(callControl[1], body.action);
     broadcast();
     sendApiResult(res, result.error ? 400 : 200, result);
@@ -2143,6 +2327,7 @@ const LEGACY_PAGE_REDIRECTS = {
   "/admin-usuarios.html": "/admin/usuarios",
   "/totem.html": "/totem",
   "/tv-acougue.html": "/tv/acougue",
+  "/tv-pitchday.html": "/tv/pitchday",
   "/install.html": "/instalar",
   "/acompanhar.html": "/login"
 };
@@ -2160,7 +2345,16 @@ async function handlePage(req, res, url) {
   if (getCookie(req, "senhahub_auth") || getCookie(req, "senhahub_local_auth")) {
     pageUser = await getPageAuthUser(req);
   }
-  if (String(pageUser?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL && requested !== "/tablet") {
+  const isPitchdayTvAccount = String(pageUser?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL;
+  if (isPitchdayTvAccount && requested === "/tv/acougue") {
+    res.writeHead(302, { location: `/tv/pitchday${url.search}` });
+    res.end();
+    return;
+  }
+  const isPitchdayTvRoute = requested === "/tv/pitchday"
+    && isPitchdayTvAccount;
+  if (isPitchdayTvAccount
+    && requested !== "/tablet" && !isPitchdayTvRoute) {
     res.writeHead(302, { location: "/tablet" });
     res.end();
     return;
@@ -2176,7 +2370,8 @@ async function handlePage(req, res, url) {
     "/admin/usuarios": ADMIN_ROLES,
     "/marketing/conteudos-tv": ["marketing", ...ADMIN_ROLES],
     "/tablet": ["tablet", "attendant"],
-    "/tv/acougue": ["tv", ...STAFF_ROLES]
+    "/tv/acougue": ["tv", ...STAFF_ROLES],
+    "/tv/pitchday": ["tablet"]
   };
   const requiredRoles = pageRoles[requested]
     || (requested.startsWith("/admin/") ? ADMIN_ROLES : null)
@@ -2194,6 +2389,12 @@ async function handlePage(req, res, url) {
         res.end();
         return;
       }
+      res.writeHead(302, { location: roleHome(user) });
+      res.end();
+      return;
+    }
+    if (requested === "/tv/pitchday"
+      && String(user?.email || "").trim().toLowerCase() !== PITCHDAY_LIMITED_EMAIL) {
       res.writeHead(302, { location: roleHome(user) });
       res.end();
       return;
@@ -2853,6 +3054,9 @@ function isPitchdayAllowedApiRequest(method, pathname) {
   if (method === "GET" && pathname === "/api/tablet/status") return true;
   if (method === "POST" && pathname === "/api/tablet/tickets") return true;
   if (method === "GET" && pathname === "/api/tablet/print-job") return true;
+  if (method === "GET" && ["/api/display/state", "/api/tv/media"].includes(pathname)) return true;
+  if (["GET", "HEAD"].includes(method) && /^\/api\/tv\/media\/[0-9a-f-]{36}\/stream$/i.test(pathname)) return true;
+  if (method === "POST" && pathname === "/api/sectors/pitch-day/call-control") return true;
   return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(pathname);
 }
 
@@ -4566,7 +4770,7 @@ function getMetrics(metricsDate = businessDateFor()) {
     const finished = db.prepare("SELECT COUNT(*) AS total FROM tickets WHERE sector_id = ? AND status = 'atendido' AND finished_at >= ? AND finished_at < ?").get(sector.id, start, end).total;
     const expired = db.prepare("SELECT COUNT(*) AS total FROM tickets WHERE sector_id = ? AND status = 'expirado' AND expired_at >= ? AND expired_at < ?").get(sector.id, start, end).total;
     const canceled = db.prepare("SELECT COUNT(*) AS total FROM tickets WHERE sector_id = ? AND status = 'cancelado' AND canceled_at >= ? AND canceled_at < ?").get(sector.id, start, end).total;
-    const abandoned = expired + canceled;
+    const abandoned = db.prepare("SELECT COUNT(*) AS total FROM tickets WHERE sector_id = ? AND status = 'cancelado' AND cancellation_reason = 'no_show' AND canceled_at >= ? AND canceled_at < ?").get(sector.id, start, end).total;
     const smartWaitRows = db.prepare("SELECT smart_wait_since, called_at FROM tickets WHERE sector_id = ? AND smart_wait_since IS NOT NULL AND called_at >= ? AND called_at < ?").all(sector.id, start, end);
     const avgSmartWaitSeconds = average(smartWaitRows.map((row) => secondsBetween(row.smart_wait_since, row.called_at || isoNow())));
     const serviceRows = db.prepare("SELECT service_started_at, finished_at FROM tickets WHERE sector_id = ? AND service_started_at IS NOT NULL AND finished_at >= ? AND finished_at < ?").all(sector.id, start, end);
@@ -4577,6 +4781,8 @@ function getMetrics(metricsDate = businessDateFor()) {
       issued,
       finished,
       abandoned,
+      cancellations: canceled,
+      expired,
       avgServiceSeconds,
       serviceSamples: serviceRows.length,
       avgSmartWaitSeconds

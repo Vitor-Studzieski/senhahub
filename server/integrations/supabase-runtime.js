@@ -81,6 +81,7 @@ const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
   "devices",
   "events",
   "login_attempts",
+  "manager_actions",
   "print_devices",
   "print_job_attempts",
   "print_jobs",
@@ -96,7 +97,12 @@ const SERVICE_ROLE_TABLE_ALLOWLIST = new Set([
   "security_rate_limits",
   "sectors",
   "services",
+  "service_accessibility_events",
+  "service_sla_targets",
   "shopping_signals",
+  "staff_presence",
+  "store_operating_costs",
+  "stores",
   "ticket_counters",
   "tickets",
   "tv_media",
@@ -334,11 +340,19 @@ async function handleRequestInternal(request, context = null) {
     if (request.method === "DELETE" && url.pathname === "/api/push/unsubscribe") return pushUnsubscribeRoute(request);
     if (request.method === "PATCH" && url.pathname === "/api/push/preferences") return pushPreferencesRoute(request);
     if (request.method === "POST" && url.pathname === "/api/push/test") return pushTestRoute(request);
+    if (request.method === "POST" && url.pathname === "/api/push/click") return pushClickRoute(request);
+    if (request.method === "POST" && url.pathname === "/api/analytics/events") return acquisitionEventRoute(request);
     if (request.method === "GET" && url.pathname === "/api/events") return events(request, url);
     if (request.method === "POST" && url.pathname === "/api/sessions") return sessions(request);
     if (request.method === "GET" && url.pathname === "/api/state") return state(request);
     if (request.method === "GET" && url.pathname === "/api/history") return history(request);
     if (request.method === "GET" && url.pathname === "/api/staff/state") return staffState(request);
+    if (request.method === "POST" && url.pathname === "/api/staff/presence") return staffPresenceRoute(request);
+    if (request.method === "POST" && url.pathname === "/api/tickets/accessibility") return accessibilityRoute(request);
+    if (["GET", "POST"].includes(request.method) && url.pathname === "/api/manager/actions") return managerActionsRoute(request);
+    const managerActionMatch = url.pathname.match(/^\/api\/manager\/actions\/([0-9a-f-]{36})$/i);
+    if (request.method === "PATCH" && managerActionMatch) return updateManagerActionRoute(request, managerActionMatch[1]);
+    if (["GET", "PUT"].includes(request.method) && url.pathname === "/api/manager/configuration") return managerConfigurationRoute(request);
     if (request.method === "GET" && url.pathname === "/api/display/state") return displayState(request);
     if (request.method === "GET" && url.pathname === "/api/metrics") return metrics(request);
     if (request.method === "GET" && url.pathname === "/api/printer-paper-rolls") return printerPaperRolls(request);
@@ -653,9 +667,11 @@ async function logout(request) {
 
 async function me(request) {
   const user = await getAuthUser(request);
+  const pitchdayTvAccount = isPitchdayTvUser(user);
+  const pitchdayMediaTargetId = pitchdayTvAccount ? await pitchdayTvMediaTargetUserId(user) : null;
   const tvDisplayAccess = user && ["customer", "tv"].includes(normalizeRole(user.role))
     ? await hasTargetedTvMedia(user.id)
-    : false;
+    : Boolean(pitchdayMediaTargetId && await hasTargetedTvMedia(pitchdayMediaTargetId));
   return json({
     user: user ? { ...userDto(user), tvDisplayAccess } : null,
     csrfToken: user?.csrf_token || null
@@ -670,15 +686,32 @@ async function hasTargetedTvMedia(userId) {
   return rows.length > 0;
 }
 
+function isPitchdayTvUser(user) {
+  return String(user?.email || "").trim().toLowerCase() === PITCHDAY_LIMITED_EMAIL;
+}
+
+async function pitchdayTvMediaTargetUserId(user) {
+  if (!isPitchdayTvUser(user)) return null;
+  const profile = (await select(
+    "profiles",
+    `select=id&email=eq.${encodeURIComponent("pitchday.tv@superpompeia.com")}&status=eq.active&limit=1`
+  ))[0];
+  return profile?.id || user.id;
+}
+
 async function tvMediaListRoute(request, url) {
   const manage = url.searchParams.get("manage") === "1";
   const user = await requireUser(request, manage ? MEDIA_MANAGEMENT_ROLES : AUTHENTICATED_ROLES);
   if (user.response) return user.response;
+  const pitchdayTvAccount = !manage && isPitchdayTvUser(user);
+  const pitchdayMediaTargetId = pitchdayTvAccount ? await pitchdayTvMediaTargetUserId(user) : null;
   const canSeeSharedPlaylist = DISPLAY_ROLES.includes(user.role);
   const hasDedicatedTvPlaylist = !manage && user.role === "tv" && await hasTargetedTvMedia(user.id);
   const visibilityFilter = manage
     ? ""
-    : hasDedicatedTvPlaylist
+    : pitchdayTvAccount
+      ? `&target_user_id=eq.${encodeURIComponent(pitchdayMediaTargetId || user.id)}`
+      : hasDedicatedTvPlaylist
       ? `&target_user_id=eq.${encodeURIComponent(user.id)}`
       : canSeeSharedPlaylist
         ? `&or=(target_user_id.is.null,target_user_id.eq.${encodeURIComponent(user.id)})`
@@ -1369,7 +1402,7 @@ async function createPhysicalTicketRoute(request) {
     code: result.ticket.code,
     kioskId: kiosk.kioskId,
     printJobId: result.printJob?.id
-  });
+  }, { originChannel: "kiosk", storeCode: configuredKiosk.store_code });
   return json({
     ticket: await safeTicketDto(result.ticket),
     printJob: printJobDto(result.printJob),
@@ -1412,7 +1445,7 @@ async function createPhysicalTicketBundleRoute(kiosk, body) {
       kioskId: kiosk.kioskId,
       printJobId: result.printJob?.id,
       bundle: true
-    });
+    }, { originChannel: "kiosk", storeCode: configuredKiosk.store_code });
   }
   return json({
     ticket: tickets[0],
@@ -1754,6 +1787,281 @@ async function pushTestRoute(request) {
   return json({ ok: delivery.status !== "failed", delivery }, delivery.status === "failed" ? 502 : 200);
 }
 
+async function pushClickRoute(request) {
+  const user = await requireUser(request, CUSTOMER_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  if (!verifyPushRequestOrigin(request)) return json({ error: "Origem da requisição não autorizada." }, 403);
+  const body = await readJson(request);
+  const eventId = cleanId(body.eventId);
+  if (!isUuid(eventId)) return json({ error: "Evento de notificação inválido." }, 400);
+  const rows = await select("push_notification_events", `id=eq.${encodeURIComponent(eventId)}&user_id=eq.${encodeURIComponent(user.id)}&status=in.(sent,partial)&select=id,clicked_at&limit=1`);
+  if (!rows[0]) return json({ recorded: false });
+  if (!rows[0].clicked_at) await update("push_notification_events", eventId, { clicked_at: isoNow(), updated_at: isoNow() });
+  return json({ recorded: true });
+}
+
+async function acquisitionEventRoute(request) {
+  if (!sameOriginRequest(request)) return json({ error: "Origem da requisição não autorizada." }, 403);
+  const body = await readJson(request);
+  const eventType = String(body.type || "").trim();
+  const eventChannels = new Map([["qr_landing", "qr"], ["pwa_installed", "app"]]);
+  const originChannel = eventChannels.get(eventType);
+  const idempotencyKey = cleanId(body.idempotencyKey);
+  if (!originChannel || !/^[A-Za-z0-9_-]{12,160}$/.test(idempotencyKey)) {
+    return json({ error: "Evento de aquisição inválido." }, 400);
+  }
+  const rateLimit = await consumeSecurityRateLimit("analytics:acquisition", clientIp(request), 40, 60);
+  if (rateLimit !== true) return json({ error: rateLimit === false ? "Limite de eventos atingido." : "Registro temporariamente indisponível." }, rateLimit === false ? 429 : 503);
+  const sectorId = cleanId(body.sectorId);
+  const sector = sectorId ? await getSector(sectorId) : null;
+  const event = await insert("events", {
+    type: eventType,
+    entity_type: "acquisition",
+    entity_id: idempotencyKey,
+    sector_id: sector?.id || null,
+    store_code: sector?.store_code || null,
+    origin_channel: originChannel,
+    idempotency_key: idempotencyKey,
+    payload: { landing: true },
+    created_at: isoNow()
+  }, false).then(() => true).catch((error) => {
+    if (/23505|duplicate key/i.test(String(error?.message || error))) return false;
+    throw error;
+  });
+  return json({ recorded: event });
+}
+
+async function staffPresenceRoute(request) {
+  const user = await requireUser(request, STAFF_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  const body = await readJson(request);
+  const status = String(body.status || "").trim().toLowerCase();
+  if (!new Set(["available", "break", "offline"]).has(status)) return json({ error: "Status de presença inválido." }, 400);
+  const open = (await select("staff_presence", `profile_id=eq.${encodeURIComponent(user.id)}&ended_at=is.null&limit=1`))[0];
+  if (status === "offline") {
+    if (open) await update("staff_presence", open.id, { ended_at: isoNow(), last_seen_at: isoNow() });
+    return json({ status: "offline" });
+  }
+  const sector = user.sectorIds?.length ? await getSector(user.sectorIds[0]) : null;
+  const storeCode = normalizeStoreCode(user.storeCode || sector?.store_code);
+  if (!storeCode) return json({ error: "Associe a equipe a uma loja antes de registrar a presença." }, 400);
+  const now = isoNow();
+  if (open?.status === status) {
+    await update("staff_presence", open.id, { last_seen_at: now });
+    return json({ status, storeCode, sectorId: open.sector_id || null });
+  }
+  if (open) await update("staff_presence", open.id, { ended_at: now, last_seen_at: now });
+  const row = await insert("staff_presence", {
+    profile_id: user.id,
+    store_code: storeCode,
+    sector_id: sector?.id || null,
+    status,
+    started_at: now,
+    last_seen_at: now
+  });
+  await registerEvent("staff_presence_changed", "staff", user.id, null, sector?.id || null, { status }, {
+    actorId: user.id,
+    storeCode
+  });
+  return json({ id: row.id, status, storeCode, sectorId: sector?.id || null });
+}
+
+async function accessibilityRoute(request) {
+  const user = await requireUser(request, STAFF_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  const body = await readJson(request);
+  const ticketId = cleanId(body.ticketId);
+  if (!isUuid(ticketId)) return json({ error: "Senha inválida." }, 400);
+  const ticket = await getTicket(ticketId);
+  if (!ticket) return json({ error: "Senha não encontrada." }, 404);
+  if (!(await canAccessSector(user, ticket.sector_id))) return json({ error: "Usuário sem permissão para este setor." }, 403);
+  if (!["chamado", "em_atendimento", "atendido"].includes(ticket.status)) return json({ error: "Registre os recursos após a chamada da senha." }, 400);
+  const allowed = new Set(["libras", "texto_visual", "modo_silencioso", "audio", "mobilidade", "outro"]);
+  const supports = [...new Set((Array.isArray(body.supports) ? body.supports : []).map((item) => String(item || "").trim().toLowerCase()))];
+  const action = String(body.action || "provided").trim().toLowerCase();
+  if (!supports.length || supports.length > 6 || supports.some((support) => !allowed.has(support))
+    || !new Set(["requested", "provided", "unavailable"]).has(action)) {
+    return json({ error: "Selecione recursos e situação válidos." }, 400);
+  }
+  const service = (await select("services", `ticket_id=eq.${encodeURIComponent(ticketId)}&order=started_at.desc&limit=1`))[0];
+  let recorded = 0;
+  for (const support of supports) {
+    try {
+      await insert("service_accessibility_events", {
+        ticket_id: ticketId,
+        service_id: service?.id || null,
+        sector_id: ticket.sector_id,
+        actor_id: user.id,
+        support_code: support,
+        action,
+        occurred_at: isoNow()
+      }, false);
+      recorded += 1;
+    } catch (error) {
+      if (!/23505|duplicate key/i.test(String(error?.message || error))) throw error;
+    }
+  }
+  await registerEvent(`accessibility_support_${action}`, "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { supports }, { actorId: user.id });
+  return json({ ticketId, action, recorded, supports });
+}
+
+async function managerActionsRoute(request) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+  if (request.method === "GET") {
+    const rows = await selectRequired("manager_actions", "select=*&order=status.asc,due_at.asc.nullslast,created_at.desc&limit=500");
+    return json({ actions: rows });
+  }
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  const body = await readJson(request);
+  const title = cleanLimitedText(body.title, 160);
+  const description = cleanLimitedText(body.description, 1000) || null;
+  const priority = String(body.priority || "medium").trim().toLowerCase();
+  const status = String(body.status || "planned").trim().toLowerCase();
+  if (!title || !new Set(["low", "medium", "high"]).has(priority) || !new Set(["planned", "in_progress", "done", "dismissed"]).has(status)) {
+    return json({ error: "Informe um título e valores válidos de prioridade e status." }, 400);
+  }
+  const storeCode = normalizeStoreCode(body.storeCode);
+  if (body.storeCode && !storeCode) return json({ error: "Código de loja inválido." }, 400);
+  const sectorId = cleanId(body.sectorId) || null;
+  const sector = sectorId ? await getSector(sectorId) : null;
+  if (sectorId && (!sector || !canAccessSectorSync(user, sectorId))) return json({ error: "Setor não encontrado ou sem permissão." }, 403);
+  if (sector && storeCode && sector.store_code !== storeCode) return json({ error: "O setor não pertence à loja selecionada." }, 400);
+  const assignedTo = cleanId(body.assignedTo);
+  if (assignedTo && !isUuid(assignedTo)) return json({ error: "Responsável inválido." }, 400);
+  if (assignedTo) {
+    const assignee = (await selectRequired("profiles", `id=eq.${encodeURIComponent(assignedTo)}&status=eq.active&select=id,role&limit=1`))[0];
+    if (!assignee || !["attendant", "manager", "admin"].includes(assignee.role)) return json({ error: "O responsável precisa ser um integrante ativo da equipe." }, 400);
+  }
+  const dueAt = body.dueAt ? new Date(body.dueAt) : null;
+  if (body.dueAt && !Number.isFinite(dueAt.getTime())) return json({ error: "Prazo inválido." }, 400);
+  const recommendationCode = cleanLimitedText(body.recommendationCode, 80) || null;
+  const createdAt = isoNow();
+  const row = await insert("manager_actions", {
+    title,
+    description,
+    recommendation_code: recommendationCode,
+    status,
+    priority,
+    store_code: storeCode || sector?.store_code || null,
+    sector_id: sectorId,
+    assigned_to: assignedTo,
+    due_at: dueAt?.toISOString() || null,
+    created_by: user.id,
+    completed_at: status === "done" ? createdAt : null,
+    created_at: createdAt,
+    updated_at: createdAt
+  });
+  await registerEvent("manager_action_created", "manager_action", row.id, null, sectorId, { status, priority }, { actorId: user.id, storeCode: storeCode || sector?.store_code || null });
+  return json({ action: row }, 201, { "cache-control": "no-store" });
+}
+
+async function updateManagerActionRoute(request, actionId) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  const action = (await selectRequired("manager_actions", `id=eq.${encodeURIComponent(actionId)}&limit=1`))[0];
+  if (!action) return json({ error: "Ação não encontrada." }, 404);
+  if (action.sector_id && !canAccessSectorSync(user, action.sector_id)) return json({ error: "Sem permissão para esta ação." }, 403);
+  const body = await readJson(request);
+  const patch = { updated_at: isoNow() };
+  if (body.status !== undefined) {
+    const status = String(body.status || "").trim().toLowerCase();
+    if (!new Set(["planned", "in_progress", "done", "dismissed"]).has(status)) return json({ error: "Status de ação inválido." }, 400);
+    patch.status = status;
+    patch.completed_at = status === "done" ? action.completed_at || isoNow() : null;
+  }
+  if (body.priority !== undefined) {
+    const priority = String(body.priority || "").trim().toLowerCase();
+    if (!new Set(["low", "medium", "high"]).has(priority)) return json({ error: "Prioridade inválida." }, 400);
+    patch.priority = priority;
+  }
+  if (body.title !== undefined) {
+    const title = cleanLimitedText(body.title, 160);
+    if (!title) return json({ error: "O título da ação não pode ficar vazio." }, 400);
+    patch.title = title;
+  }
+  if (body.description !== undefined) patch.description = cleanLimitedText(body.description, 1000) || null;
+  if (body.dueAt !== undefined) {
+    const dueAt = body.dueAt ? new Date(body.dueAt) : null;
+    if (body.dueAt && !Number.isFinite(dueAt.getTime())) return json({ error: "Prazo inválido." }, 400);
+    patch.due_at = dueAt?.toISOString() || null;
+  }
+  const updated = await update("manager_actions", action.id, patch);
+  await registerEvent("manager_action_updated", "manager_action", action.id, null, action.sector_id, { fields: Object.keys(patch) }, { actorId: user.id, storeCode: action.store_code });
+  return json({ action: updated }, 200, { "cache-control": "no-store" });
+}
+
+async function managerConfigurationRoute(request) {
+  const user = await requireUser(request, ADMIN_ROLES);
+  if (user.response) return user.response;
+  if (request.method === "GET") return json(await getManagerConfiguration(), 200, { "cache-control": "no-store" });
+  if (!(await verifyCsrf(request, user))) return json({ error: "Token de segurança inválido. Recarregue a página e tente novamente." }, 403);
+  const body = await readJson(request);
+  const storeCode = normalizeStoreCode(body.storeCode);
+  if (!storeCode) return json({ error: "Selecione uma loja válida." }, 400);
+  const store = (await selectRequired("stores", `store_code=eq.${encodeURIComponent(storeCode)}&active=eq.true&limit=1`))[0];
+  if (!store) return json({ error: "Loja não encontrada ou inativa." }, 404);
+  const sectorId = cleanId(body.sectorId) || null;
+  const sector = sectorId ? await getSector(sectorId) : null;
+  if (sectorId && (!sector || sector.store_code !== storeCode || !canAccessSectorSync(user, sectorId))) {
+    return json({ error: "O setor não pertence à loja ou está fora da sua permissão." }, 403);
+  }
+  const changed = [];
+  if (body.sla !== undefined) {
+    if (!body.sla || typeof body.sla !== "object" || Array.isArray(body.sla)) return json({ error: "Metas de SLA inválidas." }, 400);
+    const targetWaitSeconds = body.sla.targetWaitSeconds == null || body.sla.targetWaitSeconds === "" ? null : Number(body.sla.targetWaitSeconds);
+    const targetServiceSeconds = body.sla.targetServiceSeconds == null || body.sla.targetServiceSeconds === "" ? null : Number(body.sla.targetServiceSeconds);
+    if ([targetWaitSeconds, targetServiceSeconds].some((value) => value !== null && (!Number.isInteger(value) || value <= 0 || value > 86400))
+      || (targetWaitSeconds === null && targetServiceSeconds === null)) {
+      return json({ error: "Informe ao menos uma meta em segundos, entre 1 e 86.400." }, 400);
+    }
+    const sectorFilter = sectorId ? `sector_id=eq.${encodeURIComponent(sectorId)}` : "sector_id=is.null";
+    const existing = (await selectRequired("service_sla_targets", `store_code=eq.${encodeURIComponent(storeCode)}&${sectorFilter}&active=eq.true&limit=1`))[0];
+    const targetRow = {
+      store_code: storeCode,
+      sector_id: sectorId,
+      target_wait_seconds: targetWaitSeconds,
+      target_service_seconds: targetServiceSeconds,
+      active: true,
+      updated_by: user.id,
+      updated_at: isoNow()
+    };
+    if (existing) await update("service_sla_targets", existing.id, targetRow);
+    else await insert("service_sla_targets", targetRow);
+    changed.push("sla");
+  }
+  if (body.attendantHourlyCost !== undefined) {
+    const hourlyCost = Number(body.attendantHourlyCost);
+    if (!Number.isFinite(hourlyCost) || hourlyCost <= 0 || hourlyCost > 100000) return json({ error: "Informe um custo-hora válido." }, 400);
+    const currentCost = (await selectRequired("store_operating_costs", `store_code=eq.${encodeURIComponent(storeCode)}&valid_until=is.null&limit=1`))[0];
+    if (currentCost) await update("store_operating_costs", currentCost.id, { attendant_hourly_cost: hourlyCost, updated_by: user.id });
+    else await insert("store_operating_costs", { store_code: storeCode, attendant_hourly_cost: hourlyCost, updated_by: user.id });
+    changed.push("attendantHourlyCost");
+  }
+  if (!changed.length) return json({ error: "Nenhum campo de configuração foi enviado." }, 400);
+  await registerEvent("manager_capture_configuration_updated", "store", storeCode, null, sectorId, { fields: changed }, { actorId: user.id, storeCode });
+  return json(await getManagerConfiguration(), 200, { "cache-control": "no-store" });
+}
+
+async function getManagerConfiguration() {
+  const [stores, sectors, targets, costs] = await Promise.all([
+    selectRequired("stores", "active=eq.true&select=store_code,name&order=store_code.asc"),
+    selectRequired("sectors", "select=id,name,store_code,status&order=store_code.asc,name.asc"),
+    selectRequired("service_sla_targets", "active=eq.true&select=id,store_code,sector_id,target_wait_seconds,target_service_seconds&order=store_code.asc"),
+    selectRequired("store_operating_costs", "valid_until=is.null&select=id,store_code,attendant_hourly_cost,valid_from&order=store_code.asc")
+  ]);
+  return {
+    stores,
+    sectors,
+    slaTargets: targets,
+    operatingCosts: costs
+  };
+}
+
 async function events(request, url) {
   const roles = url.searchParams.get("scope") === "staff" ? STAFF_ROLES : CUSTOMER_ROLES;
   const result = await requireUser(request, roles);
@@ -1858,6 +2166,11 @@ async function tabletTickets(request) {
     return json({ error: "Não foi possível colocar a senha na fila de impressão." }, 400);
   }
 
+  if (result.ticket.origin_channel !== "panel") {
+    await update("tickets", result.ticket.id, { origin_channel: "panel", updated_at: isoNow() });
+    result.ticket.origin_channel = "panel";
+  }
+
   const ticket = {
     id: result.ticket.id,
     ticketNumber: result.ticket.number,
@@ -1877,7 +2190,7 @@ async function tabletTickets(request) {
     tabletUserId: user.id,
     kioskId: configuredKiosk.id,
     printJobId: result.printJob?.id
-  }).catch((error) => console.error("tablet_print_event_failed", error));
+  }, { actorId: user.id, originChannel: "panel", storeCode: configuredKiosk.store_code }).catch((error) => console.error("tablet_print_event_failed", error));
   return json({
     source: "supabase",
     ticket,
@@ -1916,10 +2229,19 @@ async function displayState(request) {
   const user = await requireUser(request, AUTHENTICATED_ROLES);
   if (user.response) return user.response;
   const canReadTargetedDisplay = user.role === "customer" && await hasTargetedTvMedia(user.id);
-  if (!DISPLAY_ROLES.includes(user.role) && !canReadTargetedDisplay) {
+  const pitchdayTvAccount = isPitchdayTvUser(user) && user.role === "tablet";
+  if (!DISPLAY_ROLES.includes(user.role) && !canReadTargetedDisplay && !pitchdayTvAccount) {
     return json({ error: "Acesso negado." }, 403);
   }
-  return json({ source: "supabase", ...sanitizeDisplayState(await getStaffState(user)) }, 200, { "cache-control": "no-store" });
+  if (pitchdayTvAccount && !canAccessSectorSync(user, "pitch-day")) {
+    return json({ error: "Esta conta não está vinculada ao setor Pitch Day." }, 403);
+  }
+  const displayUser = pitchdayTvAccount ? { ...user, sectorIds: ["pitch-day"] } : user;
+  const displayState = await getStaffState(displayUser);
+  const sectors = pitchdayTvAccount
+    ? displayState.sectors.filter((sector) => sector.id === "pitch-day")
+    : displayState.sectors;
+  return json({ source: "supabase", ...sanitizeDisplayState({ ...displayState, sectors }) }, 200, { "cache-control": "no-store" });
 }
 
 async function metrics(request) {
@@ -2186,7 +2508,8 @@ async function confirmTicketRoute(request, ticketId) {
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canOperateOnTicket(user, ticketId))) return json({ error: "Acesso negado." }, 403);
-  const result = await confirmTicket(ticketId);
+  const actorId = STAFF_ROLES.includes(normalizeRole(user.role)) ? user.id : null;
+  const result = await confirmTicket(ticketId, actorId);
   return json(result, result.error ? 400 : 200);
 }
 
@@ -2195,7 +2518,8 @@ async function finishTicketRoute(request, ticketId) {
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canOperateOnTicket(user, ticketId))) return json({ error: "Acesso negado." }, 403);
-  const result = await finishTicket(ticketId);
+  const actorId = STAFF_ROLES.includes(normalizeRole(user.role)) ? user.id : null;
+  const result = await finishTicket(ticketId, actorId);
   return json(result, result.error ? 400 : 200);
 }
 
@@ -2206,7 +2530,7 @@ async function skipTicketRoute(request, ticketId) {
   const ticket = await getTicket(ticketId);
   if (!ticket) return json({ error: "Senha nao encontrada." }, 404);
   if (!(await canAccessSector(user, ticket.sector_id))) return json({ error: "Usuario sem permissao para este setor." }, 403);
-  const result = await skipTicket(ticketId, await readJson(request));
+  const result = await skipTicket(ticketId, await readJson(request), user.id);
   return json(result, result.error ? 400 : 200);
 }
 
@@ -2223,18 +2547,28 @@ async function callNextRoute(request, sectorId) {
   if (user.response) return user.response;
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
-  let result = await callNextTicket(sectorId);
-  if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true });
+  let result = await callNextTicket(sectorId, { actorId: user.id });
+  if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true, actorId: user.id });
   return json(result, result.error ? 400 : 200);
 }
 
 async function callControlRoute(request, sectorId) {
-  const user = await requireUser(request, CALL_CONTROL_ROLES);
+  const user = await requireUser(request, AUTHENTICATED_ROLES);
   if (user.response) return user.response;
+  const pitchdayTvAccount = isPitchdayTvUser(user) && user.role === "tablet";
+  if (!CALL_CONTROL_ROLES.includes(user.role) && !pitchdayTvAccount) {
+    return json({ error: "Acesso negado." }, 403);
+  }
+  if (pitchdayTvAccount && sectorId !== "pitch-day") {
+    return json({ error: "Esta conta só pode controlar o setor Pitch Day." }, 403);
+  }
   if (!(await verifyCsrf(request, user))) return json({ error: "Token de seguranca invalido. Recarregue a pagina e tente novamente." }, 403);
   if (!(await canAccessSector(user, sectorId))) return json({ error: "Usuario sem permissao para este setor." }, 403);
   const body = await readJson(request);
-  const result = await callControlTicket(sectorId, body?.action);
+  if (pitchdayTvAccount && body?.action !== "next") {
+    return json({ error: "Esta conta só pode chamar a próxima senha." }, 403);
+  }
+  const result = await callControlTicket(sectorId, body?.action, user.id);
   return json(result, result.error ? 400 : 200);
 }
 
@@ -2297,6 +2631,16 @@ async function createTicket(body) {
     p_max_active_tickets: MAX_ACTIVE_TICKETS_PER_CUSTOMER
   });
   if (!row || row.error) return fail("Nao foi possivel emitir a senha agora.");
+  const originChannel = normalizeTicketOriginChannel(body.originChannel);
+  if (row.origin_channel !== originChannel) {
+    try {
+      await update("tickets", row.id, { origin_channel: originChannel, updated_at: isoNow() });
+      row.origin_channel = originChannel;
+    } catch (error) {
+      if (!isMissingSchemaField(error, "origin_channel")) throw error;
+      logStructured("warn", "manager.capture_schema_pending", { field: "tickets.origin_channel" });
+    }
+  }
   const eventPayload = {
     code: row.code,
     priority,
@@ -2308,7 +2652,7 @@ async function createTicket(body) {
   };
   const ticket = safeTicketDto(row);
   await Promise.all([
-    registerEvent("senha_emitida", "ticket", row.id, row.customer_id, row.sector_id, eventPayload),
+    registerEvent("senha_emitida", "ticket", row.id, row.customer_id, row.sector_id, eventPayload, { originChannel }),
     ticket
   ]);
   void notifyQueueMilestones(row.sector_id).catch((error) => console.error("ticket_milestone_notification_failed", error));
@@ -2474,10 +2818,18 @@ async function callNextTicket(sectorId, options = {}) {
   }
   if (called?.error) return fail("Não foi possível chamar a próxima senha.");
   if (called?.id) {
+    if (options.actorId && called.called_at) {
+      try {
+        await patchWhere("calls", `ticket_id=eq.${encodeURIComponent(called.id)}&action=eq.senha_chamada&created_at=eq.${encodeURIComponent(called.called_at)}`, { actor_id: options.actorId });
+      } catch (error) {
+        if (!isMissingSchemaField(error, "actor_id")) throw error;
+        logStructured("warn", "manager.capture_schema_pending", { field: "calls.actor_id" });
+      }
+    }
     const pushType = Number(called.absence_count || 0) > 0 ? "queue_recalled" : "queue_called";
     const ticket = safeTicketDto(called);
     await Promise.all([
-      registerEvent("senha_chamada", "ticket", called.id, called.customer_id, called.sector_id, { code: called.code }),
+      registerEvent("senha_chamada", "ticket", called.id, called.customer_id, called.sector_id, { code: called.code }, { actorId: options.actorId, originChannel: called.origin_channel }),
       dispatchTicketPush(called, pushType, `absence-${Number(called.absence_count || 0)}`),
       notifyQueueMilestones(sectorId)
     ]);
@@ -2486,12 +2838,12 @@ async function callNextTicket(sectorId, options = {}) {
   return { ticket: null, message: "Nenhuma senha elegivel para chamada." };
 }
 
-async function callControlTicket(sectorId, action) {
+async function callControlTicket(sectorId, action, actorId = null) {
   const normalizedAction = String(action || "").trim().toLowerCase();
   if (!["previous", "again", "next"].includes(normalizedAction)) return fail("Ação de chamada inválida.");
   if (normalizedAction === "next") {
-    let result = await callNextTicket(sectorId);
-    if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true });
+    let result = await callNextTicket(sectorId, { actorId });
+    if (!result.ticket && !result.error && sectorId !== "pitch-day") result = await callNextTicket(sectorId, { preferStandby: true, actorId });
     return result;
   }
 
@@ -2526,32 +2878,44 @@ async function callControlTicket(sectorId, action) {
       updated_at: now
     });
   }
-  await insert("calls", {
+  await insertOptionalColumn("calls", {
     ticket_id: ticket.id,
     sector_id: sectorId,
     action: "senha_chamada",
-    created_at: now
-  }, false);
+    created_at: now,
+    actor_id: actorId
+  }, "actor_id");
   await registerEvent("senha_chamada", "ticket", ticket.id, ticket.customer_id, sectorId, {
     code: ticket.code,
     controlAction: normalizedAction
-  });
+  }, { actorId, originChannel: ticket.origin_channel });
   const refreshed = await getTicket(ticket.id);
   await dispatchTicketPush(refreshed, "queue_recalled", `control-${normalizedAction}`);
   return { ticket: await safeTicketDto(refreshed) };
 }
 
-async function confirmTicket(ticketId) {
+async function confirmTicket(ticketId, actorId = null) {
   const updated = await rpc("confirm_ticket", { p_ticket_id: ticketId });
   if (!updated || updated.error) return fail("A senha nao esta mais disponivel para iniciar atendimento. Atualize a fila.");
-  await registerEvent("atendimento_iniciado", "ticket", updated.id, updated.customer_id, updated.sector_id, { code: updated.code });
+  if (actorId) {
+    const service = (await select("services", `ticket_id=eq.${encodeURIComponent(updated.id)}&finished_at=is.null&order=started_at.desc&limit=1`))[0];
+    if (service && service.attendant_id !== actorId) {
+      try {
+        await update("services", service.id, { attendant_id: actorId });
+      } catch (error) {
+        if (!isMissingSchemaField(error, "attendant_id")) throw error;
+        logStructured("warn", "manager.capture_schema_pending", { field: "services.attendant_id" });
+      }
+    }
+  }
+  await registerEvent("atendimento_iniciado", "ticket", updated.id, updated.customer_id, updated.sector_id, { code: updated.code }, { actorId });
   return { ticket: await safeTicketDto(updated) };
 }
 
-async function finishTicket(ticketId) {
+async function finishTicket(ticketId, actorId = null) {
   const finished = await rpc("finish_ticket", { p_ticket_id: ticketId });
   if (!finished || finished.error) return fail("A senha nao esta mais em atendimento. Atualize a fila.");
-  await registerEvent("pedido_finalizado", "ticket", finished.id, finished.customer_id, finished.sector_id, { code: finished.code });
+  await registerEvent("pedido_finalizado", "ticket", finished.id, finished.customer_id, finished.sector_id, { code: finished.code }, { actorId });
   const released = await releaseSmartWaitTicket(finished.customer_id);
   await notifyQueueMilestones(finished.sector_id);
   return {
@@ -2561,7 +2925,7 @@ async function finishTicket(ticketId) {
   };
 }
 
-async function skipTicket(ticketId, body = {}) {
+async function skipTicket(ticketId, body = {}, actorId = null) {
   const ticket = await getTicket(ticketId);
   if (!ticket) return fail("Senha nao encontrada.");
   if (!STAFF_SKIPPABLE_STATUSES.includes(ticket.status)) return fail("Esta senha nao pode ser pulada neste status.");
@@ -2587,6 +2951,7 @@ async function skipTicket(ticketId, body = {}) {
         status: nextStatus,
         absence_count: absenceCount,
         canceled_at: now,
+        cancellation_reason: reason === "erro_operacional" ? "operational_error" : "operator_request",
         called_at: null,
         smart_wait_reason: null,
         blocked_by_ticket_id: null,
@@ -2597,8 +2962,8 @@ async function skipTicket(ticketId, body = {}) {
       };
   const skipped = await updateTicketIfStatus(ticket.id, [ticket.status], patch);
   if (!skipped) return fail("A senha foi alterada por outra operacao. Atualize a fila.");
-  await insert("calls", { ticket_id: ticket.id, sector_id: ticket.sector_id, action: `senha_pulada:${reason}`, created_at: now });
-  await registerEvent("senha_pulada_pelo_atendente", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code, previousStatus: ticket.status, reason });
+  await insertOptionalColumn("calls", { ticket_id: ticket.id, sector_id: ticket.sector_id, action: `senha_pulada:${reason}`, created_at: now, actor_id: actorId }, "actor_id", false);
+  await registerEvent("senha_pulada_pelo_atendente", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code, previousStatus: ticket.status, reason }, { actorId, originChannel: ticket.origin_channel });
   if (reason === "cliente_ausente") {
     await dispatchTicketPush(skipped, "queue_standby", `absence-${absenceCount}`);
   } else {
@@ -2617,6 +2982,7 @@ async function cancelTicket(ticketId, customerId) {
   const canceled = await updateTicketIfStatus(ticket.id, [ticket.status], {
     status: "cancelado",
     canceled_at: now,
+    cancellation_reason: "customer_request",
     called_at: null,
     smart_wait_reason: null,
     blocked_by_ticket_id: null,
@@ -2624,7 +2990,7 @@ async function cancelTicket(ticketId, customerId) {
     updated_at: now
   });
   if (!canceled) return fail("A senha foi alterada por outra operacao. Atualize a fila.");
-  await registerEvent("senha_cancelada_pelo_cliente", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code, previousStatus: ticket.status });
+  await registerEvent("senha_cancelada_pelo_cliente", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code, previousStatus: ticket.status }, { originChannel: ticket.origin_channel });
   const released = CALL_BLOCKING_STATUSES.includes(ticket.status) ? await releaseSmartWaitTicket(ticket.customer_id) : null;
   await notifyQueueMilestones(ticket.sector_id);
   return { canceledTicket: await safeTicketDto(canceled), releasedTicket: released ? await safeTicketDto(released) : null };
@@ -2724,33 +3090,323 @@ async function getMetrics(metricsDate = businessDateFor()) {
   const { start, end } = businessDayBounds(metricsDate);
   const encodedStart = encodeURIComponent(start);
   const encodedEnd = encodeURIComponent(end);
-  const sectors = await mapAsync(await getSectors(), async (sector) => {
+  const measuredSectors = await mapAsync(await getSectors(), async (sector) => {
     const sectorFilter = `sector_id=eq.${encodeURIComponent(sector.id)}`;
     const issued = await count("tickets", `${sectorFilter}&created_at=gte.${encodedStart}&created_at=lt.${encodedEnd}`);
     const finished = await count("tickets", `${sectorFilter}&status=eq.atendido&finished_at=gte.${encodedStart}&finished_at=lt.${encodedEnd}`);
-    const [expired, canceled] = await Promise.all([
-      count("tickets", `${sectorFilter}&status=eq.expirado&expired_at=gte.${encodedStart}&expired_at=lt.${encodedEnd}`),
-      count("tickets", `${sectorFilter}&status=eq.cancelado&canceled_at=gte.${encodedStart}&canceled_at=lt.${encodedEnd}`)
+    const [smartWaitRows, waitRows, serviceRows] = await Promise.all([
+      select("tickets", `${sectorFilter}&smart_wait_since=not.is.null&called_at=gte.${encodedStart}&called_at=lt.${encodedEnd}&select=smart_wait_since,called_at`),
+      select("tickets", `${sectorFilter}&service_started_at=not.is.null&service_started_at=gte.${encodedStart}&service_started_at=lt.${encodedEnd}&select=created_at,service_started_at`),
+      select("tickets", `${sectorFilter}&service_started_at=not.is.null&finished_at=gte.${encodedStart}&finished_at=lt.${encodedEnd}&select=service_started_at,finished_at`)
     ]);
-    const abandoned = expired + canceled;
-    const smartWaitRows = await select("tickets", `${sectorFilter}&smart_wait_since=not.is.null&called_at=gte.${encodedStart}&called_at=lt.${encodedEnd}&select=smart_wait_since,called_at`);
-    const serviceRows = await select("tickets", `${sectorFilter}&service_started_at=not.is.null&finished_at=gte.${encodedStart}&finished_at=lt.${encodedEnd}&select=service_started_at,finished_at`);
     return {
       id: sector.id,
       name: sector.name,
+      storeCode: sector.store_code || null,
       issued,
       finished,
-      abandoned,
+      averageWaitSeconds: average(waitRows.map((row) => secondsBetween(row.created_at, row.service_started_at))),
+      waitSamples: waitRows.length,
       avgServiceSeconds: average(serviceRows.map((row) => secondsBetween(row.service_started_at, row.finished_at))),
       serviceSamples: serviceRows.length,
       avgSmartWaitSeconds: average(smartWaitRows.map((row) => secondsBetween(row.smart_wait_since, row.called_at || isoNow())))
     };
   });
+  let capture;
+  try {
+    capture = await getManagerCaptureMetrics(start, end, measuredSectors);
+  } catch (error) {
+    logStructured("warn", "manager.capture_metrics_unavailable", { error: errorDetails(error) });
+    capture = { available: false, setupRequired: true };
+  }
+  const sectors = measuredSectors.map((sector) => {
+    const abandoned = capture.cancellations?.bySector?.[sector.id];
+    return {
+      ...sector,
+      abandoned: capture.available && abandoned !== null && abandoned !== undefined ? Number(abandoned) : null
+    };
+  });
   return {
     date: metricsDate,
     sectors,
+    capture,
     satisfaction: satisfactionSummary(await select("ratings", `created_at=gte.${encodedStart}&created_at=lt.${encodedEnd}&select=score`)),
     generatedAt: isoNow()
+  };
+}
+
+async function getManagerCaptureMetrics(start, end, sectors = []) {
+  const from = encodeURIComponent(start);
+  const until = encodeURIComponent(end);
+  const activeCutoff = encodeURIComponent(new Date(Date.now() - 120_000).toISOString());
+  const [tickets, canceledTickets, acquisitionEvents, presence, presencePeriods, services, accessibilityEvents, ratings, pushes, actions, slaTargets, costRows, stores, calls] = await Promise.all([
+    selectRequired("tickets", `created_at=gte.${from}&created_at=lt.${until}&select=id,sector_id,customer_id,status,priority,origin_channel,cancellation_reason,created_at,called_at,service_started_at,finished_at`),
+    selectRequired("tickets", `canceled_at=gte.${from}&canceled_at=lt.${until}&status=eq.cancelado&select=id,sector_id,cancellation_reason,canceled_at`),
+    selectRequired("events", `created_at=gte.${from}&created_at=lt.${until}&type=in.(qr_landing,pwa_installed)&select=type,store_code,sector_id,origin_channel`),
+    selectRequired("staff_presence", `ended_at=is.null&last_seen_at=gte.${activeCutoff}&select=profile_id,store_code,sector_id,status,last_seen_at`),
+    selectRequired("staff_presence", `started_at=lt.${until}&or=(ended_at.is.null,ended_at.gt.${from})&select=profile_id,store_code,sector_id,status,started_at,ended_at,last_seen_at`),
+    selectRequired("services", `started_at=gte.${from}&started_at=lt.${until}&select=id,ticket_id,attendant_id,started_at,finished_at`),
+    selectRequired("service_accessibility_events", `occurred_at=gte.${from}&occurred_at=lt.${until}&select=ticket_id,support_code,action,sector_id`),
+    selectRequired("ratings", `created_at=gte.${from}&created_at=lt.${until}&select=ticket_id,score`),
+    selectRequired("push_notification_events", `created_at=gte.${from}&created_at=lt.${until}&status=in.(sent,partial)&select=id,status,clicked_at`),
+    selectRequired("manager_actions", `select=id,status,created_at,completed_at,title,description,priority,store_code,sector_id,due_at&order=status.asc,due_at.asc.nullslast,created_at.desc&limit=500`),
+    selectRequired("service_sla_targets", "active=eq.true&select=store_code,sector_id,target_wait_seconds,target_service_seconds"),
+    selectRequired("store_operating_costs", "valid_until=is.null&select=store_code,attendant_hourly_cost"),
+    selectRequired("stores", "active=eq.true&select=store_code,name"),
+    selectRequired("calls", `created_at=gte.${from}&created_at=lt.${until}&action=eq.senha_chamada&select=ticket_id,sector_id,created_at&order=created_at.asc&limit=10000`)
+  ]);
+
+  const channelCounts = Object.fromEntries(["app", "qr", "web", "kiosk", "panel", "unknown"].map((channel) => [
+    channel,
+    tickets.filter((ticket) => (ticket.origin_channel || "unknown") === channel).length
+  ]));
+  const customersByChannel = new Map();
+  const customerTicketCounts = new Map();
+  const sectorStoreCodes = new Map(sectors.map((sector) => [sector.id, sector.storeCode]));
+  const hourlyBySector = new Map();
+  const hourlyTickets = new Map();
+  const storeIssued = new Map();
+  for (const ticket of tickets) {
+    if (ticket.customer_id) {
+      customerTicketCounts.set(ticket.customer_id, (customerTicketCounts.get(ticket.customer_id) || 0) + 1);
+      const channelCustomers = customersByChannel.get(ticket.origin_channel || "unknown") || new Map();
+      channelCustomers.set(ticket.customer_id, (channelCustomers.get(ticket.customer_id) || 0) + 1);
+      customersByChannel.set(ticket.origin_channel || "unknown", channelCustomers);
+    }
+    const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: BUSINESS_TIME_ZONE, hour: "2-digit", hourCycle: "h23" }).format(new Date(ticket.created_at)));
+    hourlyTickets.set(hour, (hourlyTickets.get(hour) || 0) + 1);
+    const sectorHours = hourlyBySector.get(ticket.sector_id) || new Map();
+    sectorHours.set(hour, (sectorHours.get(hour) || 0) + 1);
+    hourlyBySector.set(ticket.sector_id, sectorHours);
+    const storeCode = sectorStoreCodes.get(ticket.sector_id) || "unassigned";
+    storeIssued.set(storeCode, (storeIssued.get(storeCode) || 0) + 1);
+  }
+  const cancellationReasons = Object.fromEntries([
+    "customer_request", "operator_request", "no_show", "standby_expired", "queue_reset", "operational_error", "duplicate", "unknown", "unclassified"
+  ].map((reason) => [reason, canceledTickets.filter((ticket) => (ticket.cancellation_reason || "unclassified") === reason).length]));
+  const cancellationsBySector = Object.fromEntries(sectors.map((sector) => {
+    const sectorCancellations = canceledTickets.filter((ticket) => ticket.sector_id === sector.id);
+    const reasonsComplete = sectorCancellations.every((ticket) => ticket.cancellation_reason && ticket.cancellation_reason !== "unknown");
+    return [sector.id, reasonsComplete
+      ? sectorCancellations.filter((ticket) => ticket.cancellation_reason === "no_show").length
+      : null];
+  }));
+  const attendantIds = [...new Set(services.map((service) => service.attendant_id).filter(Boolean))];
+  const profiles = attendantIds.length
+    ? await select("profiles", `id=in.(${attendantIds.map(encodeURIComponent).join(",")})&select=id,name`)
+    : [];
+  const attendantNames = new Map(profiles.map((profile) => [profile.id, profile.name || "Atendente"]));
+  const productivity = new Map();
+  for (const service of services) {
+    const key = service.attendant_id || "unassigned";
+    const row = productivity.get(key) || { attendantId: service.attendant_id || null, attendant: attendantNames.get(key) || "Sem atribuição", services: 0, completed: 0, serviceSeconds: [] };
+    row.services += 1;
+    if (service.started_at && service.finished_at) {
+      row.completed += 1;
+      row.serviceSeconds.push(secondsBetween(service.started_at, service.finished_at));
+    }
+    productivity.set(key, row);
+  }
+  const accessibleTicketIds = new Set(accessibilityEvents.filter((event) => event.action === "provided" && event.ticket_id).map((event) => event.ticket_id));
+  const accessibleRatings = ratings.filter((rating) => accessibleTicketIds.has(rating.ticket_id));
+  const accessibleScores = accessibleRatings.map((rating) => scoreNumber(rating.score)).filter((score) => score !== null);
+  const generalWaitSeconds = tickets.filter((ticket) => ticket.service_started_at)
+    .map((ticket) => secondsBetween(ticket.created_at, ticket.service_started_at));
+  const accessibleWaitSeconds = tickets.filter((ticket) => accessibleTicketIds.has(ticket.id) && ticket.service_started_at)
+    .map((ticket) => secondsBetween(ticket.created_at, ticket.service_started_at));
+  const completedPushes = pushes.filter((event) => event.status === "sent" || event.status === "partial");
+  const clickedPushes = completedPushes.filter((event) => Boolean(event.clicked_at)).length;
+  const calledTicketIds = new Set(calls.map((call) => call.ticket_id).filter(Boolean));
+  const noShowTicketIds = new Set(canceledTickets.filter((ticket) => ticket.cancellation_reason === "no_show").map((ticket) => ticket.id));
+  const noShows = [...noShowTicketIds].filter((ticketId) => calledTicketIds.has(ticketId)).length;
+  const classifiedCancellations = canceledTickets.filter((ticket) => ticket.cancellation_reason && ticket.cancellation_reason !== "unknown").length;
+  const cancellationReasonsComplete = classifiedCancellations === canceledTickets.length;
+  const activeActions = actions.filter((action) => action.status !== "dismissed");
+  const completedActions = actions.filter((action) => action.status === "done" && action.completed_at
+    && new Date(action.completed_at).getTime() >= new Date(start).getTime()
+    && new Date(action.completed_at).getTime() < new Date(end).getTime());
+  const storeNames = new Map(stores.map((store) => [store.store_code, store.name]));
+  const callsBySector = new Map();
+  for (const call of calls) {
+    const key = call.sector_id || "unassigned";
+    const rows = callsBySector.get(key) || [];
+    rows.push(call);
+    callsBySector.set(key, rows);
+  }
+  const callIntervals = [...callsBySector.values()].flatMap((rows) => {
+    rows.sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime());
+    return rows.slice(1).map((call, index) => secondsBetween(rows[index].created_at, call.created_at));
+  });
+  const sortedCallIntervals = [...callIntervals].sort((left, right) => left - right);
+  const medianCallIntervalSeconds = quantile(sortedCallIntervals, 0.5);
+  const p90CallIntervalSeconds = quantile(sortedCallIntervals, 0.9);
+  const selectedDate = String(start).slice(0, 10);
+  const sourceReconciliation = selectedDate === "2026-10-17" ? (() => {
+    const raw = {
+      issued: tickets.length,
+      priority: tickets.filter((ticket) => ticket.priority).length,
+      attendedFinal: tickets.filter((ticket) => ticket.status === "atendido").length,
+      waitingFinal: tickets.filter((ticket) => ["aguardando", "proximo"].includes(ticket.status)).length,
+      cancelledFinal: tickets.filter((ticket) => ticket.status === "cancelado").length,
+      calledTickets: new Set(calls.map((call) => call.ticket_id).filter(Boolean)).size,
+      measurableCallIntervals: callIntervals.length,
+      kiosk: channelCounts.kiosk,
+      unknownOrigin: channelCounts.unknown
+    };
+    const validated = {
+      issued: 131,
+      priority: 8,
+      attendedByCallSequence: 105,
+      attendedFinal: 1,
+      waitingFinal: 6,
+      cancelledFinal: 124,
+      queueResetCancellations: 26,
+      measurableCallIntervals: 103,
+      totem: 91,
+      digitalQrOrApp: 40
+    };
+    const mismatch = raw.issued !== validated.issued
+      || raw.priority !== validated.priority
+      || raw.attendedFinal !== validated.attendedFinal
+      || raw.waitingFinal !== validated.waitingFinal
+      || raw.cancelledFinal !== validated.cancelledFinal
+      || raw.calledTickets !== validated.attendedByCallSequence
+      || raw.measurableCallIntervals !== validated.measurableCallIntervals
+      || raw.kiosk !== validated.totem
+      || raw.unknownOrigin !== validated.digitalQrOrApp;
+    return { date: selectedDate, mismatch, raw, validated };
+  })() : null;
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  const presenceMsByStatus = presencePeriods.reduce((result, period) => {
+    const periodStart = new Date(period.started_at).getTime();
+    const lastSeen = new Date(period.last_seen_at || period.started_at).getTime();
+    const staleHeartbeatEnd = Number.isFinite(lastSeen) ? lastSeen + 120_000 : periodStart;
+    const periodEnd = period.ended_at ? new Date(period.ended_at).getTime() : Math.min(staleHeartbeatEnd, endMs);
+    if (!Number.isFinite(periodStart) || !Number.isFinite(periodEnd)) return result;
+    result[period.status] = (result[period.status] || 0) + Math.max(0, Math.min(periodEnd, endMs) - Math.max(periodStart, startMs));
+    return result;
+  }, {});
+  const totalServiceSeconds = services.reduce((total, service) => {
+    if (!service.started_at) return total;
+    const serviceStart = Math.max(startMs, new Date(service.started_at).getTime());
+    const serviceEndRaw = service.finished_at ? new Date(service.finished_at).getTime() : Date.now();
+    const serviceEnd = Math.min(endMs, serviceEndRaw);
+    if (!Number.isFinite(serviceStart) || !Number.isFinite(serviceEnd)) return total;
+    return total + Math.max(0, serviceEnd - serviceStart) / 1000;
+  }, 0);
+  const availableMs = Number(presenceMsByStatus.available || 0);
+  const breakMs = Number(presenceMsByStatus.break || 0);
+  const slaTargetBySector = new Map(slaTargets.filter((target) => target.sector_id).map((target) => [target.sector_id, target]));
+  const storeTargetByCode = new Map(slaTargets.filter((target) => !target.sector_id).map((target) => [target.store_code, target]));
+  const waitSlaSamples = [];
+  const serviceSlaSamples = [];
+  for (const ticket of tickets) {
+    const storeCode = sectorStoreCodes.get(ticket.sector_id);
+    const sectorTarget = slaTargetBySector.get(ticket.sector_id);
+    const storeTarget = storeTargetByCode.get(storeCode);
+    const waitTarget = sectorTarget?.target_wait_seconds ?? storeTarget?.target_wait_seconds;
+    const serviceTarget = sectorTarget?.target_service_seconds ?? storeTarget?.target_service_seconds;
+    if (ticket.service_started_at && waitTarget) {
+      waitSlaSamples.push(secondsBetween(ticket.created_at, ticket.service_started_at) <= Number(waitTarget));
+    }
+    if (ticket.finished_at && ticket.service_started_at && serviceTarget) {
+      serviceSlaSamples.push(secondsBetween(ticket.service_started_at, ticket.finished_at) <= Number(serviceTarget));
+    }
+  }
+  const slaSummary = (samples) => ({
+    samples: samples.length,
+    compliant: samples.filter(Boolean).length,
+    compliancePercent: samples.length ? Math.round(samples.filter(Boolean).length / samples.length * 1000) / 10 : null
+  });
+
+  return {
+    available: true,
+    channels: {
+      issuedTickets: channelCounts,
+      qrLandingEvents: acquisitionEvents.filter((event) => event.type === "qr_landing").length,
+      appInstallEvents: acquisitionEvents.filter((event) => event.type === "pwa_installed").length,
+      returningCustomerCount: [...customerTicketCounts.values()].filter((count) => count > 1).length,
+      returningCustomers: Object.fromEntries([...customersByChannel.entries()].map(([channel, customers]) => [
+        channel,
+        [...customers.values()].filter((count) => count > 1).length
+      ]))
+    },
+    cancellations: {
+      byReason: cancellationReasons,
+      bySector: cancellationsBySector,
+      noShows,
+      classified: classifiedCancellations,
+      total: canceledTickets.length,
+      noShowRate: calledTicketIds.size && cancellationReasonsComplete ? Math.round((noShows / calledTicketIds.size) * 1000) / 10 : null
+    },
+    hourly: {
+      tickets: [...hourlyTickets.entries()].sort(([left], [right]) => left - right).map(([hour, count]) => ({ hour, count })),
+      bySector: Object.fromEntries([...hourlyBySector.entries()].map(([sectorId, hours]) => [
+        sectorId,
+        [...hours.entries()].sort(([left], [right]) => left - right).map(([hour, count]) => ({ hour, count }))
+      ])),
+      byStore: [...storeIssued.entries()].map(([storeCode, issued]) => ({ storeCode, storeName: storeNames.get(storeCode) || storeCode, issued }))
+    },
+    team: {
+      activeNow: businessDateFor(start) === businessDateFor()
+        ? presence.filter((item) => item.status === "available").length
+        : null,
+      onBreakNow: businessDateFor(start) === businessDateFor()
+        ? presence.filter((item) => item.status === "break").length
+        : null,
+      availableHours: Math.round(availableMs / 360000) / 10,
+      breakHours: Math.round(breakMs / 360000) / 10,
+      occupancyPercent: availableMs ? Math.round(totalServiceSeconds / (availableMs / 1000) * 1000) / 10 : null,
+      productivity: [...productivity.values()].map(({ serviceSeconds, ...row }) => ({
+        ...row,
+        averageServiceSeconds: average(serviceSeconds)
+      }))
+    },
+    accessibility: {
+      provided: accessibilityEvents.filter((event) => event.action === "provided").length,
+      requested: accessibilityEvents.filter((event) => event.action === "requested").length,
+      unavailable: accessibilityEvents.filter((event) => event.action === "unavailable").length,
+      bySupport: Object.fromEntries(["libras", "texto_visual", "modo_silencioso", "audio", "mobilidade", "outro"].map((support) => [
+        support,
+        accessibilityEvents.filter((event) => event.support_code === support && event.action === "provided").length
+      ])),
+      satisfaction: accessibleScores.length ? Math.round((accessibleScores.reduce((sum, score) => sum + score, 0) / accessibleScores.length) * 10) / 10 : null,
+      satisfactionSamples: accessibleScores.length,
+      wait: {
+        generalAverageSeconds: average(generalWaitSeconds),
+        generalSamples: generalWaitSeconds.length,
+        accessibleAverageSeconds: average(accessibleWaitSeconds),
+        accessibleSamples: accessibleWaitSeconds.length
+      }
+    },
+    notifications: {
+      sent: completedPushes.length,
+      opened: clickedPushes,
+      openRate: completedPushes.length ? Math.round((clickedPushes / completedPushes.length) * 1000) / 10 : null
+    },
+    calls: {
+      intervals: callIntervals.length,
+      averageIntervalSeconds: callIntervals.length ? average(callIntervals) : null,
+      medianIntervalSeconds: medianCallIntervalSeconds,
+      p90IntervalSeconds: p90CallIntervalSeconds,
+      maximumIntervalSeconds: sortedCallIntervals.length ? sortedCallIntervals[sortedCallIntervals.length - 1] : null
+    },
+    sourceReconciliation,
+    sla: {
+      wait: slaSummary(waitSlaSamples),
+      service: slaSummary(serviceSlaSamples)
+    },
+    actions: { active: activeActions.length, completed: completedActions.length, items: activeActions },
+    configuration: {
+      stores: stores.length,
+      storesWithOperatingCost: new Set(costRows.map((row) => row.store_code)).size,
+      configuredSlaScopes: slaTargets.length,
+      storeList: stores,
+      sectors: sectors.map((sector) => ({ id: sector.id, name: sector.name, storeCode: sector.storeCode, status: sector.status })),
+      slaTargets,
+      operatingCosts: costRows
+    }
   };
 }
 
@@ -3287,6 +3943,7 @@ async function expireAbsentCalls() {
         status: "cancelado",
         absence_count: absenceCount,
         canceled_at: now,
+        cancellation_reason: "no_show",
         called_at: null,
         standby_started_at: null,
         standby_expires_at: null,
@@ -3320,7 +3977,7 @@ async function expireExpiredStandbyTickets() {
   const now = isoNow();
   const expired = await select("tickets", `status=eq.standby&standby_expires_at=not.is.null&standby_expires_at=lt.${encodeURIComponent(now)}`);
   for (const ticket of expired) {
-    const updated = await updateTicketIfStatus(ticket.id, ["standby"], { status: "cancelado", canceled_at: now, standby_started_at: null, standby_expires_at: null, updated_at: now });
+    const updated = await updateTicketIfStatus(ticket.id, ["standby"], { status: "cancelado", canceled_at: now, cancellation_reason: "standby_expired", standby_started_at: null, standby_expires_at: null, updated_at: now });
     if (!updated) continue;
     await registerEvent("senha_cancelada_por_standby_expirado", "ticket", ticket.id, ticket.customer_id, ticket.sector_id, { code: ticket.code });
     await dispatchTicketPush(updated, "queue_standby_expired", `absence-${Number(ticket.absence_count || 0)}`);
@@ -3444,6 +4101,11 @@ async function canAccessSector(user, sectorId) {
 function normalizeStoreCode(value) {
   const storeCode = cleanId(value);
   return /^loja-[0-9]+$/.test(storeCode) ? storeCode : null;
+}
+
+function normalizeTicketOriginChannel(value) {
+  const channel = String(value || "").trim().toLowerCase();
+  return new Set(["app", "qr", "web", "kiosk", "panel"]).has(channel) ? channel : "unknown";
 }
 
 function kioskCanAccessSector(kiosk, sector) {
@@ -3764,14 +4426,26 @@ async function clearLoginFailures(key) {
   await supabaseFetch(`/rest/v1/login_attempts?attempt_key=eq.${encodeURIComponent(key)}`, { method: "DELETE" });
 }
 
-async function registerEvent(type, entityType, entityId, customerId, sectorId, payload = {}) {
+async function registerEvent(type, entityType, entityId, customerId, sectorId, payload = {}, metadata = {}) {
   try {
     const context = requestContextStorage.getStore();
     const taggedPayload = context?.loadTestRunId
       ? { ...payload, load_test_run_id: context.loadTestRunId }
       : payload;
     if (context?.loadTestRunId && entityType === "ticket" && !context.ticketId) context.ticketId = String(entityId).slice(0, 128);
-    await insert("events", { type, entity_type: entityType, entity_id: String(entityId), customer_id: customerId, sector_id: sectorId, payload: taggedPayload, created_at: isoNow() }, false);
+    const sector = !metadata.storeCode && sectorId ? await getSector(sectorId) : null;
+    await insert("events", {
+      type,
+      entity_type: entityType,
+      entity_id: String(entityId),
+      customer_id: customerId,
+      sector_id: sectorId,
+      actor_id: metadata.actorId || null,
+      store_code: metadata.storeCode || sector?.store_code || null,
+      origin_channel: metadata.originChannel || null,
+      payload: taggedPayload,
+      created_at: isoNow()
+    }, false);
   } catch (error) {
     console.error("event_register_failed", error);
   }
@@ -3783,6 +4457,16 @@ async function select(table, query = "") {
   const path = `/rest/v1/${table}${separator}${query || "select=*"}`;
   const result = await supabaseFetch(path);
   return Array.isArray(result) ? result : [];
+}
+
+async function selectRequired(table, query = "") {
+  assertServiceRoleTable(table);
+  const separator = query ? (query.startsWith("?") ? "" : "?") : "?";
+  const path = `/rest/v1/${table}${separator}${query || "select=*"}`;
+  const result = await supabaseFetch(path);
+  if (result?.error) throw new Error(result.error);
+  if (!Array.isArray(result)) throw new Error(`Resposta inválida ao consultar ${table}.`);
+  return result;
 }
 
 async function count(table, query = "") {
@@ -3802,6 +4486,25 @@ async function insert(table, body, returning = true) {
   return Array.isArray(result) ? result[0] : result;
 }
 
+async function insertOptionalColumn(table, body, optionalColumn, returning = false) {
+  try {
+    return await insert(table, body, returning);
+  } catch (error) {
+    if (!Object.hasOwn(body, optionalColumn) || !isMissingSchemaField(error, optionalColumn)) throw error;
+    const fallbackBody = { ...body };
+    delete fallbackBody[optionalColumn];
+    logStructured("warn", "manager.capture_schema_pending", { field: `${table}.${optionalColumn}` });
+    return insert(table, fallbackBody, returning);
+  }
+}
+
+function isMissingSchemaField(error, field) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const name = String(field || "").toLowerCase();
+  return Boolean(name && message.includes(name)
+    && /(column|schema cache|not exist|could not find|unknown field|pgrst204)/.test(message));
+}
+
 async function update(table, id, body) {
   assertServiceRoleTable(table);
   const result = await supabaseFetch(`/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=*`, {
@@ -3813,17 +4516,39 @@ async function update(table, id, body) {
   return Array.isArray(result) ? result[0] : result;
 }
 
+async function patchWhere(table, filters, body) {
+  assertServiceRoleTable(table);
+  const result = await supabaseFetch(`/rest/v1/${table}?${filters}&select=*`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body
+  });
+  if (result?.error) throw new Error(result.error);
+  return Array.isArray(result) ? result : [];
+}
+
 async function updateTicketIfStatus(id, expectedStatuses, body) {
   const statuses = [...new Set(expectedStatuses)].filter((status) => ACTIVE_STATUSES.includes(status));
   if (!statuses.length) return null;
   const statusFilter = statuses.length === 1
     ? `status=eq.${encodeURIComponent(statuses[0])}`
     : `status=in.(${statuses.map(encodeURIComponent).join(",")})`;
-  const result = await supabaseFetch(`/rest/v1/tickets?id=eq.${encodeURIComponent(id)}&${statusFilter}&select=*`, {
+  const path = `/rest/v1/tickets?id=eq.${encodeURIComponent(id)}&${statusFilter}&select=*`;
+  let result = await supabaseFetch(path, {
     method: "PATCH",
     headers: { Prefer: "return=representation" },
     body
   });
+  if (result?.error && Object.hasOwn(body, "cancellation_reason") && isMissingSchemaField(result.error, "cancellation_reason")) {
+    const fallbackBody = { ...body };
+    delete fallbackBody.cancellation_reason;
+    logStructured("warn", "manager.capture_schema_pending", { field: "tickets.cancellation_reason" });
+    result = await supabaseFetch(path, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: fallbackBody
+    });
+  }
   if (result.error) throw new Error(result.error);
   return Array.isArray(result) ? result[0] || null : null;
 }
@@ -4070,6 +4795,9 @@ function isPitchdayAllowedApiRequest(method, pathname) {
   if (method === "POST" && pathname === "/api/auth/logout") return true;
   if (method === "GET" && pathname === "/api/tablet/status") return true;
   if (method === "POST" && pathname === "/api/tablet/tickets") return true;
+  if (method === "GET" && ["/api/display/state", "/api/tv/media"].includes(pathname)) return true;
+  if (["GET", "HEAD"].includes(method) && /^\/api\/tv\/media\/[0-9a-f-]{36}\/stream$/i.test(pathname)) return true;
+  if (method === "POST" && pathname === "/api/sectors/pitch-day/call-control") return true;
   return method === "GET" && /^\/api\/tablet\/print-jobs\/[^/]+$/.test(pathname);
 }
 
@@ -4219,6 +4947,12 @@ function average(values) {
   const clean = values.filter((value) => Number.isFinite(value));
   if (!clean.length) return 0;
   return Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length);
+}
+
+function quantile(sortedValues, percentile) {
+  if (!sortedValues.length) return null;
+  const rank = Math.max(1, Math.min(sortedValues.length, Math.ceil(sortedValues.length * percentile)));
+  return sortedValues[rank - 1];
 }
 
 function isoNow() {

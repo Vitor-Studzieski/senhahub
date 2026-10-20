@@ -6,7 +6,10 @@
   const CALL_ALERT_SOUND_GAIN = 1.25;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
-  const PITCHDAY_TV_EMAIL = "pitchday.tv@superpompeia.com";
+  const PITCHDAY_TV_EMAILS = new Set([
+    "pitchday@superpompeia.com",
+    "pitchday.tv@superpompeia.com"
+  ]);
   let IS_PITCHDAY = false;
   const WEATHER_CONFIG = {
     city: "Pompéia, SP",
@@ -129,7 +132,9 @@
     state.requestInFlight = true;
     try {
       const payload = await api("/api/display/state");
-      const sector = payload.sectors?.[0];
+      const sector = IS_PITCHDAY
+        ? payload.sectors?.find((item) => item.id === "pitch-day")
+        : payload.sectors?.[0];
       if (!sector) throw new Error("A fila deste atendimento ainda não está disponível.");
       state.sectorId = sector.id || "acougue";
       renderQueue(sector);
@@ -158,9 +163,15 @@
       state.userRole = String(payload.user?.role || "").toLowerCase();
       state.userId = String(payload.user?.id || "");
       state.tvDisplayAccess = payload.user?.tvDisplayAccess === true;
-      IS_PITCHDAY = String(user?.email || "").trim().toLowerCase() === PITCHDAY_TV_EMAIL;
+      const userEmail = String(user?.email || "").trim().toLowerCase();
+      if (userEmail === "pitchday@superpompeia.com" && window.location.pathname === "/tv/acougue") {
+        window.location.replace(`/tv/pitchday${window.location.search}`);
+        return;
+      }
+      IS_PITCHDAY = window.location.pathname === "/tv/pitchday" || PITCHDAY_TV_EMAILS.has(userEmail);
       if (IS_PITCHDAY) {
         document.querySelector("#tvScreen")?.classList.add("tv-pitchday");
+        document.querySelector("#tvScreen")?.classList.add("tv-dedicated-media");
         const queueEyebrow = document.querySelector(".tv-queue-heading p");
         if (queueEyebrow) queueEyebrow.textContent = "Pitchday · Atendimento";
       }
@@ -174,7 +185,8 @@
   }
 
   function updateCallControls() {
-    const canControl = ["tv", "attendant", "manager", "admin"].includes(state.userRole);
+    const canControl = ["tv", "attendant", "manager", "admin"].includes(state.userRole)
+      || (IS_PITCHDAY && state.userRole === "tablet");
     const nextButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === "next");
     const againButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === "again");
     if (againButton) againButton.hidden = IS_PITCHDAY;
@@ -211,7 +223,7 @@
       : ["arrowdown", "pagedown"].includes(key)
         ? "next"
         : "";
-    if (!action || !["tv", "attendant", "manager", "admin"].includes(state.userRole) || !state.sectorId) return;
+    if (!action || (!IS_PITCHDAY && !["tv", "attendant", "manager", "admin"].includes(state.userRole)) || !state.sectorId) return;
 
     event.preventDefault();
     const now = Date.now();
@@ -223,7 +235,8 @@
   async function executeCallAction(action) {
     if (!["previous", "again", "next"].includes(action) || state.actionInFlight) return;
     if (IS_PITCHDAY && action !== "next") return;
-    if (!["tv", "attendant", "manager", "admin"].includes(state.userRole)) {
+    if (!["tv", "attendant", "manager", "admin"].includes(state.userRole)
+      && !(IS_PITCHDAY && state.userRole === "tablet")) {
       if (elements.feedback) elements.feedback.textContent = "Somente contas TV ou colaboradores podem controlar as chamadas.";
       return;
     }

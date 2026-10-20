@@ -136,7 +136,7 @@ A tela consulta o backend sem expor a senha completa ou credenciais administrati
 
 ### 5.6 TV de atendimento
 
-A rota `/tv/acougue` exibe chamadas de senha para a operação do Açougue. A tela pode consultar estado de exibição, clima e playlist configurada. O acesso é restrito por autenticação/perfil apropriado.
+A rota `/tv/acougue` exibe chamadas de senha para a operação do Açougue. A tela `/tv/pitchday` reutiliza o mesmo layout e mostra apenas o setor Pitch Day para a conta `pitchday@superpompeia.com`. Ambas consultam estado de exibição, clima e playlist configurada.
 
 ## 6. Regras de negócio da fila
 
@@ -271,6 +271,7 @@ As chaves `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_SECRET`, `CRON_SECRET`, VAPID priva
 | `/totem` | Emissão física de senhas. |
 | `/tablet` | Emissão pelo fluxo de tablet. |
 | `/tv/acougue` | TV de chamadas do Açougue. |
+| `/tv/pitchday` | TV de chamadas do Pitch Day. |
 | `/instalar` | Orientação de instalação do PWA. |
 
 ## 9. API por grupos

@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Usuários - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20261016.accessibility-pitchday" />
+    <link rel="stylesheet" href="styles.css?v=20261019.manager-ux-v4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
       <aside class="manager-sidebar">
         <div class="manager-brand"><img class="manager-brand-logo" src="/assets/senhahub-logo.png" alt="SenhaHub" width="132" height="44" /><div><span>Painel do gestor</span></div></div>
         <nav class="manager-nav" aria-label="Navegação principal do painel">
-          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a href="/admin"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão executiva</span><small>01</small></a>
           <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
           <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
           <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
@@ -22,24 +22,56 @@
 
       <main class="manager-main">
         <header class="manager-topbar">
-          <div><p class="manager-eyebrow">Gestão de acessos</p><h1>Usuários</h1><p>Controle contas, perfis e permissões da equipe com segurança.</p></div>
+          <div><p class="manager-eyebrow">Inclusão e acessibilidade</p><h1>Usuários</h1><p>Atendimento preferencial do Pitch Day e gestão de acessos.</p></div>
           <div class="manager-actions">
-            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
+            <span class="manager-live-state"><span class="manager-status-dot"></span><span>Consulta sob demanda</span></span>
             <a class="manager-button secondary" href="/admin">Voltar ao painel</a>
             <button class="manager-button warning" id="logoutButton" type="button">Encerrar sessão</button>
           </div>
         </header>
+        <section class="manager-section-title manager-page-heading">
+          <div><p class="manager-eyebrow">Pitch Day · 17/10/2026</p><h2>Atendimento preferencial</h2></div>
+          <span class="manager-badge neutral">8 de 131 senhas</span>
+        </section>
+        <section class="manager-kpis manager-inclusion-kpis" aria-label="Senhas preferenciais por motivo no Pitch Day">
+          <article class="manager-kpi manager-kpi-blue"><div><span>Preferenciais</span><em>EVENTO</em></div><strong>8</strong><small>6,1% das senhas emitidas</small></article>
+          <article class="manager-kpi manager-kpi-yellow"><div><span>Idoso 60+</span><em>75%</em></div><strong>6</strong><small>Motivo registrado</small></article>
+          <article class="manager-kpi manager-kpi-sky"><div><span>Pessoas autistas</span><em>12,5%</em></div><strong>1</strong><small>Motivo registrado</small></article>
+          <article class="manager-kpi manager-kpi-green"><div><span>Deficiência não aparente</span><em>12,5%</em></div><strong>1</strong><small>Motivo registrado</small></article>
+          <article class="manager-kpi manager-kpi-gold"><div><span>Libras e modo silencioso</span><em>RECURSO</em></div><strong>Sem medição</strong><small>Uso não registrado</small></article>
+          <article class="manager-kpi manager-kpi-red"><div><span>Tempo acessível e satisfação</span><em>QUALIDADE</em></div><strong>Sem medição</strong><small>Sem dados no evento</small></article>
+        </section>
+        <section class="manager-analytics-grid manager-inclusion-analytics" aria-label="Perfil de prioridade e cobertura de acessibilidade">
+          <article class="manager-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Perfil informado</p><h3>Motivo da preferência</h3></div></div>
+            <div class="manager-panel-body manager-priority-chart">
+              <div class="manager-priority-row"><div><span>Idoso 60+</span><strong>6</strong></div><i><b style="--value:75%"></b></i><small>75% do total preferencial</small></div>
+              <div class="manager-priority-row"><div><span>Pessoas autistas</span><strong>1</strong></div><i><b style="--value:12.5%"></b></i><small>12,5% do total preferencial</small></div>
+              <div class="manager-priority-row"><div><span>Deficiência não aparente</span><strong>1</strong></div><i><b style="--value:12.5%"></b></i><small>12,5% do total preferencial</small></div>
+            </div>
+          </article>
+          <article class="manager-panel manager-coverage-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Métricas de acessibilidade</p><h3>Cobertura disponível</h3></div></div>
+            <div class="manager-panel-body manager-coverage-list">
+              <div><span>Atendimentos acessíveis</span><strong>Sem medição</strong></div>
+              <div><span>Libras e modo silencioso</span><strong>Sem medição</strong></div>
+              <div><span>Tempo acessível e satisfação PCD</span><strong>Sem medição</strong></div>
+              <div><span>Preferencial ≠ acessível</span><strong>Não comparar</strong></div>
+            </div>
+            <p class="manager-chart-caption">O relatório informa a prioridade da senha, mas não registra o recurso de acessibilidade utilizado.</p>
+          </article>
+        </section>
         <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Perfis e permissões</p><h2>Contas de acesso</h2><p>Escolha o perfil de cada conta e limite, quando necessário, o acesso da equipe aos setores.</p></div>
+          <div><p class="manager-eyebrow">Acesso ao sistema</p><h2>Contas e permissões</h2></div>
         </section>
         <section class="manager-management-grid">
           <article class="manager-panel">
-            <div class="manager-panel-header"><div><h3>Cadastrar usuário</h3><p>Crie uma conta e selecione o perfil adequado à função.</p></div></div>
+            <div class="manager-panel-header"><div><h3>Nova conta</h3></div></div>
             <div class="manager-panel-body">
               <form class="manager-form" id="userForm" data-online-required>
                 <label>Nome completo<input name="name" autocomplete="name" required /></label>
                 <label>E-mail<input type="email" name="email" autocomplete="email" required /></label>
-                <label>Senha inicial<input type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}" title="Use no mínimo 12 caracteres, incluindo letras maiúsculas, minúsculas e números." autocomplete="new-password" required /></label>
+                <label>Senha inicial<input type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}" title="Use no mínimo 12 caracteres, incluindo letras maiúsculas, minúsculas e números." autocomplete="new-password" required /><small class="manager-field-hint">12+ caracteres, maiúscula, minúscula e número</small></label>
                 <label>Perfil de acesso<select id="userRole" name="role"><option value="customer">Cliente</option><option value="attendant">Funcionário</option><option value="manager">Gestor</option><option value="marketing">Marketing · conteúdos da TV</option><option value="tablet">Tablet · solicitação de senhas</option><option value="tv">TV · açougue</option></select></label>
                 <fieldset class="manager-checks" id="userSectorPermissions"><legend>Setores autorizados</legend><p data-sector-permissions-status="loading">Carregando setores…</p></fieldset>
                 <button class="manager-button" type="submit">Criar conta</button>
@@ -48,14 +80,14 @@
             </div>
           </article>
           <article class="manager-panel manager-users-panel">
-            <div class="manager-panel-header"><div><h3>Contas cadastradas</h3><p>Consulte os perfis e as permissões por setor quando necessário.</p></div></div>
+            <div class="manager-panel-header"><div><h3>Contas cadastradas</h3></div></div>
             <div class="manager-panel-body">
               <button class="manager-users-toggle" id="toggleAdminUsers" type="button" aria-expanded="false" aria-controls="adminUsersBrowser">
-                <span data-users-toggle-label>Consultar contas por setor</span>
-                <span class="manager-users-count" data-users-count>Acesso sob demanda</span>
+                <span data-users-toggle-label>Ver contas</span>
+                <span class="manager-users-count" data-users-count>Sob demanda</span>
               </button>
               <div class="manager-users-browser" id="adminUsersBrowser" hidden>
-                <p class="manager-users-hint" id="adminUserDirectoryStatus" role="status" aria-live="polite">As contas serão carregadas somente quando você solicitar. Depois, escolha um setor.</p>
+                <p class="manager-users-hint" id="adminUserDirectoryStatus" role="status" aria-live="polite">Escolha um setor.</p>
                 <div class="manager-user-sector-list" id="adminUserSectorList" role="group" aria-label="Setores de usuários"></div>
                 <div class="manager-user-results" id="adminUsers" aria-live="polite" hidden></div>
               </div>
@@ -64,6 +96,6 @@
         </section>
       </main>
     </div>
-    <script src="admin.js?v=20261016.ticket-tracking-view"></script>
+    <script src="admin.js?v=20261019.manager-nav-v5"></script>
   </body>
 </html>

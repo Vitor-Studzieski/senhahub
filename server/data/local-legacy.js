@@ -90,6 +90,16 @@ async function getLocalMetrics(metricsDate = null) {
                COUNT(*) FILTER (WHERE status = 'atendido'::public.ticket_status)::integer AS finished,
                COUNT(*) FILTER (WHERE status = 'expirado'::public.ticket_status)::integer AS expired,
                COUNT(*) FILTER (WHERE status = 'cancelado'::public.ticket_status)::integer AS canceled,
+               COUNT(*) FILTER (WHERE status = 'cancelado'::public.ticket_status AND cancellation_reason = 'no_show')::integer AS abandoned,
+               COUNT(*) FILTER (WHERE origin_channel = 'app')::integer AS app_issued,
+               COUNT(*) FILTER (WHERE origin_channel = 'qr')::integer AS qr_issued,
+               COUNT(*) FILTER (WHERE origin_channel = 'web')::integer AS web_issued,
+               COUNT(*) FILTER (WHERE origin_channel = 'kiosk')::integer AS kiosk_issued,
+               COUNT(*) FILTER (WHERE origin_channel = 'panel')::integer AS panel_issued,
+               COUNT(*) FILTER (WHERE origin_channel = 'unknown')::integer AS unknown_issued,
+               COALESCE(AVG(EXTRACT(EPOCH FROM (service_started_at - created_at))
+                 ) FILTER (WHERE service_started_at IS NOT NULL), 0)::integer AS avg_wait_seconds,
+               COUNT(*) FILTER (WHERE service_started_at IS NOT NULL)::integer AS wait_samples,
                COALESCE(AVG(EXTRACT(EPOCH FROM (finished_at - service_started_at))
                  ) FILTER (WHERE service_started_at IS NOT NULL AND finished_at IS NOT NULL), 0)::integer AS avg_service_seconds,
                COALESCE(AVG(EXTRACT(EPOCH FROM (called_at - smart_wait_since))
@@ -117,7 +127,19 @@ async function getLocalMetrics(metricsDate = null) {
       name: sector.name,
       issued: Number(row.issued || 0),
       finished: Number(row.finished || 0),
-      abandoned: Number(row.expired || 0) + Number(row.canceled || 0),
+      abandoned: Number(row.abandoned || 0),
+      cancellations: Number(row.canceled || 0),
+      expired: Number(row.expired || 0),
+      averageWaitSeconds: Number(row.avg_wait_seconds || 0),
+      waitSamples: Number(row.wait_samples || 0),
+      issuedByChannel: {
+        app: Number(row.app_issued || 0),
+        qr: Number(row.qr_issued || 0),
+        web: Number(row.web_issued || 0),
+        kiosk: Number(row.kiosk_issued || 0),
+        panel: Number(row.panel_issued || 0),
+        unknown: Number(row.unknown_issued || 0)
+      },
       avgServiceSeconds: Number(row.avg_service_seconds || 0),
       avgSmartWaitSeconds: Number(row.avg_smart_wait_seconds || 0)
     };

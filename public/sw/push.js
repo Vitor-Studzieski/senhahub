@@ -76,6 +76,20 @@
   async function handleNotificationClick(event) {
     event.notification.close();
     if (event.action === "dismiss") return;
+    const eventId = cleanText(event.notification.data?.eventId, 120);
+    if (eventId) {
+      let csrfToken = "";
+      try {
+        const sessionResponse = await scope.fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" });
+        if (sessionResponse.ok) csrfToken = String((await sessionResponse.json())?.csrfToken || "");
+      } catch {}
+      await scope.fetch("/api/push/click", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
+        body: JSON.stringify({ eventId })
+      }).catch(() => null);
+    }
     const target = utils.safeAppUrl(event.notification.data?.url, scope.location.origin)
       || `${scope.location.origin}/?view=status`;
     const windows = await scope.clients.matchAll({ type: "window", includeUncontrolled: true });

@@ -282,6 +282,7 @@ function getCookie(name) {
 
 function allowedNextForRole(role, next, email) {
   const isShortcutsAccount = String(email || "").trim().toLowerCase() === "vitorstudzieski@superpompeia.com";
+  const isPitchdayTvAccount = String(email || "").trim().toLowerCase() === "pitchday@superpompeia.com";
   const home = {
     customer: "/",
     attendant: "/attendant",
@@ -292,6 +293,9 @@ function allowedNextForRole(role, next, email) {
     marketing: "/marketing/conteudos-tv"
   }[role] || "/";
   const normalizedRole = role === "admin" ? "manager" : role;
+  if (isPitchdayTvAccount && (!next || next === "/tablet" || next === "/tv/acougue" || next === "/tv/pitchday")) {
+    return next === "/tablet" ? next : "/tv/pitchday";
+  }
   if (isShortcutsAccount && (!next || next === "/" || next === "/atalhos" || next === "/admin/atalhos")) return "/admin";
   if (!next) return home;
   if (normalizedRole === "customer" && next === "/?ecosystem=pitchday") return next;
@@ -299,6 +303,7 @@ function allowedNextForRole(role, next, email) {
   if (role === "attendant" && ["/attendant", "/tablet"].includes(next)) return next;
   if (role === "customer" && next === "/") return next;
   if (role === "tablet" && next === "/tablet") return next;
+  if (isPitchdayTvAccount && next === "/tv/pitchday") return next;
   if (role === "tv" && next === "/tv/acougue") return next;
   if (role === "marketing" && next === "/marketing/conteudos-tv") return next;
   return isShortcutsAccount ? "/admin" : home;

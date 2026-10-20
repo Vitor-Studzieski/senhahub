@@ -2,6 +2,45 @@ const initialQuery = new URLSearchParams(location.search);
 const IS_PITCHDAY = initialQuery.get("ecosystem")?.toLowerCase() === "pitchday"
   || history.state?.senhaHubPitchday === true
   || document.querySelector('[data-pitchday="enabled"]') !== null;
+
+function acquisitionChannel() {
+  const sources = ["origem", "canal", "utm_source", "utm_medium"]
+    .map((key) => String(initialQuery.get(key) || "").trim().toLowerCase());
+  if (sources.some((source) => ["qr", "qrcode", "qr-code", "codigo-qr"].includes(source))) return "qr";
+  const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches === true || navigator.standalone === true;
+  return standalone ? "app" : "web";
+}
+
+function acquisitionSessionState(key, value) {
+  try {
+    if (value === undefined) return window.sessionStorage.getItem(key);
+    window.sessionStorage.setItem(key, value);
+  } catch {}
+  return null;
+}
+
+function recordAcquisitionEvent(type) {
+  if (!window.crypto?.randomUUID) return;
+  const key = `senhahub:${type}:recorded`;
+  if (acquisitionSessionState(key)) return;
+  const pendingKey = `${key}:pending`;
+  const idempotencyKey = acquisitionSessionState(pendingKey) || window.crypto.randomUUID();
+  acquisitionSessionState(pendingKey, idempotencyKey);
+  fetch("/api/analytics/events", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type, idempotencyKey, sectorId: initialQuery.get("sector") || initialQuery.get("sectorId") || null })
+  }).then((response) => {
+    if (response.ok) {
+      acquisitionSessionState(key, "1");
+      acquisitionSessionState(pendingKey, "");
+    }
+  }).catch(() => {});
+}
+
+if (acquisitionChannel() === "qr") recordAcquisitionEvent("qr_landing");
+window.addEventListener("appinstalled", () => recordAcquisitionEvent("pwa_installed"));
 const screens = {
   home: IS_PITCHDAY ? "Pitchday" : "Supermercado Pompeia",
   sectors: "Fila virtual",
@@ -654,7 +693,7 @@ async function requestSelectedTickets() {
 function createDigitalTicket(sectorId, priority = priorityPayload()) {
   return api(IS_PITCHDAY ? "/api/pitchday/tickets" : "/api/tickets", {
     method: "POST",
-    body: { ...identity, sectorId, ...priority }
+    body: { ...identity, sectorId, originChannel: acquisitionChannel(), ...priority }
   });
 }
 

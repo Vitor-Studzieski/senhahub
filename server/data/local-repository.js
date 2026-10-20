@@ -198,6 +198,153 @@ async function upsertLocalDevice(customerId, requestedDeviceId, userAgent = "") 
   });
 }
 
+async function setLocalStaffPresence(user, requestedStatus = "available") {
+  const profileId = normalizeRequiredId(user?.id || user?.customerId, "profileId");
+  if (!["attendant", "manager", "admin"].includes(user?.role)) {
+    throw new Error("Somente a equipe pode registrar presença.");
+  }
+  const status = String(requestedStatus || "available").trim().toLowerCase();
+  if (!new Set(["available", "break", "offline"]).has(status)) {
+    throw new Error("Status de presença inválido.");
+  }
+
+  return withTransaction(async (client) => {
+    const profileResult = await client.query(
+      `
+        SELECT p.store_code,
+               (SELECT ps.sector_id FROM public.profile_sector_permissions ps WHERE ps.profile_id = p.id ORDER BY ps.sector_id LIMIT 1) AS sector_id,
+               (SELECT s.store_code FROM public.profile_sector_permissions ps JOIN public.sectors s ON s.id = ps.sector_id WHERE ps.profile_id = p.id ORDER BY ps.sector_id LIMIT 1) AS sector_store_code
+        FROM public.profiles p WHERE p.id = $1
+      `,
+      [profileId]
+    );
+    const profile = profileResult.rows[0];
+    const storeCode = profile?.store_code || profile?.sector_store_code;
+    if (!profile || !storeCode) throw new Error("Associe a equipe a uma loja antes de registrar a presença.");
+
+    const activeResult = await client.query(
+      "SELECT * FROM public.staff_presence WHERE profile_id = $1 AND ended_at IS NULL FOR UPDATE",
+      [profileId]
+    );
+    const current = activeResult.rows[0];
+    if (status === "offline") {
+      if (current) {
+        await client.query("UPDATE public.staff_presence SET ended_at = now(), last_seen_at = now() WHERE id = $1", [current.id]);
+      }
+      return { status: "offline", storeCode, sectorId: current?.sector_id || profile.sector_id || null };
+    }
+
+    if (current?.status === status) {
+      await client.query("UPDATE public.staff_presence SET last_seen_at = now() WHERE id = $1", [current.id]);
+      return { status, storeCode, sectorId: current.sector_id };
+    }
+    if (current) {
+      await client.query("UPDATE public.staff_presence SET ended_at = now(), last_seen_at = now() WHERE id = $1", [current.id]);
+    }
+
+    const sectorId = profile.sector_id || null;
+    const inserted = await client.query(
+      `
+        INSERT INTO public.staff_presence (profile_id, store_code, sector_id, status, started_at, last_seen_at)
+        VALUES ($1, $2, $3, $4, now(), now()) RETURNING id
+      `,
+      [profileId, storeCode, sectorId, status]
+    );
+    await client.query(
+      `
+        INSERT INTO public.events (type, entity_type, entity_id, sector_id, store_code, actor_id, payload)
+        VALUES ('staff_presence_changed', 'staff', $1, $2, $3, $1, $4::jsonb)
+      `,
+      [profileId, sectorId, storeCode, JSON.stringify({ status })]
+    );
+    return { id: inserted.rows[0].id, status, storeCode, sectorId };
+  });
+}
+
+async function recordLocalAccessibilityEvents(ticketId, user, supportCodes = [], requestedAction = "provided") {
+  const normalizedTicketId = normalizeRequiredId(ticketId, "ticketId");
+  if (!user || !["attendant", "manager", "admin"].includes(user.role)) {
+    throw new Error("Somente a equipe pode registrar os recursos utilizados.");
+  }
+  const allowed = new Set(["libras", "texto_visual", "modo_silencioso", "audio", "mobilidade", "outro"]);
+  const supports = [...new Set((Array.isArray(supportCodes) ? supportCodes : []).map((item) => String(item || "").trim().toLowerCase()))];
+  const action = String(requestedAction || "provided").trim().toLowerCase();
+  if (!new Set(["requested", "provided", "unavailable"]).has(action)
+    || !supports.length || supports.length > 6 || supports.some((item) => !allowed.has(item))) {
+    throw new Error("Selecione ao menos um recurso válido.");
+  }
+
+  return withTransaction(async (client) => {
+    const ticketResult = await client.query("SELECT * FROM public.tickets WHERE id = $1 FOR SHARE", [normalizedTicketId]);
+    const ticket = ticketResult.rows[0];
+    if (!ticket) throw new Error("Senha não encontrada.");
+    if (!canAccessLocalSector(user, ticket.sector_id)) throw new Error("Usuário sem permissão para este setor.");
+    if (!["chamado", "em_atendimento", "atendido"].includes(ticket.status)) {
+      throw new Error("Os recursos podem ser registrados após a chamada da senha.");
+    }
+    const serviceResult = await client.query(
+      "SELECT id FROM public.services WHERE ticket_id = $1 ORDER BY started_at DESC LIMIT 1",
+      [normalizedTicketId]
+    );
+    let recorded = 0;
+    for (const support of supports) {
+      const result = await client.query(
+        `
+          INSERT INTO public.service_accessibility_events (ticket_id, service_id, sector_id, actor_id, support_code, action)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT DO NOTHING RETURNING id
+        `,
+        [normalizedTicketId, serviceResult.rows[0]?.id || null, ticket.sector_id, user.id, support, action]
+      );
+      if (result.rowCount) recorded += 1;
+    }
+    if (recorded) {
+      await insertLocalEvent(client, `accessibility_support_${action}`, ticket, { supports }, user.id);
+    }
+    return { ticketId: normalizedTicketId, action, recorded, supports };
+  });
+}
+
+async function trackLocalAcquisitionEvent(type, idempotencyKey) {
+  const allowed = new Map([["qr_landing", "qr"], ["pwa_installed", "app"]]);
+  const channel = allowed.get(String(type || ""));
+  if (!channel) throw new Error("Tipo de evento de aquisição inválido.");
+  const key = String(idempotencyKey || "").trim().slice(0, 160);
+  if (key.length < 12) throw new Error("Chave de evento inválida.");
+  const result = await query(
+    `
+      INSERT INTO public.events (type, entity_type, entity_id, origin_channel, idempotency_key, payload)
+      VALUES ($1, 'acquisition', $2, $3, $2, '{}'::jsonb)
+      ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+      RETURNING id
+    `,
+    [type, key, channel]
+  );
+  return { recorded: Boolean(result.rowCount) };
+}
+
+async function allowLocalAnalyticsRequest(requestKey) {
+  const key = `analytics:${crypto.createHash("sha256").update(String(requestKey || "unknown")).digest("hex")}`;
+  const result = await query(
+    "SELECT public.consume_security_rate_limit($1, 40, 60) AS allowed",
+    [key]
+  );
+  return result.rows[0]?.allowed === true;
+}
+
+async function markLocalPushClicked(userId, eventId) {
+  const result = await query(
+    `
+      UPDATE public.push_notification_events
+      SET clicked_at = COALESCE(clicked_at, now()), updated_at = now()
+      WHERE id = $1 AND user_id = $2 AND status IN ('sent', 'partial')
+      RETURNING id
+    `,
+    [normalizeRequiredId(eventId, "eventId"), normalizeRequiredId(userId, "userId")]
+  );
+  return { recorded: Boolean(result.rowCount) };
+}
+
 async function getLocalStaffState(user = null) {
   const sectorResult = await query(
     `
@@ -378,8 +525,8 @@ async function callNextLocalTicket(sectorId, user = null, options = {}) {
         [candidate.id]
       );
       await client.query(
-        `INSERT INTO public.calls (id, ticket_id, sector_id, action) VALUES (gen_random_uuid(), $1, $2, $3)`,
-        [candidate.id, normalizedSectorId, "senha_chamada"]
+        `INSERT INTO public.calls (id, ticket_id, sector_id, action, actor_id) VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+        [candidate.id, normalizedSectorId, "senha_chamada", user?.id || null]
       );
       await client.query(
         `
@@ -392,10 +539,11 @@ async function callNextLocalTicket(sectorId, user = null, options = {}) {
       );
       await client.query(
         `
-          INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload)
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload, actor_id, store_code, origin_channel)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7,
+            (SELECT store_code FROM public.sectors WHERE id = $5), $8)
         `,
-        ["senha_chamada", "ticket", candidate.id, candidate.customer_id, normalizedSectorId, JSON.stringify({ code: candidate.code })]
+        ["senha_chamada", "ticket", candidate.id, candidate.customer_id, normalizedSectorId, JSON.stringify({ code: candidate.code }), user?.id || null, candidate.origin_channel || null]
       );
 
       const currentRows = await client.query(
@@ -484,15 +632,16 @@ async function callControlLocalTicket(sectorId, action, user = null) {
       );
     }
     await client.query(
-      "INSERT INTO public.calls (id, ticket_id, sector_id, action, created_at) VALUES (gen_random_uuid(), $1, $2, 'senha_chamada', $3)",
-      [target.ticket_id, normalizedSectorId, now]
+      "INSERT INTO public.calls (id, ticket_id, sector_id, action, created_at, actor_id) VALUES (gen_random_uuid(), $1, $2, 'senha_chamada', $3, $4)",
+      [target.ticket_id, normalizedSectorId, now, user?.id || null]
     );
     await client.query(
       `
-        INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload)
-        VALUES ('senha_chamada', 'ticket', $1, $2, $3, $4::jsonb)
+        INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload, actor_id, store_code)
+        VALUES ('senha_chamada', 'ticket', $1, $2, $3, $4::jsonb, $5,
+          (SELECT store_code FROM public.sectors WHERE id = $3))
       `,
-      [target.ticket_id, target.customer_id, normalizedSectorId, JSON.stringify({ code: target.code, controlAction: normalizedAction })]
+      [target.ticket_id, target.customer_id, normalizedSectorId, JSON.stringify({ code: target.code, controlAction: normalizedAction }), user?.id || null]
     );
 
     const ticketResult = await client.query("SELECT * FROM public.tickets WHERE id = $1", [target.ticket_id]);
@@ -584,6 +733,7 @@ async function runLocalMaintenance() {
           SET status = $2::public.ticket_status,
               absence_count = $3,
               canceled_at = CASE WHEN $4 THEN now() ELSE NULL END,
+              cancellation_reason = CASE WHEN $4 THEN 'no_show' ELSE NULL END,
               called_at = NULL,
               standby_started_at = CASE WHEN $4 THEN NULL ELSE now() END,
               standby_expires_at = CASE WHEN $4 THEN NULL ELSE now() + make_interval(secs => $5) END,
@@ -627,6 +777,7 @@ async function runLocalMaintenance() {
           UPDATE public.tickets
           SET status = 'cancelado'::public.ticket_status,
               canceled_at = now(),
+              cancellation_reason = 'standby_expired',
               standby_started_at = NULL,
               standby_expires_at = NULL,
               updated_at = now()
@@ -688,6 +839,7 @@ async function cancelTicket(ticketId, customerId) {
         UPDATE public.tickets
         SET status = 'cancelado'::public.ticket_status,
             canceled_at = now(),
+            cancellation_reason = 'customer_request',
             smart_wait_reason = NULL,
             blocked_by_ticket_id = NULL,
             smart_wait_since = NULL,
@@ -702,8 +854,9 @@ async function cancelTicket(ticketId, customerId) {
 
     await client.query(
       `
-        INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload, store_code)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb,
+          (SELECT store_code FROM public.sectors WHERE id = $5))
       `,
       [
         "senha_cancelada_pelo_cliente",
@@ -767,15 +920,19 @@ async function confirmLocalTicket(ticketId, user = null) {
 
     await client.query(
       `
-        INSERT INTO public.services (ticket_id, sector_id, customer_id, started_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO public.services (ticket_id, sector_id, customer_id, started_at, attendant_id)
+        VALUES ($1, $2, $3, $4, COALESCE($5, (
+          SELECT actor_id FROM public.calls
+          WHERE ticket_id = $1 AND action = 'senha_chamada'
+          ORDER BY created_at DESC LIMIT 1
+        )))
         ON CONFLICT (ticket_id) WHERE finished_at IS NULL DO NOTHING
       `,
-      [updatedTicket.id, updatedTicket.sector_id, updatedTicket.customer_id, updatedTicket.service_started_at]
+      [updatedTicket.id, updatedTicket.sector_id, updatedTicket.customer_id, updatedTicket.service_started_at, user?.role === "customer" ? null : user?.id || null]
     );
     await insertLocalEvent(client, "atendimento_iniciado", updatedTicket, {
       code: updatedTicket.code
-    });
+    }, user?.role === "customer" ? null : user?.id || null);
 
     return {
       source: "postgres-local",
@@ -833,7 +990,7 @@ async function finishLocalTicket(ticketId, user = null) {
     );
     await insertLocalEvent(client, "pedido_finalizado", updatedTicket, {
       code: updatedTicket.code
-    });
+    }, user?.role === "customer" ? null : user?.id || null);
 
     const releasedTicket = await releaseSmartWaitTicketInTransaction(client, updatedTicket.customer_id);
     return {
@@ -875,6 +1032,12 @@ async function skipLocalTicket(ticketId, user = null, reason) {
         SET status = $2::public.ticket_status,
             absence_count = $3,
             canceled_at = CASE WHEN $4 THEN NULL ELSE now() END,
+            cancellation_reason = CASE
+              WHEN $4 THEN NULL
+              WHEN $6 = 'cliente_ausente' THEN 'no_show'
+              WHEN $6 = 'erro_operacional' THEN 'operational_error'
+              ELSE 'operator_request'
+            END,
             called_at = NULL,
             smart_wait_reason = NULL,
             blocked_by_ticket_id = NULL,
@@ -886,23 +1049,23 @@ async function skipLocalTicket(ticketId, user = null, reason) {
         WHERE id = $1
         RETURNING *
       `,
-      [ticket.id, isStandby ? "standby" : "cancelado", absenceCount, isStandby, STANDBY_SECONDS]
+      [ticket.id, isStandby ? "standby" : "cancelado", absenceCount, isStandby, STANDBY_SECONDS, normalizedReason]
     );
     const updatedTicket = updatedResult.rows[0];
 
     await client.query(
       `
-        INSERT INTO public.calls (ticket_id, sector_id, action)
-        VALUES ($1, $2, $3)
+        INSERT INTO public.calls (ticket_id, sector_id, action, actor_id)
+        VALUES ($1, $2, $3, $4)
       `,
-      [updatedTicket.id, updatedTicket.sector_id, `senha_pulada:${normalizedReason}`]
+      [updatedTicket.id, updatedTicket.sector_id, `senha_pulada:${normalizedReason}`, user?.id || null]
     );
     await insertLocalEvent(client, "senha_pulada_pelo_atendente", updatedTicket, {
       code: updatedTicket.code,
       previousStatus: ticket.status,
       reason: normalizedReason,
       absenceCount
-    });
+    }, user?.id || null);
 
     const releasedTicket = CALL_BLOCKING_STATUSES.includes(ticket.status)
       ? await releaseSmartWaitTicketInTransaction(client, ticket.customer_id)
@@ -956,13 +1119,14 @@ async function releaseSmartWaitTicketInTransaction(client, customerId) {
   return released;
 }
 
-async function insertLocalEvent(client, type, ticket, payload = {}) {
+async function insertLocalEvent(client, type, ticket, payload = {}, actorId = null) {
   await client.query(
     `
-      INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload)
-      VALUES ($1, 'ticket', $2, $3, $4, $5::jsonb)
+      INSERT INTO public.events (type, entity_type, entity_id, customer_id, sector_id, payload, actor_id, store_code, origin_channel)
+      VALUES ($1, 'ticket', $2, $3, $4, $5::jsonb, $6,
+        (SELECT store_code FROM public.sectors WHERE id = $4), $7)
     `,
-    [type, ticket.id, ticket.customer_id, ticket.sector_id, JSON.stringify(payload)]
+    [type, ticket.id, ticket.customer_id, ticket.sector_id, JSON.stringify(payload), actorId, ticket.origin_channel || null]
   );
 }
 
@@ -1090,6 +1254,10 @@ async function insertTicketInTransaction(client, input = {}) {
   const customerId = normalizeRequiredId(input.customerId, "customerId");
   const sectorId = normalizeRequiredId(input.sectorId, "sectorId");
   const deviceId = normalizeOptionalId(input.deviceId);
+  const allowedOriginChannels = new Set(["app", "qr", "web", "panel"]);
+  const originChannel = allowedOriginChannels.has(String(input.originChannel || "").trim().toLowerCase())
+    ? String(input.originChannel).trim().toLowerCase()
+    : "unknown";
   const priority = normalizePriority(input);
 
   const profileResult = await client.query(
@@ -1223,6 +1391,7 @@ async function insertTicketInTransaction(client, input = {}) {
         eligible_at,
         priority,
         priority_reason,
+        origin_channel,
         created_at,
         updated_at
       )
@@ -1239,6 +1408,7 @@ async function insertTicketInTransaction(client, input = {}) {
         now() + make_interval(secs => $9),
         $10,
         $11,
+        $12,
         now(),
         now()
       )
@@ -1255,7 +1425,8 @@ async function insertTicketInTransaction(client, input = {}) {
       queueOrder,
       AUTO_CALL_DELAY_SECONDS,
       priority.enabled,
-      priority.reason
+      priority.reason,
+      originChannel
     ]
   );
 
@@ -1271,9 +1442,10 @@ async function insertTicketInTransaction(client, input = {}) {
   await client.query(
     `
       INSERT INTO public.events (
-        type, entity_type, entity_id, customer_id, sector_id, payload
+        type, entity_type, entity_id, customer_id, sector_id, payload, store_code, origin_channel
       )
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb,
+        (SELECT store_code FROM public.sectors WHERE id = $5), $7)
     `,
     [
       "senha_emitida",
@@ -1281,7 +1453,8 @@ async function insertTicketInTransaction(client, input = {}) {
       ticketId,
       customerId,
       sectorId,
-      JSON.stringify({ code, priority })
+      JSON.stringify({ code, priority }),
+      originChannel
     ]
   );
 
@@ -1482,11 +1655,16 @@ function publicTrackingTicketView(ticket) {
 
 module.exports = {
   cancelTicket,
+  allowLocalAnalyticsRequest,
   createTicket,
   callControlLocalTicket,
   callNextLocalTicket,
   confirmLocalTicket,
   finishLocalTicket,
+  markLocalPushClicked,
+  recordLocalAccessibilityEvents,
+  setLocalStaffPresence,
+  trackLocalAcquisitionEvent,
   getCustomerState,
   getLocalStaffState,
   getLocalDisplayState,

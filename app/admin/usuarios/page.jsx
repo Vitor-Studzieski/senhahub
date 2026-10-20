@@ -5,7 +5,8 @@ export default function AdminUsersPage() {
   return (
     <div className="manager-page">
       <HtmlTemplate fileName="admin-usuarios.html" />
-      <Script src="/admin.js?v=20261016.ticket-tracking-view" strategy="afterInteractive" />
+      <Script src="/manager-dashboards.js?v=20261019.six-views-v4" strategy="afterInteractive" />
+      <Script src="/admin.js?v=20261019.six-views-v4" strategy="afterInteractive" />
     </div>
   );
 }

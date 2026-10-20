@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestor - SenhaHub</title>
-    <link rel="stylesheet" href="styles.css?v=20261016.accessibility-pitchday" />
+    <title>Visão executiva do gestor | SenhaHub</title>
+    <link rel="stylesheet" href="styles.css?v=20261019.six-views-v4" />
   </head>
   <body class="manager-page">
     <div class="manager-shell">
@@ -16,23 +16,23 @@
           </div>
         </div>
         <nav class="manager-nav" aria-label="Navegação principal do painel">
-          <a class="active" href="#visao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão geral</span><small>01</small></a>
+          <a class="active" href="#visao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg><span>Visão executiva</span><small>01</small></a>
           <a href="/admin/operacao"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5h18M4 15l5-5 3.5 3.5L19.5 6"/><path d="M15.5 6h4v4"/></svg><span>Operação</span><small>02</small></a>
           <a href="/admin/setores"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9 4.5V10m6-5.5V10M9 10v9.5m6-9.5v9.5"/></svg><span>Setores</span><small>03</small></a>
           <a href="/admin/totens"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-5A2.5 2.5 0 0 1 5.5 8h13a2.5 2.5 0 0 1 2.5 2.5v5a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M7 14.5h10V21H7zM17 11.5h.01"/></svg><span>Totens e impressão</span><small>04</small></a>
           <a href="/admin/usuarios"><svg class="manager-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3.5 20v-1.3A5.5 5.5 0 0 1 9 13.2a5.5 5.5 0 0 1 5.5 5.5V20zM16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a5.2 5.2 0 0 1 2.5 4.2V20"/></svg><span>Usuários</span><small>05</small></a>
         </nav>
         <div class="manager-sidebar-note">
-          Indicadores, filas e configurações reunidos em um só painel de gestão.
+          Monitoramento ao vivo, leitura executiva e acesso às ferramentas de gestão.
         </div>
       </aside>
 
-      <main class="manager-main">
+      <main class="manager-main pitchday-dashboard">
         <header class="manager-topbar">
           <div>
             <p class="manager-eyebrow">Painel gerencial</p>
-            <h1>Visão geral</h1>
-            <p>Monitore filas, atendimentos e desempenho dos setores em um só lugar.</p>
+            <h1>Visão executiva</h1>
+            <p>Indicadores ao vivo e relatório validado do Pitch Day.</p>
           </div>
           <div class="manager-actions">
             <span class="manager-live-state"><span class="manager-status-dot"></span><span>Sincronização automática</span></span>
@@ -45,9 +45,9 @@
         <section class="manager-hero" id="visao">
           <div class="manager-hero-panel">
             <div>
-              <p class="manager-eyebrow">Panorama da operação</p>
+              <p class="manager-eyebrow">Panorama da operação agora</p>
               <h2 id="heroHeadline">Acompanhe o que está acontecendo agora.</h2>
-              <p id="heroDescription">Use a fila operacional para identificar gargalos e agir nos setores que mais precisam de atenção.</p>
+              <p id="heroDescription">Use os indicadores ao vivo e os alertas para identificar filas que precisam de atenção.</p>
             </div>
             <div class="manager-hero-strip">
               <span>Setores ativos: <strong id="heroOpenSectors">0</strong></span>
@@ -58,61 +58,153 @@
 
           <aside class="manager-health-card">
             <div class="manager-health-head">
-              <div>
-                <strong id="heroStatus">Sincronizando operação…</strong>
-                <span>Resumo atualizado com os dados da fila</span>
-              </div>
+              <div><strong id="heroStatus">Sincronizando operação…</strong></div>
               <span class="manager-status-dot" id="healthDot"></span>
             </div>
             <div class="manager-health-list">
               <div><span>Aguardando atendimento</span><strong id="heroWaitingCustomers">0</strong></div>
-              <div><span>Tempo médio</span><strong id="heroAverageTime">0 min 0 s</strong></div>
+              <div><span>Tempo médio de serviço</span><strong id="heroAverageTime">0 min 0 s</strong></div>
               <div><span>Atualizado às</span><strong id="heroSyncTime">--:--</strong></div>
             </div>
-            <label class="manager-date-filter">
-              <span>Data de referência</span>
-              <input id="metricsDate" type="date" aria-label="Selecionar dia das métricas" />
-            </label>
+            <label class="manager-date-filter"><span>Data dos indicadores</span><input id="metricsDate" type="date" aria-label="Selecionar dia das métricas" /></label>
             <button class="manager-button secondary" id="refreshDashboardButton" type="button">Atualizar agora</button>
           </aside>
         </section>
 
         <section class="manager-section-title">
-          <div><p class="manager-eyebrow">Desempenho</p><h2>Indicadores da operação</h2><p>Resultados consolidados para a data selecionada.</p></div>
+          <div><p class="manager-eyebrow">Ao vivo</p><h2>Operação</h2></div>
         </section>
         <section class="manager-kpis" id="dashboardKpis" aria-label="Indicadores principais" aria-live="polite">
           <p class="manager-empty" role="status">Carregando os indicadores da operação…</p>
         </section>
 
+        <section class="manager-analytics-grid manager-executive-analytics" id="dashboardAnalytics" aria-label="Volume e qualidade por setor" aria-live="polite">
+          <article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">Data selecionada</p><h3>Volume por setor</h3></div></div><div class="manager-panel-body"><p class="manager-empty">Carregando métricas…</p></div></article>
+          <article class="manager-panel"><div class="manager-panel-header"><div><p class="manager-eyebrow">Atendimento</p><h3>Qualidade e experiência</h3></div></div><div class="manager-panel-body"><p class="manager-empty">Carregando métricas…</p></div></article>
+        </section>
+
         <section class="manager-section-title manager-section-compact">
-          <div><p class="manager-eyebrow">Acompanhamento</p><h2>Pontos de atenção</h2><p>Alertas operacionais e recomendações para o momento.</p></div>
+          <div><p class="manager-eyebrow">Atenção</p><h2>Alertas</h2></div>
+          <a class="manager-button secondary" href="/admin/operacao">Abrir operação</a>
         </section>
         <section class="manager-alert-panel" id="dashboardAlerts" aria-live="polite">
           <div class="manager-alert manager-alert-neutral"><span class="manager-alert-mark" aria-hidden="true">i</span><div><strong>Preparando análise</strong><p>Os alertas aparecerão assim que os dados da operação forem carregados.</p></div></div>
         </section>
 
-        <section class="manager-section-title manager-section-compact">
-          <div><p class="manager-eyebrow">Impressão</p><h2>Bobinas das impressoras</h2><p>Estimativa baseada em até 420 senhas por bobina. O contador é atualizado com impressões confirmadas.</p></div>
+        <section class="manager-section-title pitchday-section-heading" id="pitchdayReport">
+          <div><p class="manager-eyebrow">Histórico validado</p><h2>Pitch Day</h2></div>
+          <span class="pitchday-period-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9.5h17"/></svg><span><small>Data</small><strong>17 out 2026</strong></span></span>
         </section>
-        <section class="printer-paper-panel" id="printerPaperRolls" aria-live="polite" aria-busy="true">
-          <p class="manager-empty" role="status">Consultando as impressoras…</p>
+        <section class="pitchday-quick-summary" aria-label="Resumo do Pitch Day">
+          <article><strong>131</strong><span>senhas emitidas</span></article>
+          <article><strong>105</strong><span>com chamada</span></article>
+          <article><strong>47 s</strong><span>mediana entre chamadas</span></article>
+        </section>
+        <details class="pitchday-report-details">
+          <summary>Ver relatório completo</summary>
+        <section class="manager-kpis pitchday-kpis" aria-label="Indicadores históricos do Pitch Day">
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-blue"><div><span>Senhas emitidas</span><em>evento</em></div><strong>131</strong><small>Total registrado no relatório</small></article>
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-green"><div><span>Com chamada</span><em>80,2%</em></div><strong>105</strong><small>Consideradas atendidas pelo fluxo</small></article>
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-sky"><div><span>Intervalos medidos</span><em>amostra</em></div><strong>103</strong><small>Entre chamadas consecutivas</small></article>
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-yellow pitchday-kpi-time"><div><span>Mediana entre chamadas</span><em>típica</em></div><strong>47 s</strong><small>Intervalo mediano medido</small></article>
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-gold pitchday-kpi-time"><div><span>Média entre chamadas</span><em>média</em></div><strong>1 min 53 s</strong><small>Duração média do intervalo</small></article>
+          <article class="manager-kpi pitchday-kpi pitchday-kpi-red pitchday-kpi-time"><div><span>Percentil 90</span><em>90%</em></div><strong>2 min 43 s</strong><small>90% dos intervalos até esse tempo</small></article>
         </section>
 
-        <section class="manager-panel manager-history-reset" aria-labelledby="ticketHistoryResetHeading">
-          <div class="manager-panel-header">
-            <div>
-              <h3 id="ticketHistoryResetHeading">Histórico das senhas</h3>
-              <p>Apague o histórico de senhas encerradas, canceladas ou expiradas e as avaliações vinculadas. Tentativas de impressão esgotadas entram na limpeza, mas os registros de impressão ficam guardados para auditoria. Atendimentos ativos, impressões pendentes ou em revisão e a numeração atual serão mantidos.</p>
+        <section class="pitchday-analytics-grid" aria-label="Análises do Pitch Day">
+          <article class="manager-panel pitchday-panel pitchday-channel-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Origem das senhas</p><h3>Emissão por canal</h3><p>Distribuição das senhas por canal e prioridade registrada.</p></div></div>
+            <div class="pitchday-panel-body">
+              <div class="pitchday-chart-legend" aria-label="Legenda"><span><i class="pitchday-legend-normal"></i>Normais</span><span><i class="pitchday-legend-priority"></i>Preferenciais</span></div>
+              <div class="pitchday-channel-row" role="group" aria-label="Totem: 91 senhas, sendo 84 normais e 7 preferenciais">
+                <div class="pitchday-row-heading"><strong>Totem</strong><span>91 <small>69,5% do total</small></span></div>
+                <div class="pitchday-channel-track" aria-hidden="true"><span class="pitchday-channel-normal" style="width:64.1%"></span><span class="pitchday-channel-priority" style="width:5.3%"></span></div>
+                <div class="pitchday-row-breakdown"><span>84 normais</span><span>7 preferenciais</span></div>
+              </div>
+              <div class="pitchday-channel-row" role="group" aria-label="Digital QR/app: 40 senhas, sendo 39 normais e 1 preferencial">
+                <div class="pitchday-row-heading"><strong>Digital <small>(QR/app)</small></strong><span>40 <small>30,5% do total</small></span></div>
+                <div class="pitchday-channel-track" aria-hidden="true"><span class="pitchday-channel-normal" style="width:29.8%"></span><span class="pitchday-channel-priority" style="width:0.8%"></span></div>
+                <div class="pitchday-row-breakdown"><span>39 normais</span><span>1 preferencial</span></div>
+              </div>
+              <div class="pitchday-channel-total"><span>Totais conferidos</span><strong>123 normais <i>·</i> 8 preferenciais</strong></div>
             </div>
-            <button class="manager-button warning" id="resetTicketHistoryButton" type="button">Limpar histórico</button>
-          </div>
-          <div class="manager-panel-body">
-            <p class="manager-empty" id="resetTicketHistoryStatus" role="status" aria-live="polite" hidden></p>
-          </div>
+          </article>
+
+          <article class="manager-panel pitchday-panel pitchday-interval-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Ritmo do atendimento</p><h3>Intervalo entre chamadas</h3><p>A próxima chamada encerra o atendimento anterior, conforme o fluxo do evento.</p></div></div>
+            <div class="pitchday-panel-body pitchday-interval-body">
+              <div class="pitchday-interval-stats">
+                <div><span>Mediana</span><strong>47 s</strong><small>Valor central dos intervalos</small></div>
+                <div><span>Média</span><strong>1 min 53 s</strong><small>Considera todos os intervalos medidos</small></div>
+                <div><span>Percentil 90</span><strong>2 min 43 s</strong><small>90% ficaram até esse tempo</small></div>
+                <div class="pitchday-interval-longest"><span>Maior intervalo</span><strong>32 min 24 s</strong><small>Maior tempo entre duas chamadas consecutivas</small></div>
+              </div>
+              <p class="pitchday-interval-note"><strong>Leitura:</strong> a média supera a mediana porque alguns intervalos foram mais longos; o maior foi de 32 min 24 s.</p>
+            </div>
+          </article>
+
+          <article class="manager-panel pitchday-panel pitchday-priority-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Atendimento prioritário</p><h3>Preferenciais por motivo</h3><p>8 senhas preferenciais registradas no evento.</p></div></div>
+            <div class="pitchday-panel-body pitchday-priority-body">
+              <div class="pitchday-priority-row"><div><span>Idoso 60+</span><strong>6</strong></div><div class="pitchday-priority-track" role="img" aria-label="6 de 8 preferenciais"><span style="width:75%"></span></div><small>75% das preferenciais</small></div>
+              <div class="pitchday-priority-row"><div><span>Pessoas autistas</span><strong>1</strong></div><div class="pitchday-priority-track" role="img" aria-label="1 de 8 preferenciais"><span style="width:12.5%"></span></div><small>12,5% das preferenciais</small></div>
+              <div class="pitchday-priority-row"><div><span>Deficiência não aparente</span><strong>1</strong></div><div class="pitchday-priority-track" role="img" aria-label="1 de 8 preferenciais"><span style="width:12.5%"></span></div><small>12,5% das preferenciais</small></div>
+              <div class="pitchday-priority-total"><span>Total prioritário</span><strong>8 <small>de 131 senhas</small></strong></div>
+            </div>
+          </article>
+
+          <article class="manager-panel pitchday-panel pitchday-final-status-panel">
+            <div class="manager-panel-header"><div><p class="manager-eyebrow">Conferência do registro</p><h3>Status final no banco</h3><p>Estado gravado ao final do evento; não representa a sequência de chamadas.</p></div></div>
+            <div class="pitchday-panel-body pitchday-final-status-body">
+              <div><span>Atendida no status final</span><strong>1</strong></div>
+              <div><span>Aguardando</span><strong>6</strong></div>
+              <div class="pitchday-final-cancelled"><span>Canceladas</span><strong>124</strong></div>
+              <p>A sequência registra 105 senhas com chamada, enquanto o campo final “atendida” marca 1. Das 124 canceladas, 26 foram incluídas durante o zeramento. O motivo do status cancelado não permite calcular abandono ou no-show.</p>
+            </div>
+          </article>
         </section>
+
+        <section class="manager-section-title manager-section-compact">
+          <div><p class="manager-eyebrow">Plano gerencial</p><h2>O que merece acompanhamento</h2><p>Próximos passos sugeridos pelas divergências e pelos limites do relatório.</p></div>
+        </section>
+        <section class="pitchday-actions-grid" aria-label="Ações recomendadas com base nos dados do Pitch Day">
+          <article><span>01</span><div><strong>Reconciliar chamadas e status</strong><p>Registrar a conclusão do atendimento anterior ao chamar a próxima senha, para que o status final represente o fluxo real.</p></div></article>
+          <article><span>02</span><div><strong>Separar zeramento de abandono</strong><p>Identificar os 26 cancelamentos do zeramento com um motivo próprio antes de calcular cancelamento ou abandono.</p></div></article>
+          <article><span>03</span><div><strong>Detalhar a origem digital</strong><p>Distinguir QR Code de aplicativo e registrar o escaneamento confirmado; hoje há 40 senhas de origem digital combinada.</p></div></article>
+        </section>
+
+        <section class="manager-section-title manager-section-compact">
+          <div><p class="manager-eyebrow">Cobertura dos painéis</p><h2>Indicadores disponíveis e pendentes</h2><p>Os demais mockups podem ganhar análises quando houver uma fonte consistente para cada métrica.</p></div>
+        </section>
+        <section class="pitchday-coverage-grid" aria-label="Cobertura de dados das áreas analíticas">
+          <article><span class="pitchday-coverage-icon">EQ</span><div><strong>Equipe e SLA</strong><p>O evento não informa produtividade por atendente nem cumprimento de meta de SLA.</p><a href="/admin/operacao">Ver fila ao vivo →</a></div></article>
+          <article><span class="pitchday-coverage-icon">JD</span><div><strong>Jornada digital</strong><p>Há 40 emissões digitais (QR/app); downloads, aberturas e retorno de clientes não foram fornecidos.</p><small class="pitchday-coverage-status">Dados parciais</small></div></article>
+          <article><span class="pitchday-coverage-icon">IN</span><div><strong>Inclusão e acessibilidade</strong><p>Há 8 preferenciais por motivo; tempo acessível e satisfação PCD não constam no relatório.</p><small class="pitchday-coverage-status">Dados parciais</small></div></article>
+          <article><span class="pitchday-coverage-icon">LS</span><div><strong>Lojas e setores</strong><p>O relatório do evento não traz divisão por unidade ou setor. A tela Setores mantém a configuração atual.</p><a href="/admin/setores">Gerenciar setores →</a></div></article>
+        </section>
+
+        <section class="pitchday-data-notes" aria-labelledby="pitchdayNotesHeading">
+          <div class="pitchday-note-heading"><span aria-hidden="true">i</span><div><p class="manager-eyebrow">Notas de interpretação</p><h2 id="pitchdayNotesHeading">Limites do relatório</h2></div></div>
+          <div class="pitchday-note-item"><strong>Chamadas não são espera</strong><p>Os tempos medem intervalos entre chamadas consecutivas, não o tempo de espera de cada cliente.</p></div>
+          <div class="pitchday-note-item"><strong>Preferencial não equivale a acessível</strong><p>Os 8 registros estão classificados por motivo de preferência. O relatório não mede atendimentos acessíveis ou satisfação PCD.</p></div>
+          <div class="pitchday-note-item"><strong>Origem digital não confirma escaneamento</strong><p>As 40 senhas estão agrupadas como QR/app; o sistema não confirma se cada pessoa escaneou o QR Code.</p></div>
+        </section>
+        </details>
+
+        <details class="pitchday-manager-tools">
+          <summary>Manutenção do histórico de senhas</summary>
+          <section class="manager-panel manager-history-reset" aria-labelledby="ticketHistoryResetHeading">
+            <div class="manager-panel-header">
+              <div><h3 id="ticketHistoryResetHeading">Histórico das senhas</h3><p>Apague o histórico de senhas encerradas, canceladas ou expiradas e as avaliações vinculadas. Tentativas de impressão esgotadas entram na limpeza, mas os registros de impressão ficam guardados para auditoria. Atendimentos ativos, impressões pendentes ou em revisão e a numeração atual serão mantidos.</p></div>
+              <button class="manager-button warning" id="resetTicketHistoryButton" type="button">Limpar histórico</button>
+            </div>
+            <div class="manager-panel-body"><p class="manager-empty" id="resetTicketHistoryStatus" role="status" aria-live="polite" hidden></p></div>
+          </section>
+        </details>
 
       </main>
     </div>
-    <script src="admin.js?v=20261016.ticket-tracking-view"></script>
+    <script src="/manager-dashboards.js?v=20261019.six-views-v5"></script>
+    <script src="admin.js?v=20261019.six-views-v5"></script>
   </body>
 </html>

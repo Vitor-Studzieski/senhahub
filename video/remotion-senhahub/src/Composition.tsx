@@ -8,23 +8,21 @@ import {
   interpolate,
   staticFile,
   useCurrentFrame,
+  useVideoConfig,
 } from "remotion";
+import {
+  DashboardAccessibility,
+  DashboardAlerts,
+  DashboardChannels,
+  DashboardExecutive,
+  DashboardStores,
+  DashboardTeam,
+} from "./DashboardScenes";
 
-const DATA = {
-  store: "Supermercado Pompeia",
-  sector: "Açougue — Loja 2",
-  counter: "Balcão 1",
-  service: "Atendimento preferencial",
-  category: "60 anos ou mais",
-  current: "A005",
-  ticket: "A006",
-  tagline: "Sua vez, sem filas.",
-};
 const C = {
   orange: "#FF7200",
   yellow: "#FCBD0F",
   navy: "#02021E",
-  ink: "#151526",
   paper: "#F4F5F6",
   white: "#FFFFFF",
   green: "#16823E",
@@ -36,23 +34,18 @@ const ASSET = (name: string) => staticFile(`assets/${name}`);
 const W = 1920;
 const H = 1080;
 
-const baseText: React.CSSProperties = { color: C.navy, fontFamily: "Inter, Arial, sans-serif" };
-
-const Brand: React.FC<{compact?: boolean; light?: boolean}> = ({compact = false, light = false}) => (
-  <div style={{display: "flex", alignItems: "center", gap: 16}}>
-    <Img src={ASSET("references/senhahub-mark.png")} style={{width: compact ? 54 : 72, height: compact ? 54 : 72, borderRadius: 13, objectFit: "contain", background: C.white}} />
-    <div style={{display: "flex", flexDirection: "column", lineHeight: 1.05, color: light ? C.white : C.navy}}>
-      <span style={{fontSize: compact ? 15 : 19, fontWeight: 600, opacity: 0.83}}>{DATA.store}</span>
-      <strong style={{fontSize: compact ? 31 : 42, letterSpacing: -1.5, fontWeight: 850}}>Senha<span style={{color: light ? C.yellow : C.orange}}>Hub</span></strong>
-    </div>
-  </div>
+const Brand: React.FC = () => (
+  <Img
+    src={ASSET("brand/senhahub-cart-logo.png")}
+    style={{width: 224, height: 76, objectFit: "contain"}}
+  />
 );
 
 const DotGrid: React.FC = () => <div style={{position: "absolute", right: 40, top: 60, width: 220, height: 140, opacity: 0.18, backgroundImage: `radial-gradient(${C.navy} 1.4px, transparent 1.4px)`, backgroundSize: "15px 15px"}} />;
 
 const Header: React.FC<{step: string}> = ({step}) => (
   <div style={{position: "absolute", left: 66, right: 70, top: 46, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5}}>
-    <Brand compact />
+    <Brand />
     <div style={{display: "flex", alignItems: "center", gap: 12, color: C.muted, fontSize: 17, fontWeight: 700, letterSpacing: 1.2}}>
       <span style={{width: 9, height: 9, borderRadius: 9, background: C.orange}} /> JORNADA DO CLIENTE
       <span style={{marginLeft: 17, border: `1px solid ${C.line}`, borderRadius: 999, padding: "10px 17px", color: C.navy}}>{step}</span>
@@ -126,44 +119,51 @@ const FinishScene: React.FC<{duration: number}> = ({duration}) => {
 const BrandScene: React.FC<{duration: number}> = ({duration}) => {
   const f = useCurrentFrame();
   const opacity = interpolate(f, [0, 12, duration - 12, duration], [0, 1, 1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
-  const scale = interpolate(f, [0, 32], [0.94, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
-  return <AbsoluteFill style={{background: C.paper, display: "grid", placeItems: "center", opacity, fontFamily: "Inter, Arial, sans-serif", overflow: "hidden"}}>
-    <div style={{position: "absolute", inset: "0 0 auto", height: 20, background: C.orange}} />
-    <div style={{...baseText, display: "flex", flexDirection: "column", alignItems: "center", transform: `scale(${scale})`}}>
-      <Brand />
-      <div style={{marginTop: 34, width: 520, height: 4, background: C.yellow, borderRadius: 4}} />
-      <div style={{fontSize: 31, fontWeight: 700, marginTop: 26}}>{DATA.tagline}</div>
-    </div>
+  const scale = interpolate(f, [0, 32], [0.985, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
+  return <AbsoluteFill style={{background: "#000", display: "grid", placeItems: "center", opacity, overflow: "hidden"}}>
+    <Img
+      src={ASSET("brand/senhahub-dark-lockup.png")}
+      style={{width: "100%", height: "100%", objectFit: "contain", scale}}
+    />
   </AbsoluteFill>;
 };
 
 const OutroScene: React.FC<{duration: number}> = ({duration}) => {
   const f = useCurrentFrame();
   const opacity = interpolate(f, [0, 15, duration - 28, duration], [0, 1, 1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
-  return <AbsoluteFill style={{background: C.navy, display: "grid", placeItems: "center", opacity, fontFamily: "Inter, Arial, sans-serif"}}>
-    <div style={{display: "flex", flexDirection: "column", alignItems: "center"}}><Brand light /><div style={{height: 4, width: 370, background: C.yellow, borderRadius: 3, marginTop: 32}} /><div style={{fontSize: 36, marginTop: 27, fontWeight: 750, color: C.white}}>{DATA.tagline}</div></div>
+  return <AbsoluteFill style={{background: "#000", display: "grid", placeItems: "center", opacity, overflow: "hidden"}}>
+    <Img src={ASSET("brand/senhahub-dark-lockup.png")} style={{width: "100%", height: "100%", objectFit: "contain"}} />
   </AbsoluteFill>;
 };
 
-export const SenhaHubJourney: React.FC = () => (
-  <AbsoluteFill style={{background: C.paper}}>
-    <Sequence from={0} durationInFrames={60}><BrandScene duration={60} /></Sequence>
-    <Sequence from={60} durationInFrames={150}><SceneOne duration={150} /></Sequence>
-    <Sequence from={210} durationInFrames={120}><SceneTwo duration={120} /></Sequence>
-    <Sequence from={330} durationInFrames={120}><SceneThree duration={120} /></Sequence>
-    <Sequence from={450} durationInFrames={90}><HardwareScene duration={90} /></Sequence>
-    <Sequence from={540} durationInFrames={90}><TicketScene duration={90} /></Sequence>
-    <Sequence from={630} durationInFrames={210}><TrackingScene duration={210} /></Sequence>
-    <Sequence from={840} durationInFrames={180}><TvQueueScene duration={180} /></Sequence>
-    <Sequence from={1020} durationInFrames={120}><TvCallScene duration={120} /></Sequence>
-    <Sequence from={1140} durationInFrames={150}><NotificationScene duration={150} /></Sequence>
-    <Sequence from={1290} durationInFrames={150}><ArrivalScene duration={150} /></Sequence>
-    <Sequence from={1440} durationInFrames={210}><FinishScene duration={210} /></Sequence>
-    <Sequence from={1650} durationInFrames={150}><OutroScene duration={150} /></Sequence>
-    <Sequence from={1034} durationInFrames={28}><Audio src={ASSET("tv-beep.wav")} volume={0.32} /></Sequence>
-  </AbsoluteFill>
-);
+export const SenhaHubJourney: React.FC = () => {
+  const {fps} = useVideoConfig();
+  return (
+    <AbsoluteFill style={{background: C.paper}}>
+      <Sequence name="01 · Abertura" durationInFrames={60} premountFor={fps}><BrandScene duration={60} /></Sequence>
+      <Sequence name="02 · Tipo de atendimento" from={60} durationInFrames={150} premountFor={fps}><SceneOne duration={150} /></Sequence>
+      <Sequence name="03 · Categoria" from={210} durationInFrames={120} premountFor={fps}><SceneTwo duration={120} /></Sequence>
+      <Sequence name="04 · Setor e emissão" from={330} durationInFrames={120} premountFor={fps}><SceneThree duration={120} /></Sequence>
+      <Sequence name="05 · Emissão física" from={450} durationInFrames={90} premountFor={fps}><HardwareScene duration={90} /></Sequence>
+      <Sequence name="06 · Cupom e QR Code" from={540} durationInFrames={90} premountFor={fps}><TicketScene duration={90} /></Sequence>
+      <Sequence name="07 · Acompanhamento" from={630} durationInFrames={210} premountFor={fps}><TrackingScene duration={210} /></Sequence>
+      <Sequence name="08 · TV do setor" from={840} durationInFrames={180} premountFor={fps}><TvQueueScene duration={180} /></Sequence>
+      <Sequence name="09 · Senha chamada" from={1020} durationInFrames={120} premountFor={fps}><TvCallScene duration={120} /></Sequence>
+      <Sequence name="10 · Notificação" from={1140} durationInFrames={150} premountFor={fps}><NotificationScene duration={150} /></Sequence>
+      <Sequence name="11 · Chegada ao balcão" from={1290} durationInFrames={150} premountFor={fps}><ArrivalScene duration={150} /></Sequence>
+      <Sequence name="12 · Conclusão do atendimento" from={1440} durationInFrames={210} premountFor={fps}><FinishScene duration={210} /></Sequence>
+      <Sequence name="13 · Alertas e decisões" from={1650} durationInFrames={240} premountFor={fps}><DashboardAlerts /></Sequence>
+      <Sequence name="14 · Equipe e SLA" from={1890} durationInFrames={240} premountFor={fps}><DashboardTeam /></Sequence>
+      <Sequence name="15 · Jornada e canais" from={2130} durationInFrames={240} premountFor={fps}><DashboardChannels /></Sequence>
+      <Sequence name="16 · Inclusão e acessibilidade" from={2370} durationInFrames={240} premountFor={fps}><DashboardAccessibility /></Sequence>
+      <Sequence name="17 · Operação por loja e setor" from={2610} durationInFrames={240} premountFor={fps}><DashboardStores /></Sequence>
+      <Sequence name="18 · Visão executiva" from={2850} durationInFrames={240} premountFor={fps}><DashboardExecutive /></Sequence>
+      <Sequence name="19 · Encerramento" from={3090} durationInFrames={150} premountFor={fps}><OutroScene duration={150} /></Sequence>
+      <Sequence name="Bip da chamada" from={1034} durationInFrames={28} premountFor={fps}><Audio src={ASSET("tv-beep.wav")} volume={0.32} /></Sequence>
+    </AbsoluteFill>
+  );
+};
 
 export const MyComposition = () => (
-  <Composition id="SenhaHubJourney" component={SenhaHubJourney} durationInFrames={1800} fps={30} width={W} height={H} />
+  <Composition id="SenhaHubJourney" component={SenhaHubJourney} durationInFrames={3240} fps={30} width={W} height={H} />
 );

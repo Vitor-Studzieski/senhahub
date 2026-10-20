@@ -5,13 +5,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const user = await requireLocalUser(request, ["tv", "attendant", "manager", "admin"]);
-  if (user.response) return user.response;
+  const result = await requireLocalUser(request);
+  if (result.response) return result.response;
+  const sessionUser = result.session.user;
+  const isPitchdayTvAccount = String(sessionUser?.email || "").trim().toLowerCase() === "pitchday@superpompeia.com"
+    && sessionUser?.role === "tablet";
+  if (!isPitchdayTvAccount && !["tv", "attendant", "manager", "admin"].includes(sessionUser?.role)) {
+    return Response.json({ error: "Acesso negado." }, { status: 403 });
+  }
+  if (isPitchdayTvAccount && !(sessionUser.sectorIds || []).includes("pitch-day")) {
+    return Response.json({ error: "Esta conta não está vinculada ao setor Pitch Day." }, { status: 403 });
+  }
+  const user = isPitchdayTvAccount
+    ? { ...sessionUser, role: "tv", sectorIds: ["pitch-day"] }
+    : sessionUser;
 
   try {
     return Response.json({
       source: "postgres-local",
-      ...(await getLocalDisplayState(user.session.user))
+      ...(await getLocalDisplayState(user))
     }, {
       headers: { "cache-control": "no-store" }
     });
