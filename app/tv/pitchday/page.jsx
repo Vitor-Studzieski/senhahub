@@ -14,7 +14,7 @@ export default function PitchdayDisplayPage() {
   return (
     <>
       <HtmlTemplate fileName="tv-acougue.html" />
-      <Script src="/tv-acougue.js?v=20261017.pitchday-tv-route" strategy="afterInteractive" />
+      <Script src="/tv-acougue.js?v=20261103.ble-call-shortcuts" strategy="afterInteractive" />
     </>
   );
 }

@@ -33,7 +33,7 @@ test("TV legada é redirecionada e a fila SQLite possui rota protegida", () => {
   assert.match(server, /"\/tv-acougue\.html": "\/tv\/acougue"/);
   assert.match(server, /const DISPLAY_ROLES = \["tv", \.\.\.STAFF_ROLES\]/);
   assert.match(server, /url\.pathname === "\/api\/display\/state"/);
-  assert.match(server, /requireAuth\(req, res, DISPLAY_ROLES\)/);
+  assert.match(server, /requireAuth\(req, res, isPitchdayTvAccount \? \["tablet"\] : DISPLAY_ROLES\)/);
 });
 
 test("conta TV exige permissão de setor em todos os backends", () => {
@@ -55,11 +55,30 @@ test("TV atualiza conexão, identifica re-chamadas e dispara destaque visual", (
   assert.match(client, /updateConnection\("online", "Online"\)/);
   assert.match(client, /updateConnection\("offline", "Offline"\)/);
   assert.match(client, /latestCallSignature/);
-  assert.match(client, /showCallAlert\(sector, latestCall\)/);
+  assert.match(client, /showCallAlert\(sector, latestCall, \{ autistic: autisticLatestCall \}\)/);
   assert.match(client, /showCallAlert\(\n\s*\{ id: state\.sectorId/);
   assert.match(client, /state\.hasAvailableTicket =/);
   assert.match(client, /nextButton\.classList\.toggle\("is-ready", isReady\)/);
   assert.doesNotMatch(client, /active\?\.currentCustomerName/);
+});
+
+test("atalhos físicos usam as ações existentes e bloqueiam repetição e concorrência", () => {
+  const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
+
+  assert.match(client, /F8: "again"/);
+  assert.match(client, /F9: "next"/);
+  assert.match(client, /F13: "again"/);
+  assert.match(client, /F14: "next"/);
+  assert.match(client, /window\.addEventListener\("keydown", handlePresenterKeydown\)/);
+  assert.match(client, /event\.repeat/);
+  assert.match(client, /const isButcherDisplay = window\.location\.pathname\.replace/);
+  assert.match(client, /shortcutAction = isButcherDisplay && !IS_PITCHDAY/);
+  assert.match(client, /shortcutButton\.disabled \|\| shortcutButton\.hidden/);
+  assert.match(client, /input, textarea, select, \[contenteditable='true'\]/);
+  assert.match(client, /state\.actionInFlight \|\| now - state\.lastRemoteActionAt < 450/);
+  assert.match(client, /void executeCallAction\(action\)/);
+  assert.match(client, /async function executeCallAction\(action\)/);
+  assert.match(client, /state\.actionInFlight = true/);
 });
 
 test("TV oculta os blocos removidos do layout público", () => {
@@ -123,11 +142,11 @@ test("nova chamada abre destaque exclusivo por sete segundos e tenta emitir avis
 
   assert.match(html, /id="tvCallAlert"[^>]*aria-live="assertive"/);
   assert.match(client, /const CALL_ALERT_DURATION_MS = 7000/);
-  assert.match(client, /showCallAlert\(sector, latestCall\)/);
+  assert.match(client, /showCallAlert\(sector, latestCall, \{ autistic: autisticLatestCall \}\)/);
   assert.match(client, /state\.callAlertTimer = window\.setTimeout\(hideCallAlert, CALL_ALERT_DURATION_MS\)/);
   assert.match(client, /AudioContext = window\.AudioContext \|\| window\.webkitAudioContext/);
   assert.match(client, /ensureCallAlertAudio\(\)/);
-  assert.match(client, /function playCallAlertSound\(\)/);
+  assert.match(client, /function playCallAlertSound\(volumeScale = 1\)/);
   assert.match(client, /const CALL_ALERT_SOUND_INTERVAL_MS = 360/);
   assert.match(client, /const CALL_ALERT_SOUND_PULSE_MS = 260/);
   assert.match(client, /const CALL_ALERT_SOUND_GAIN = 1\.25/);
