@@ -1,6 +1,42 @@
-# SenhaHub Supermercado Pompeia
+# SenhaHub
 
-Aplicativo de fila virtual para supermercado, com login por perfil, solicitacao de senhas por setor, painel do atendente e painel administrativo.
+Aplicação web de fila virtual para emissão e acompanhamento de senhas, organização do atendimento por setor e operação de equipe. Inclui interface do cliente, painéis por perfil, totem e integração com impressão.
+
+**Demonstração:** [senhahub.vercel.app](https://senhahub.vercel.app)
+
+## Contexto e problema
+
+O sistema organiza a emissão e o acompanhamento de senhas em atendimentos com vários setores. Cada perfil usa uma interface apropriada, e a operação pode acompanhar o fluxo em tempo real.
+
+## Funcionalidades principais
+
+- Emissão e acompanhamento individual de senhas por token e QR Code.
+- Painéis para cliente, atendente e gestão, com permissões por perfil.
+- Operação por setor e chamadas em tempo real.
+- Totem para emissão física e integração com impressoras térmicas por agente local.
+- Notificações Web Push, observabilidade e processamento de tarefas no servidor.
+
+## Stack e decisões técnicas
+
+| Área | Tecnologias e decisões |
+| --- | --- |
+| Aplicação | Next.js e React para as interfaces e rotas da aplicação |
+| Dados e autenticação | Supabase Auth e PostgreSQL; operações críticas usam funções transacionais |
+| Hospedagem | Vercel para o runtime principal; há um caminho separado para PostgreSQL local |
+| Impressão | Agente Windows local para conectar o fluxo web a impressoras térmicas |
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    people["Cliente, atendente, gestão e totem"] --> app["Aplicação Next.js"]
+    app --> runtime["API e regras server-side"]
+    runtime --> auth["Supabase Auth"]
+    runtime --> data[("PostgreSQL e RPCs transacionais")]
+    runtime --> push["Web Push"]
+```
+
+O agente local de impressão e os protocolos de pareamento estão descritos em [docs/IMPRESSAO_V2.md](docs/IMPRESSAO_V2.md) e [docs/totem-impressao.md](docs/totem-impressao.md).
 
 ## Requisitos
 
@@ -197,3 +233,23 @@ supabase/migrations/20260724182303_pwa_push_notifications.sql
 ```
 
 Depois de aplicar as migrações e configurar `DATA_BACKEND=supabase` na Vercel, todo o backend operacional usa o Supabase.
+
+## Testes e qualidade
+
+O workflow do GitHub Actions executa instalação reproduzível, verificações estáticas, testes, checagens do agente de impressão, build de produção e auditoria de dependências. Para executar localmente:
+
+```bash
+npm run check
+npm test
+npm run check:print-agent
+npm run test:print-v2
+npm run build
+```
+
+## Roadmap e status
+
+O acompanhamento atual está em [BACKLOG_SENHAHUB.md](BACKLOG_SENHAHUB.md), usado como documento de status do projeto.
+
+## Licença e contato
+
+O repositório não declara uma licença em arquivo próprio. Contato: [perfil de Vitor Studzieski no GitHub](https://github.com/Vitor-Studzieski).
