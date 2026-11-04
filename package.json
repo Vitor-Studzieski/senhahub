@@ -1,5 +1,5 @@
 {
-  "name": "senhahub-supermercado-pompeia",
+  "name": "senhahub",
   "version": "1.0.0",
   "private": true,
   "description": "Aplicativo SenhaHub com backend, SQLite, SSE, painel do atendente e painel administrativo.",
