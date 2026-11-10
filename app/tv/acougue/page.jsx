@@ -1,5 +1,6 @@
 import Script from "next/script";
 import HtmlTemplate from "../../components/shared/HtmlTemplate";
+import CallKeyboardShortcuts from "./CallKeyboardShortcuts";
 
 export const metadata = {
   title: "TV de atendimento",
@@ -14,7 +15,8 @@ export default function ButcherDisplayPage() {
   return (
     <>
       <HtmlTemplate fileName="tv-acougue.html" />
-      <Script src="/tv-acougue.js?v=20261103.ble-call-shortcuts" strategy="afterInteractive" />
+      <CallKeyboardShortcuts />
+      <Script src="/tv-acougue.js?v=20261110.ble-shortcut-lifecycle" strategy="afterInteractive" />
     </>
   );
 }

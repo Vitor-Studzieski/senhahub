@@ -64,19 +64,22 @@ test("TV atualiza conexão, identifica re-chamadas e dispara destaque visual", (
 
 test("atalhos físicos usam as ações existentes e bloqueiam repetição e concorrência", () => {
   const client = fs.readFileSync(path.join(root, "public/tv-acougue.js"), "utf8");
+  const shortcuts = fs.readFileSync(path.join(root, "app/tv/acougue/CallKeyboardShortcuts.jsx"), "utf8");
+  const page = fs.readFileSync(path.join(root, "app/tv/acougue/page.jsx"), "utf8");
 
-  assert.match(client, /F8: "again"/);
-  assert.match(client, /F9: "next"/);
-  assert.match(client, /F13: "again"/);
-  assert.match(client, /F14: "next"/);
-  assert.match(client, /window\.addEventListener\("keydown", handlePresenterKeydown\)/);
-  assert.match(client, /event\.repeat/);
-  assert.match(client, /const isButcherDisplay = window\.location\.pathname\.replace/);
-  assert.match(client, /shortcutAction = isButcherDisplay && !IS_PITCHDAY/);
-  assert.match(client, /shortcutButton\.disabled \|\| shortcutButton\.hidden/);
-  assert.match(client, /input, textarea, select, \[contenteditable='true'\]/);
+  assert.match(shortcuts, /F8: "again"/);
+  assert.match(shortcuts, /F9: "next"/);
+  assert.match(shortcuts, /F13: "again"/);
+  assert.match(shortcuts, /F14: "next"/);
+  assert.match(shortcuts, /window\.addEventListener\("keydown", handleKeydown\)/);
+  assert.match(shortcuts, /window\.removeEventListener\("keydown", handleKeydown\)/);
+  assert.match(shortcuts, /event\.repeat/);
+  assert.match(shortcuts, /event\.preventDefault\(\)/);
+  assert.match(shortcuts, /input, textarea, select, \[contenteditable='true'\]/);
+  assert.match(shortcuts, /button\.click\(\)/);
+  assert.match(page, /<CallKeyboardShortcuts \/>/);
+  assert.match(client, /button\.addEventListener\("click", \(\) => executeCallAction\(button\.dataset\.tvCallAction\)\)/);
   assert.match(client, /state\.actionInFlight \|\| now - state\.lastRemoteActionAt < 450/);
-  assert.match(client, /void executeCallAction\(action\)/);
   assert.match(client, /async function executeCallAction\(action\)/);
   assert.match(client, /state\.actionInFlight = true/);
 });

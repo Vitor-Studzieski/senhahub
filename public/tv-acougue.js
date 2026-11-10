@@ -6,13 +6,6 @@
   const CALL_ALERT_SOUND_GAIN = 1.25;
   const WEATHER_REFRESH_MS = 25 * 60 * 1000;
   const PLAYLIST_REFRESH_MS = 5 * 60 * 1000;
-  const CALL_SHORTCUT_ACTIONS = Object.freeze({
-    F8: "again",
-    F9: "next",
-    // F13/F14 are available as an alternative if macOS intercepts F8/F9.
-    F13: "again",
-    F14: "next"
-  });
   const PITCHDAY_TV_EMAILS = new Set([
     "pitchday@superpompeia.com",
     "pitchday.tv@superpompeia.com"
@@ -225,24 +218,13 @@
 
     // Presentation remotes commonly report previous/next as arrows or page keys.
     const key = String(event.key || event.code || "").toLowerCase();
-    const shortcutKey = String(event.code || event.key || "").toUpperCase();
-    const isButcherDisplay = window.location.pathname.replace(/\/+$/, "") === "/tv/acougue";
-    const shortcutAction = isButcherDisplay && !IS_PITCHDAY
-      ? CALL_SHORTCUT_ACTIONS[shortcutKey] || CALL_SHORTCUT_ACTIONS[String(event.key || "").toUpperCase()] || ""
-      : "";
     const presenterAction = !IS_PITCHDAY && ["arrowup", "pageup"].includes(key)
       ? "previous"
       : ["arrowdown", "pagedown"].includes(key)
         ? "next"
         : "";
-    const action = shortcutAction || presenterAction;
+    const action = presenterAction;
     if (!action) return;
-
-    if (shortcutAction) {
-      event.preventDefault();
-      const shortcutButton = elements.callActionButtons.find((button) => button.dataset.tvCallAction === shortcutAction);
-      if (!shortcutButton || shortcutButton.disabled || shortcutButton.hidden) return;
-    }
 
     if ((!IS_PITCHDAY && !["tv", "attendant", "manager", "admin"].includes(state.userRole)) || !state.sectorId) return;
 
