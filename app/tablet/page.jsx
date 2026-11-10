@@ -7,6 +7,10 @@ export const metadata = {
   description: "Emissão de senhas digitais pelo tablet do atendimento."
 };
 
+export const viewport = {
+  themeColor: "#FF7200"
+};
+
 export default async function TabletPage() {
   const nonce = (await headers()).get("x-nonce") || undefined;
 
@@ -14,7 +18,7 @@ export default async function TabletPage() {
     <>
       <HtmlTemplate fileName="tablet.html" />
       <Script src="/vendor/qrcode-generator.js" nonce={nonce} strategy="beforeInteractive" />
-      <Script src="/tablet.js?v=20261016.pitchday-account-qr" strategy="afterInteractive" />
+      <Script src="/tablet.js?v=20261021.tablet-orange" strategy="afterInteractive" />
     </>
   );
 }

@@ -1,0 +1,234 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1700" viewBox="0 0 2500 1700" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitetura atual do SenhaHub — Vercel + Supabase</title>
+  <desc id="desc">Diagrama da arquitetura de produção do SenhaHub, com clientes e dispositivos conectados por HTTPS à aplicação Next.js e API na Vercel, que usa Supabase Auth, PostgreSQL, RPCs, Realtime e Storage. Mostra também impressão, notificações, integrações externas, cron e observabilidade.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7f8fc"/><stop offset="1" stop-color="#edf2f8"/></linearGradient>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#15243a"/><stop offset="1" stop-color="#263b57"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#12223a" flood-opacity=".10"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#667892"/></marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#e77b32"/></marker>
+    <marker id="arrowTeal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#238a88"/></marker>
+    <marker id="arrowPurple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#7a69b4"/></marker>
+    <style>
+      text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fill:#17263d}
+      .title{font-size:46px;font-weight:750;letter-spacing:-1px;fill:#fff}
+      .subtitle{font-size:21px;font-weight:450;fill:#d7e0ed}
+      .section{font-size:22px;font-weight:750;letter-spacing:.7px;fill:#52647d}
+      .panel-title{font-size:25px;font-weight:750;fill:#fff}
+      .panel-sub{font-size:16px;font-weight:600;fill:#dce6f3}
+      .card-title{font-size:21px;font-weight:750;fill:#1b2b43}
+      .body{font-size:17px;font-weight:450;fill:#40516a}
+      .small{font-size:15px;font-weight:500;fill:#566780}
+      .tiny{font-size:13px;font-weight:600;fill:#60718a}
+      .tag{font-size:14px;font-weight:750;letter-spacing:.5px}
+      .actor-title{font-size:20px;font-weight:750;fill:#1d2b40}
+      .actor-body{font-size:15px;font-weight:500;fill:#5a6980}
+    </style>
+  </defs>
+  <rect width="2500" height="1700" fill="url(#bg)"/>
+  <rect x="0" y="0" width="2500" height="150" fill="url(#header)"/>
+  <circle cx="2390" cy="-30" r="185" fill="#f28b42" opacity=".12"/>
+  <circle cx="2300" cy="150" r="110" fill="#3bb4ac" opacity=".10"/>
+  <text x="58" y="68" class="title">SenhaHub | Arquitetura atual</text>
+  <text x="60" y="111" class="subtitle">Produção documentada: Vercel + Next.js → API do domínio → Supabase</text>
+  <rect x="2107" y="44" width="330" height="48" rx="24" fill="#e77b32"/>
+  <circle cx="2138" cy="68" r="7" fill="#fff"/>
+  <text x="2157" y="74" font-size="17" font-weight="750" style="fill:#fff">RECORTE DE PRODUÇÃO</text>
+  <text x="2110" y="119" font-size="15" font-weight="600" style="fill:#dce6f3">Revisão do repositório · 21 out 2026</text>
+
+  <!-- Flow lines are behind the component cards. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M420 302 H435 M420 462 H435 M420 622 H435 M420 782 H435 M435 302 V782" stroke="#667892" stroke-width="4"/>
+    <path d="M435 419 H490" stroke="#667892" stroke-width="4" marker-end="url(#arrow)"/>
+    <path d="M1400 465 V555" stroke="#e77b32" stroke-width="5" marker-end="url(#arrowOrange)"/>
+    <path d="M1400 742 H1520" stroke="#238a88" stroke-width="5" marker-end="url(#arrowTeal)"/>
+    <path d="M420 1020 H465 V832 H490" stroke="#e77b32" stroke-width="4" marker-end="url(#arrowOrange)"/>
+    <path d="M2420 865 H2470 V1168 H230 V1050" stroke="#7a69b4" stroke-width="4" stroke-dasharray="10 10" marker-end="url(#arrowPurple)"/>
+  </g>
+
+  <text x="60" y="200" class="section">1 · PESSOAS E DISPOSITIVOS</text>
+  <text x="480" y="200" class="section">2 · APLICAÇÃO E BACKEND NA VERCEL</text>
+  <text x="1515" y="200" class="section">3 · PLATAFORMA DE DADOS SUPABASE</text>
+
+  <!-- Actors -->
+  <g filter="url(#shadow)">
+    <rect x="50" y="230" width="370" height="145" rx="18" fill="#fff"/>
+    <rect x="50" y="230" width="9" height="145" rx="4" fill="#e77b32"/>
+    <rect x="50" y="390" width="370" height="145" rx="18" fill="#fff"/>
+    <rect x="50" y="390" width="9" height="145" rx="4" fill="#5278b8"/>
+    <rect x="50" y="550" width="370" height="145" rx="18" fill="#fff"/>
+    <rect x="50" y="550" width="9" height="145" rx="4" fill="#238a88"/>
+    <rect x="50" y="710" width="370" height="145" rx="18" fill="#fff"/>
+    <rect x="50" y="710" width="9" height="145" rx="4" fill="#7a69b4"/>
+    <rect x="50" y="870" width="370" height="180" rx="18" fill="#fff"/>
+    <rect x="50" y="870" width="9" height="180" rx="4" fill="#d66847"/>
+  </g>
+  <text x="78" y="272" class="actor-title">Cliente · celular / navegador</text>
+  <text x="78" y="305" class="actor-body">App e PWA · solicita e acompanha senha</text>
+  <text x="78" y="330" class="actor-body">/, /login, /acompanhar/&lt;token&gt;</text>
+  <rect x="78" y="344" width="112" height="21" rx="10" fill="#fff0e5"/><text x="91" y="359" class="tag" fill="#ba5a1c">HTTPS</text>
+
+  <text x="78" y="432" class="actor-title">Atendentes e gestores</text>
+  <text x="78" y="465" class="actor-body">Painel de chamada, operação e gestão</text>
+  <text x="78" y="490" class="actor-body">/attendant · /admin/*</text>
+  <rect x="78" y="504" width="112" height="21" rx="10" fill="#eaf0fb"/><text x="91" y="519" class="tag" fill="#41659e">HTTPS</text>
+
+  <text x="78" y="592" class="actor-title">Totem e tablets</text>
+  <text x="78" y="625" class="actor-body">Emitem senha física e consultam trabalho</text>
+  <text x="78" y="650" class="actor-body">/totem · /tablet</text>
+  <rect x="78" y="664" width="112" height="21" rx="10" fill="#e3f5f3"/><text x="91" y="679" class="tag" fill="#167371">HTTPS</text>
+
+  <text x="78" y="752" class="actor-title">TVs de atendimento</text>
+  <text x="78" y="785" class="actor-body">Chamadas, clima e mídia configurada</text>
+  <text x="78" y="810" class="actor-body">/tv/acougue · /tv/pitchday</text>
+  <rect x="78" y="824" width="112" height="21" rx="10" fill="#f0edfa"/><text x="91" y="839" class="tag" fill="#66569c">HTTPS</text>
+
+  <text x="78" y="912" class="actor-title">Agentes de impressão</text>
+  <text x="78" y="945" class="actor-body">Windows x86 (tablets) / agente dedicado (Totem)</text>
+  <text x="78" y="970" class="actor-body">Bematech MP-4200 TH · MP-4000 TH FI</text>
+  <text x="78" y="995" class="actor-body">Claim, lease, impressão e confirmação</text>
+  <rect x="78" y="1010" width="128" height="25" rx="12" fill="#fff0e5"/><text x="91" y="1028" class="tag" fill="#ba5a1c">API HTTPS</text>
+
+  <!-- Vercel boundary -->
+  <rect x="450" y="220" width="1010" height="920" rx="24" fill="#f5f8fc" stroke="#aab8c9" stroke-width="2"/>
+  <path d="M474 220 H1436 Q1460 220 1460 244 V290 H450 V244 Q450 220 474 220" fill="#26364b"/>
+  <text x="482" y="260" class="panel-title">Vercel · região gru1</text>
+  <text x="1210" y="257" class="panel-sub">HTTPS · mesmo domínio</text>
+
+  <g filter="url(#shadow)">
+    <rect x="490" y="315" width="930" height="210" rx="18" fill="#fff"/>
+    <rect x="490" y="315" width="930" height="49" rx="18" fill="#eaf0f8"/>
+    <path d="M490 346 V364 H1420 V346" fill="#eaf0f8"/>
+    <rect x="490" y="555" width="930" height="390" rx="18" fill="#fff"/>
+    <rect x="490" y="555" width="930" height="51" rx="18" fill="#fff0e5"/>
+    <path d="M490 580 V606 H1420 V580" fill="#fff0e5"/>
+    <rect x="490" y="970" width="930" height="130" rx="18" fill="#fff"/>
+    <rect x="490" y="970" width="930" height="44" rx="18" fill="#eaf5f4"/>
+    <path d="M490 990 V1014 H1420 V990" fill="#eaf5f4"/>
+  </g>
+  <text x="520" y="348" class="card-title">Web app · Next.js App Router</text>
+  <text x="520" y="397" class="body">Páginas servidas pela Vercel; componentes Next/React junto de templates HTML, CSS e JavaScript.</text>
+  <text x="520" y="430" class="body">Cliente · Login · Atendente · Admin · Totem · Tablet · TVs · Acompanhamento por QR</text>
+  <rect x="520" y="462" width="420" height="42" rx="12" fill="#f3f5f9"/>
+  <text x="538" y="489" class="small">PWA: Service Worker, assets em cache e fallback offline</text>
+  <rect x="955" y="462" width="430" height="42" rx="12" fill="#f3f5f9"/>
+  <text x="973" y="489" class="small">Ações e dados sempre passam pela API HTTPS</text>
+
+  <text x="520" y="590" class="card-title">API de produção · /api/* · runtime Node.js</text>
+  <text x="520" y="638" class="body">app/api/[...path] → server/integrations/supabase-runtime.js</text>
+  <line x1="520" y1="660" x2="1385" y2="660" stroke="#e8edf3" stroke-width="2"/>
+  <text x="520" y="695" class="body">• Auth e sessões · fila, senhas e atendimento · setores, usuários e métricas</text>
+  <text x="520" y="728" class="body">• Totem/tablet · impressão v2 · acompanhamento · TV/mídia · Web Push</text>
+  <text x="520" y="761" class="body">• Valida perfil/setor, cookie HttpOnly, CSRF, origem e limites de requisição</text>
+  <text x="520" y="794" class="body">• Escritas críticas usam RPC/transação; chaves administrativas ficam no servidor</text>
+  <rect x="520" y="826" width="865" height="85" rx="14" fill="#fff8f2" stroke="#f4d2b7"/>
+  <text x="540" y="858" font-size="16" font-weight="750" fill="#a84f1d">Impressão</text>
+  <text x="540" y="883" class="small">API autoriza claim/lease/finish; job persistido é a verdade. Realtime só acorda o agente; watchdog reconcilia.</text>
+
+  <text x="520" y="1000" class="card-title">Runtime e configuração segura</text>
+  <text x="520" y="1040" class="small">Runtime Node.js serverless · região gru1</text>
+  <text x="520" y="1070" class="small">Variáveis e segredos ficam no ambiente de servidor da Vercel</text>
+  <text x="520" y="1124" class="tiny">A chave service_role e a chave VAPID privada nunca são enviadas ao navegador</text>
+
+  <!-- Supabase boundary -->
+  <rect x="1480" y="220" width="980" height="920" rx="24" fill="#f1f8f7" stroke="#91bab4" stroke-width="2"/>
+  <path d="M1504 220 H2436 Q2460 220 2460 244 V290 H1480 V244 Q1480 220 1504 220" fill="#176c68"/>
+  <text x="1510" y="260" class="panel-title">Supabase · serviços gerenciados</text>
+  <text x="2180" y="257" class="panel-sub">acesso de servidor</text>
+
+  <g filter="url(#shadow)">
+    <rect x="1520" y="315" width="900" height="140" rx="17" fill="#fff"/>
+    <rect x="1520" y="475" width="900" height="300" rx="17" fill="#fff"/>
+    <rect x="1520" y="795" width="430" height="155" rx="17" fill="#fff"/>
+    <rect x="1970" y="795" width="450" height="155" rx="17" fill="#fff"/>
+    <rect x="1520" y="970" width="900" height="130" rx="17" fill="#fff"/>
+  </g>
+  <circle cx="1555" cy="350" r="13" fill="#238a88"/>
+  <text x="1582" y="358" class="card-title">Supabase Auth</text>
+  <text x="1582" y="395" class="body">Identidades, login, recuperação e verificação de sessão</text>
+  <text x="1582" y="426" class="small">A aplicação mantém autorização e sessão do SenhaHub no runtime.</text>
+
+  <circle cx="1555" cy="513" r="13" fill="#238a88"/>
+  <text x="1582" y="521" class="card-title">PostgreSQL · fonte de verdade operacional</text>
+  <text x="1550" y="560" class="body">Dados de usuários/perfis, lojas/setores, dispositivos e senhas</text>
+  <text x="1550" y="592" class="body">Chamadas, atendimentos, avaliações, eventos e auditoria</text>
+  <text x="1550" y="624" class="body">Jobs de impressão/tentativas, push e histórico de cron</text>
+  <line x1="1550" y1="647" x2="2388" y2="647" stroke="#e4eeec" stroke-width="2"/>
+  <text x="1550" y="681" class="small">RLS + políticas; a service_role é restrita a allowlists no servidor</text>
+  <text x="1550" y="714" class="small">Nenhum navegador ou agente recebe a chave administrativa do banco</text>
+  <text x="1550" y="747" class="small">Leitura/escrita por REST; operações concorrentes em RPCs transacionais</text>
+
+  <text x="1550" y="836" class="card-title">RPCs</text>
+  <text x="1550" y="872" class="small">Emissão, chamada, finalização,</text>
+  <text x="1550" y="897" class="small">claim e leases de impressão</text>
+  <text x="1550" y="922" class="small">com concorrência/idempotência</text>
+
+  <text x="2000" y="836" class="card-title">Realtime privado</text>
+  <text x="2000" y="872" class="small">Broadcast de wake-up ao agente</text>
+  <text x="2000" y="897" class="small">de impressão; não carrega a verdade</text>
+  <text x="2000" y="922" class="small">do job nem substitui reconciliação</text>
+
+  <text x="1550" y="1012" class="card-title">Storage · mídia das TVs</text>
+  <text x="1550" y="1050" class="body">Uploads e entrega de vídeos/conteúdo gerido pelo painel</text>
+  <text x="1550" y="1080" class="small">A API controla autorização e geração de URLs de acesso.</text>
+
+  <!-- Connector labels -->
+  <rect x="750" y="274" width="348" height="28" rx="14" fill="#e8edf5"/>
+  <text x="772" y="293" class="tiny">HTTPS · telas e dispositivos</text>
+  <rect x="1035" y="1146" width="435" height="28" rx="14" fill="#f0edfa"/>
+  <text x="1054" y="1165" class="tiny" fill="#66569c">Supabase Realtime privado → sinal de wake-up ao agente</text>
+
+  <!-- Integrations and platform operations -->
+  <text x="60" y="1200" class="section">4 · INTEGRAÇÕES E SERVIÇOS DE PLATAFORMA</text>
+  <rect x="50" y="1220" width="1510" height="405" rx="22" fill="#fff" stroke="#d5dde8" stroke-width="2"/>
+  <rect x="1580" y="1220" width="870" height="405" rx="22" fill="#fff" stroke="#d5dde8" stroke-width="2"/>
+  <text x="82" y="1266" class="card-title">Chamadas externas feitas pelo backend</text>
+  <text x="1612" y="1266" class="card-title">Cron, saúde e observabilidade</text>
+
+  <g filter="url(#shadow)">
+    <rect x="82" y="1292" width="345" height="132" rx="15" fill="#f7f9fc"/>
+    <rect x="447" y="1292" width="345" height="132" rx="15" fill="#f7f9fc"/>
+    <rect x="812" y="1292" width="345" height="132" rx="15" fill="#f7f9fc"/>
+    <rect x="1177" y="1292" width="345" height="132" rx="15" fill="#f7f9fc"/>
+    <rect x="1612" y="1292" width="806" height="132" rx="15" fill="#f7f9fc"/>
+    <rect x="1612" y="1440" width="806" height="145" rx="15" fill="#f7f9fc"/>
+  </g>
+  <text x="105" y="1331" class="card-title">HIBP</text>
+  <text x="105" y="1364" class="small">Validação de senha vazada</text>
+  <text x="105" y="1390" class="small">por k-anonymity (prefixo hash)</text>
+
+  <text x="470" y="1331" class="card-title">Open-Meteo</text>
+  <text x="470" y="1364" class="small">Clima atual de Pompéia, SP</text>
+  <text x="470" y="1390" class="small">para as telas de TV</text>
+
+  <text x="835" y="1331" class="card-title">Instagram / CDN</text>
+  <text x="835" y="1364" class="small">Origem e entrega de vídeos</text>
+  <text x="835" y="1390" class="small">para conteúdo de TV</text>
+
+  <text x="1200" y="1331" class="card-title">Web Push</text>
+  <text x="1200" y="1364" class="small">VAPID → serviço push do</text>
+  <text x="1200" y="1390" class="small">navegador / sistema operacional</text>
+
+  <rect x="82" y="1445" width="700" height="140" rx="15" fill="#eef6f5"/>
+  <rect x="812" y="1445" width="710" height="140" rx="15" fill="#eef2f9"/>
+  <text x="108" y="1486" font-size="16" font-weight="750" fill="#176c68">Fluxo de notificação</text>
+  <text x="108" y="1522" class="small">Inscrição e preferências no Supabase → API envia com VAPID</text>
+  <text x="108" y="1550" class="small">→ serviço push do navegador/sistema → PWA do cliente</text>
+  <text x="838" y="1486" font-size="16" font-weight="750" fill="#41659e">Fluxo de mídia das TVs</text>
+  <text x="838" y="1522" class="small">Gestor configura a playlist; vídeos são armazenados no Supabase</text>
+  <text x="838" y="1550" class="small">ou obtidos de Instagram/CDN via backend.</text>
+
+  <text x="1640" y="1331" class="card-title">Vercel Cron · 03:00 UTC diariamente</text>
+  <text x="1640" y="1364" class="small">Aciona /api/internal/jobs: expiração/standby, sessões vencidas e recuperação de leases de impressão.</text>
+  <text x="1640" y="1390" class="small">A rotina também pode ser acionada pelo endpoint interno protegido por CRON_SECRET.</text>
+
+  <text x="1640" y="1480" class="card-title">Logs e saúde</text>
+  <text x="1640" y="1515" class="small">requestId + logs estruturados · /api/health e /api/ready.</text>
+  <text x="1640" y="1543" class="small">/api/observability para gestores; alerta por webhook é opcional.</text>
+  <rect x="1640" y="1555" width="206" height="24" rx="12" fill="#e9f3f2"/><text x="1655" y="1572" class="tiny" fill="#176c68">SEGREDOS NO SERVIDOR</text>
+
+  <!-- Footer note -->
+  <line x1="55" y1="1650" x2="2445" y2="1650" stroke="#d3dce7" stroke-width="2"/>
+  <text x="60" y="1680" font-size="15" font-weight="600" fill="#65758c">Escopo: arquitetura de produção descrita no código e na configuração do repositório. Não representa uma consulta ao painel remoto de Vercel/Supabase.</text>
+  <text x="2220" y="1680" font-size="14" font-weight="750" fill="#65758c">SENHAHUB · POMPEIA</text>
+</svg>

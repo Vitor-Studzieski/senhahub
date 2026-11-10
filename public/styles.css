@@ -3252,19 +3252,27 @@ textarea:focus {
   display: inline-flex;
   flex: 0 0 150px;
   align-items: center;
+  gap: 10px;
   justify-content: flex-start;
   min-width: 150px;
 }
 
 .ops-header.attendant-header .ops-header-brand img {
   display: block;
-  width: 142px;
-  height: 48px;
+  width: 42px;
+  height: 32px;
   flex: 0 0 auto;
   object-fit: contain;
-  border-radius: 8px;
-  background: #fff;
-  padding: 3px;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.ops-header.attendant-header .ops-header-brand strong {
+  color: var(--vr-heading);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .ops-header.attendant-header .ops-header-copy {
@@ -16294,8 +16302,8 @@ textarea:focus-visible,
 .manager-page .md-inline-form :focus-visible,.manager-page .md-config-form :focus-visible,.manager-page .md-action-row :focus-visible { outline:3px solid #f1c40f; outline-offset:2px; }
 @media(max-width:640px) { .manager-page .md-form-row { grid-template-columns:1fr; } }
 
-/* VR Software branding for the customer, login, TV, and mini PC screens. */
-:is(.phone, .tracking-stage, .tv-screen, .totem-stage, .senhahub-auth-stage) {
+/* VR Software branding for customer, attendant, login, TV, and mini PC screens. */
+:is(.phone, .attendant-page, .tablet-stage, .tracking-stage, .tv-screen, .totem-stage, .senhahub-auth-stage) {
   --vr-orange-primary: #FF7200;
   --vr-orange-secondary: #FF9E01;
   --vr-orange-cta: #FF7400;
@@ -16332,7 +16340,11 @@ textarea:focus-visible,
 }
 
 body:has(.phone) {
-  background: #02021E;
+  background: #FFFFFF;
+}
+
+body:has(.tablet-stage) {
+  background: #FFFFFF;
 }
 
 .phone .welcome-market-logo {

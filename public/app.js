@@ -1,7 +1,4 @@
 const initialQuery = new URLSearchParams(location.search);
-const IS_PITCHDAY = initialQuery.get("ecosystem")?.toLowerCase() === "pitchday"
-  || history.state?.senhaHubPitchday === true
-  || document.querySelector('[data-pitchday="enabled"]') !== null;
 
 function acquisitionChannel() {
   const sources = ["origem", "canal", "utm_source", "utm_medium"]
@@ -42,7 +39,7 @@ function recordAcquisitionEvent(type) {
 if (acquisitionChannel() === "qr") recordAcquisitionEvent("qr_landing");
 window.addEventListener("appinstalled", () => recordAcquisitionEvent("pwa_installed"));
 const screens = {
-  home: IS_PITCHDAY ? "Pitchday" : "Supermercado Pompeia",
+  home: "Supermercado Pompeia",
   sectors: "Fila virtual",
   ticket: "Minha senha",
   status: "Acompanhamento",
@@ -127,84 +124,21 @@ const SECTOR_ID_ALIASES = {
 init();
 
 async function init() {
-  normalizePitchdayUrl();
-  hidePitchdayNonRequestNavigation();
-  configurePitchdayRequestScreen();
   syncMobileViewport();
   bindEvents();
   syncPriorityControls();
   syncAlertControls();
-  navigate(IS_PITCHDAY ? "sectors" : "home");
-  if (IS_PITCHDAY) {
-    const guest = await api("/api/pitchday/session", { method: "POST", body: {} });
-    identity.customerId = guest.customerId;
-    identity.deviceId = guest.deviceId;
-    currentUser = { customerId: guest.customerId, deviceId: guest.deviceId, name: "Visitante Pitchday", role: "customer", status: "active" };
-  } else {
-    currentUser = await requireSession(["customer", "manager", "admin"]);
-  }
+  navigate("home");
+  currentUser = await requireSession(["customer", "manager", "admin"]);
   syncAccessArea();
   renderAccount();
   renderHome();
-  if (!IS_PITCHDAY) identity.customerId = currentUser.customerId;
+  identity.customerId = currentUser.customerId;
   writeAppStorage("senhaHubIdentity", JSON.stringify(identity));
-  await Promise.all([IS_PITCHDAY ? Promise.resolve() : syncSession(), loadState()]);
+  await Promise.all([syncSession(), loadState()]);
   applyRequestedView();
   connectRealtime();
   startCountdownTimer();
-}
-
-function normalizePitchdayUrl() {
-  if (!IS_PITCHDAY) return;
-  const url = new URL(location.href);
-  url.searchParams.delete("ecosystem");
-  url.searchParams.delete("view");
-  const search = url.searchParams.toString();
-  const cleanPath = `${url.pathname}${search ? `?${search}` : ""}${url.hash}`;
-  history.replaceState({ ...history.state, senhaHubPitchday: true }, "", cleanPath);
-}
-
-function configurePitchdayRequestScreen() {
-  if (!IS_PITCHDAY) return;
-
-  const requestCard = document.querySelector("#pitchdayRequestCard");
-  if (requestCard) {
-    requestCard.hidden = false;
-    requestCard.style.removeProperty("display");
-  }
-  const multiSectorPanel = document.querySelector("#multiSectorPanel");
-  if (multiSectorPanel) {
-    multiSectorPanel.hidden = true;
-    multiSectorPanel.style.display = "none";
-  }
-  selectedSectorIds.clear();
-
-  document.querySelectorAll("[data-pitchday-idle='true']").forEach((card) => {
-    card.classList.add("pitchday-idle-sector");
-    card.querySelectorAll("[data-join]").forEach((button) => {
-      button.disabled = true;
-      button.textContent = "";
-      button.setAttribute("aria-label", "Opção indisponível no Pitchday");
-    });
-    card.querySelectorAll("[data-select-sector]").forEach((input) => {
-      input.checked = false;
-      input.disabled = true;
-    });
-  });
-}
-
-function hidePitchdayNonRequestNavigation() {
-  if (!IS_PITCHDAY) return;
-  [
-    document.querySelector('[data-screen="home"]'),
-    document.querySelector('[data-screen="account"]'),
-    document.querySelector(".tabbar"),
-    document.querySelector("#notifyButton")
-  ].forEach((element) => {
-    if (!element) return;
-    element.hidden = true;
-    element.style.display = "none";
-  });
 }
 
 function syncMobileViewport() {
@@ -273,10 +207,7 @@ async function syncSession() {
 
 async function loadState() {
   if (stateRequestInFlight) return stateRequestInFlight;
-  const endpoint = IS_PITCHDAY
-    ? "/api/pitchday/state"
-    : `/api/state?customer_id=${encodeURIComponent(identity.customerId)}`;
-  stateRequestInFlight = api(endpoint)
+  stateRequestInFlight = api(`/api/state?customer_id=${encodeURIComponent(identity.customerId)}`)
     .then(applyState)
     .finally(() => {
       stateRequestInFlight = null;
@@ -323,10 +254,6 @@ function applyState(state) {
 }
 
 function applyRequestedView() {
-  if (IS_PITCHDAY) {
-    navigate("sectors");
-    return;
-  }
   const view = new URLSearchParams(location.search).get("view");
   if (["sectors", "status", "account"].includes(view)) navigate(view);
 }
@@ -373,12 +300,11 @@ function hasStandbyCountdown(ticket) {
 }
 
 function navigate(screen) {
-  if (IS_PITCHDAY && ["home", "account"].includes(screen)) screen = "sectors";
   if (!screens[screen]) return;
   activeScreen = screen;
   document.querySelectorAll(".screen").forEach((item) => item.classList.toggle("active", item.dataset.screen === screen));
   document.querySelector("#appTitle").textContent = screens[screen];
-  document.querySelector("#backButton")?.classList.toggle("is-hidden", screen === "home" || (IS_PITCHDAY && screen === "sectors"));
+  document.querySelector("#backButton")?.classList.toggle("is-hidden", screen === "home");
   if (screen === "home") renderHome();
   if (screen === "done") renderServiceScreen();
   if (screen === "account") renderAccount();
@@ -388,7 +314,6 @@ function navigate(screen) {
 }
 
 function maybeShowQueueTutorial(screen) {
-  if (IS_PITCHDAY) return;
   if (queueTutorialSeen) return;
   if (!["sectors", "ticket", "status"].includes(screen)) return;
   openQueueTutorial({ automatic: true });
@@ -442,14 +367,6 @@ function renderHome() {
   const sectorList = Object.values(sectors);
   const openSectorCount = sectorList.filter((sector) => sector.status === "open").length;
   const status = document.querySelector(".welcome-status");
-
-  if (IS_PITCHDAY) {
-    setText(".welcome-eyebrow", "SenhaHub · Pitchday");
-    setText(".welcome-hero > p", "Seu atendimento no Pitchday começa aqui.");
-    setText(".welcome-assurance-copy span", "Atendimento do evento");
-    setText(".welcome-assurance-copy h2", "Acompanhe sua vez no Pitchday.");
-    setText(".welcome-assurance-copy p", "Retire sua senha e acompanhe o atendimento do evento pelo celular.");
-  }
 
   setText("#homeFirstName", firstName(name));
   setText("#homeQueueActionTitle", "Retirar minha senha");
@@ -691,7 +608,7 @@ async function requestSelectedTickets() {
 }
 
 function createDigitalTicket(sectorId, priority = priorityPayload()) {
-  return api(IS_PITCHDAY ? "/api/pitchday/tickets" : "/api/tickets", {
+  return api("/api/tickets", {
     method: "POST",
     body: { ...identity, sectorId, originChannel: acquisitionChannel(), ...priority }
   });
@@ -845,10 +762,7 @@ async function cancelCurrentTicket(ticketId = null) {
   if (!confirm(`Cancelar ${displayCustomerName(data)} (${supportCode(data)}) de ${data.sector}?`)) return;
 
   try {
-    const endpoint = IS_PITCHDAY
-      ? `/api/pitchday/tickets/${encodeURIComponent(data.id)}/cancel`
-      : `/api/tickets/${encodeURIComponent(data.id)}/cancel`;
-    await api(endpoint, { method: "POST", body: identity });
+    await api(`/api/tickets/${encodeURIComponent(data.id)}/cancel`, { method: "POST", body: identity });
     await loadState();
     navigate(hasActiveQueues() ? "status" : "sectors");
   } catch (exception) {
@@ -866,10 +780,7 @@ async function confirmCall() {
     button.textContent = "Confirmando...";
   }
   try {
-    const endpoint = IS_PITCHDAY
-      ? `/api/pitchday/tickets/${encodeURIComponent(data.id)}/confirm`
-      : `/api/tickets/${encodeURIComponent(data.id)}/confirm`;
-    await api(endpoint, { method: "POST", body: identity });
+    await api(`/api/tickets/${encodeURIComponent(data.id)}/confirm`, { method: "POST", body: identity });
     await loadState();
     navigate("done");
   } catch (exception) {
@@ -892,10 +803,7 @@ async function finishCurrentService() {
 
   const ticket = activeQueues[serviceSector];
   try {
-    const endpoint = IS_PITCHDAY
-      ? `/api/pitchday/tickets/${encodeURIComponent(ticket.id)}/finish`
-      : `/api/tickets/${encodeURIComponent(ticket.id)}/finish`;
-    await api(endpoint, { method: "POST", body: identity });
+    await api(`/api/tickets/${encodeURIComponent(ticket.id)}/finish`, { method: "POST", body: identity });
     await loadState();
     const called = getCurrentQueueData();
     if (called?.status === "chamado") {
@@ -1200,23 +1108,6 @@ function renderSectorCards() {
     if (!card) return;
     const hasTicket = Boolean(activeQueues[sectorId]);
 
-    if (IS_PITCHDAY && button.dataset.pitchdayRequest === "true") {
-      card.classList.toggle("has-ticket", hasTicket);
-      button.disabled = sector.status !== "open" || ticketRequestInFlight;
-      button.textContent = activeJoinSector === sectorId
-        ? "Gerando senha..."
-        : hasTicket
-          ? "Ver minha senha"
-          : "Retirar senha";
-      return;
-    }
-
-    if (IS_PITCHDAY && card.dataset.pitchdayIdle === "true") {
-      button.disabled = true;
-      button.textContent = "";
-      return;
-    }
-
     card.classList.toggle("has-ticket", hasTicket);
     card.querySelector(".sector-head strong").textContent = sector.name;
     card.querySelector(".sector-head b").textContent = sector.counterLabel;
@@ -1327,7 +1218,7 @@ function bindEvents() {
   document.querySelectorAll("[data-quick-join]").forEach((button) => button.addEventListener("click", () => joinQueue(button.dataset.quickJoin)));
   document.querySelectorAll("[data-select-sector]").forEach((input) => input.addEventListener("change", handleSectorSelection));
   document.querySelector("#requestSelectedTickets")?.addEventListener("click", requestSelectedTickets);
-  document.querySelector("#backButton").addEventListener("click", () => navigate(IS_PITCHDAY ? "sectors" : "home"));
+  document.querySelector("#backButton").addEventListener("click", () => navigate("home"));
   document.querySelector("#notifyButton").addEventListener("click", handleNotifyButton);
   document.querySelector("#floatingQueue").addEventListener("click", () => navigate("status"));
   document.querySelector("#confirmCall").addEventListener("click", confirmCall);
@@ -1405,7 +1296,7 @@ async function api(path, options = {}) {
     const payload = await parseApiPayload(response);
     window.senhaHubPwa?.reportNetworkSuccess();
     if (response.status === 401) {
-      if (!IS_PITCHDAY) location.href = `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`;
+      location.href = `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`;
       throw new Error("Login necessÃ¡rio.");
     }
     if (!response.ok || payload.error) throw new Error(payload.error || "Falha na API.");
